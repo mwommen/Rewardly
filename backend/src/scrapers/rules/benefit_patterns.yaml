@@ -1,0 +1,83 @@
+period_tokens:
+  monthly: month
+  per month: month
+  quarterly: quarter
+  per quarter: quarter
+  semi-annual: semi-annual
+  twice per year: semi-annual
+  annually: year
+  yearly: year
+
+merchant_aliases:
+  lululemon:
+    - lululemon
+    - lululemon.com
+  saks fifth avenue:
+    - saks
+    - saks.com
+    - saks fifth avenue
+
+issuer_patterns:
+  amex:
+    recurring:
+      - match: "\$200[^\\n]*Uber Cash"
+        label: "$200 Uber Cash (annual; monthly accrual)"
+        amountUSD: 200
+        period: year
+        partner: Uber
+        requiresEnrollment: false
+      - match: "\$120[^\\n]*Uber One"
+        label: "$120 Uber One membership credit (per year)"
+        amountUSD: 120
+        period: year
+        partner: Uber One
+        requiresEnrollment: true
+      - match: "CLEAR®? Plus[^\\n]*\$209"
+        label: "$209 CLEAR Plus statement credit (per year)"
+        amountUSD: 209
+        period: year
+        partner: CLEAR
+        requiresEnrollment: true
+      - match: "\$400[^\\n]*Resy"
+        label: "$400 Resy dining credit (quarterly buckets)"
+        amountUSD: 400
+        period: year
+        partner: Resy
+        requiresEnrollment: true
+      - match: "\$300[^\\n]*Digital Entertainment|\$300[^\\n]*streaming"
+        label: "$300 Digital Entertainment credit (per year)"
+        amountUSD: 300
+        period: year
+        partner: Digital Entertainment
+        requiresEnrollment: true
+      - match: "\$155[^\\n]*Walmart\\+"
+        label: "$155 Walmart+ credit (monthly reimbursement)"
+        amountUSD: 155
+        period: year
+        partner: Walmart+
+        requiresEnrollment: true
+      - match: "\$200[^\\n]*Airline Fee"
+        label: "$200 Airline Fee credit (per year)"
+        amountUSD: 200
+        period: year
+        partner: Airline Fee
+        requiresEnrollment: true
+      - match: "\$600[^\\n]*Hotel"
+        label: "$600 Hotel credit (semi-annual $300 buckets via Amex Travel)"
+        amountUSD: 600
+        period: year
+        partner: Amex Travel
+        requiresEnrollment: true
+    merchant_credits:
+      - match: "\$300[^\\n]*lululemon|\$75[^\\n]*quarter[^\\n]*lululemon"
+        label: "$75 statement credit at lululemon each quarter (up to $300/yr)"
+        amountUSD: 75
+        period: quarter
+        merchantKey: lululemon
+        requiresEnrollment: true
+      - match: "\$100[^\\n]*Saks|\$50[^\\n]*semi-annual[^\\n]*Saks"
+        label: "$50 statement credit at Saks semi-annually (up to $100/yr)"
+        amountUSD: 50
+        period: semi-annual
+        merchantKey: saks fifth avenue
+        requiresEnrollment: true

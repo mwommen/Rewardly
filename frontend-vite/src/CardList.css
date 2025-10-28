@@ -1,0 +1,76 @@
+.card-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  padding: 2rem;
+  background-color: #f8f9fa;
+}
+
+.card-item {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  padding: 1.5rem;
+  position: relative;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card-item:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+}
+
+.card-name {
+  font-size: 1.6rem;
+  margin-bottom: 0.4rem;
+  text-align: center;
+}
+
+.card-type, .card-fee {
+  text-align: center;
+  color: #555;
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+}
+
+.benefits, .perks {
+  margin-bottom: 1rem;
+}
+
+.expand-btn {
+  background: #007bff;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}
+
+.expand-btn:hover {
+  background: #0056b3;
+}
+
+.badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background-color: #ffbb00;
+  padding: 0.3rem 0.6rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: bold;
+}
+
+.highlight {
+  border: 2px solid #007bff;
+  background-color: #e6f0ff;
+}
+
+.no-results {
+  text-align: center;
+  font-style: italic;
+  color: #888;
+  padding: 2rem;
+}

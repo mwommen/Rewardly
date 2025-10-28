@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "Credit Card Optimizer",
+  "version": "1.0",
+  "description": "Automatically suggests the best credit card for your purchase based on rewards and benefits.",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": [
+    "http://localhost:5001/*",
+    "https://*.lululemon.com/*",
+    "https://*.nike.com/*",
+    "https://*.amazon.com/*",
+    "https://*.walmart.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.lululemon.com/*",
+        "https://*.nike.com/*",
+        "https://*.amazon.com/*",
+        "https://*.walmart.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Credit Card Optimizer"
+  }
+}

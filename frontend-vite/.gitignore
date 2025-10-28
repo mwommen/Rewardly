@@ -1,0 +1,88 @@
+# --- OS / editors ---
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# --- Node / TypeScript ---
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+coverage/
+.nyc_output/
+
+# --- Logs & caches ---
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.cache/
+.tmp/
+.tmp-*
+**/.eslintcache
+.eslintcache
+
+# --- Env & secrets (ROOT + subpackages) ---
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# --- Playwright / Puppeteer ---
+playwright-report/
+test-results/
+blob-report/
+*.zip
+*.webm
+*.mp4
+*.png
+.playwright/
+.playwright-*
+**/.auth/**
+
+# --- Chrome Extension artifacts ---
+frontend/dist/
+frontend/build/
+frontend/.vite/
+frontend/.parcel-cache/
+frontend/.next/
+frontend/.turbo/
+
+# --- Frontend tooling ---
+frontend/node_modules/
+frontend/coverage/
+frontend/*.tsbuildinfo
+
+# --- Backend artifacts ---
+backend/node_modules/
+backend/dist/
+backend/coverage/
+backend/*.tsbuildinfo
+
+# --- Misc ---
+*.local
+*.secret
+*.pem
+*.key
+*.crt
+*.p12
+
+# --- Mac quarantine files ---
+._*
+
+
+# Frontend env (NO SECRETS)
+VITE_API_BASE_URL="http://localhost:5001"
+# If you detect merchant on pages, keep keys out of FE where possible.
+
+# Environment and sensitive files
+.env
+.env.local
+.env.development
+.env.production
