@@ -1,5 +1,5 @@
 // frontend/src/App.tsx
-import React, { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import CardList from "./CardList";
 import type { Card } from "./cardModules";
 import PlaidLinkButton from "./PlaidLinkButton";
@@ -17,7 +17,6 @@ function App() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>("");
   const [accessToken, setAccessToken] = useState<string>(""); // Plaid access token (if you still use direct /accounts)
-  const [plaidAccounts, setPlaidAccounts] = useState<any[]>([]); // user bank accounts
 
   // Fetch all cards from backend
   useEffect(() => {
@@ -39,22 +38,6 @@ function App() {
         setLoading(false);
       });
   }, []);
-
-  // (Optional) Fetch Plaid accounts whenever accessToken is set
-  useEffect(() => {
-    if (!accessToken) return;
-    fetch("http://localhost:5001/api/plaid/accounts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ access_token: accessToken }),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        console.log("User accounts from Plaid:", data.accounts);
-        setPlaidAccounts(data.accounts || []);
-      })
-      .catch((err) => console.error(err));
-  }, [accessToken]);
 
   // Handle search input
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 type CardSlug = { slug: string; name: string };
 type LinkedDoc = {
   userId: string; accounts?: { accountId: string; name?: string; official_name?: string;
