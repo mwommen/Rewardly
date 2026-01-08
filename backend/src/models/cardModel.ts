@@ -1,5 +1,6 @@
 // backend/src/models/cardModel.ts
 import { ObjectId } from "mongodb";
+import type { BenefitsPayload } from "./benefits";
 
 export interface CardBenefits {
   [key: string]: number;
@@ -13,6 +14,7 @@ export interface Card {
   annualFee?: number;
   apr?: string;
   benefits: CardBenefits;
+  benefitsDetail?: BenefitsPayload;
   perks: string[];
   lastUpdated?: string;
 }

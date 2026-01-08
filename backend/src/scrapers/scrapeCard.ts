@@ -1,42 +1,21 @@
-// backend/scrapers/scrapeCard.ts
+// backend/src/scrapers/scrapeCard.ts
 import { chromium, Browser } from "playwright";
-// Prefer using getDb so we don't fight path helpers
 import { getDb } from "../db";
 import { getAdapterForUrl } from "./adapters";
 import type { PartialCard } from "./adapters/base";
 import type { Collection, UpdateFilter } from "mongodb";
-
-/** ---- Local minimal types to avoid new imports turning your tree red ---- */
-type Period = "month" | "quarter" | "semi-annual" | "year";
-type RewardsArrayEntry = { keys: string[]; rate: string; unit: "cash" | "points" | "miles" };
-type RotatingWindow = {
-  start?: string; end?: string; activationRequired?: boolean;
-  categories: { keys: string[]; rate: string; unit: "cash" | "points" | "miles" }[];
-};
-type MerchantCredit = {
-  id: string; label: string; amountUSD: number; period: Period; capPerPeriodUSD: number;
-  eligibleWhen?: { merchantPatterns?: string[]; mcc?: string[] };
-  requiresEnrollment?: boolean; expiresAt?: string | null; sourceUrl?: string; confidence?: number;
-};
-type RecurringCredit = {
-  id: string; label: string; amountUSD: number; period: Period;
-  partner?: string; requiresEnrollment?: boolean; sourceUrl?: string; confidence?: number;
-};
-type BenefitsPayload = {
-  rewardsByCategory?: RewardsArrayEntry | RewardsArrayEntry[] | Record<string, string>;
-  rewardsFlat?: { rate: number; unit: "cash" | "points" | "miles" }[];
-  rewardsRotating?: RotatingWindow[];
-  merchantCredits?: MerchantCredit[];
-  recurringCredits?: RecurringCredit[];
-  perks?: string[];
-  access?: { id: string; label: string; details?: string; sourceUrl?: string }[];
-  insurances?: { id: string; label: string; details?: string; sourceUrl?: string }[];
-  signupOffer?: string | null;
-  sourceUrl?: string;
-  lastScraped?: string;
-  confidence?: number;
-};
-/** ----------------------------------------------------------------------- */
+import fs from "node:fs";
+import path from "node:path";
+import yaml from "js-yaml";
+import fetch from "node-fetch";
+import crypto from "node:crypto";
+import { pickParser } from "./parsers";
+import type {
+  BenefitsPayload,
+  MerchantCredit,
+  RecurringCredit,
+  RotatingWindow,
+} from "../models/benefits";
 
 type ScrapeResult = PartialCard & {
   slug: string;
@@ -49,8 +28,7 @@ type ScrapeResult = PartialCard & {
   signupOffer: string | null;
   sourceUrl: string;
   confidence: number;
-
-  // New enrichment fields (optional per card)
+  benefitsDetail?: BenefitsPayload;
   rewardsRotating?: RotatingWindow[];
   merchantCredits?: MerchantCredit[];
   recurringCredits?: RecurringCredit[];
@@ -58,13 +36,13 @@ type ScrapeResult = PartialCard & {
   insurances?: { id: string; label: string; details?: string; sourceUrl?: string }[];
 };
 
-// What we persist in Mongo
 type StoredCard = {
   slug: string;
   name?: string;
   issuer?: string | null;
   annualFee?: number | null;
   rewardsByCategory?: Record<string, number>;
+  benefitsDetail?: BenefitsPayload;
   rewardsRotating?: RotatingWindow[];
   merchantCredits?: MerchantCredit[];
   recurringCredits?: RecurringCredit[];
@@ -76,6 +54,33 @@ type StoredCard = {
   confidence?: number;
   lastScraped?: string;
 };
+
+type BenefitsHistoryEntry = {
+  slug: string;
+  scrapedAt: string;
+  sourceUrl?: string;
+  benefits: BenefitsPayload;
+  hash: string;
+};
+
+function stableSort(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stableSort);
+  if (value && typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    return Object.keys(obj)
+      .sort()
+      .reduce<Record<string, unknown>>((acc, key) => {
+        acc[key] = stableSort(obj[key]);
+        return acc;
+      }, {});
+  }
+  return value;
+}
+
+function hashBenefits(benefits: BenefitsPayload): string {
+  const normalized = stableSort(benefits);
+  return crypto.createHash("sha256").update(JSON.stringify(normalized)).digest("hex");
+}
 
 function guessIssuerFromUrl(url: string) {
   const u = url.toLowerCase();
@@ -94,24 +99,36 @@ function withTimeout<T>(p: Promise<T>, ms: number, label = "operation"): Promise
   return Promise.race([p, timeout]).finally(() => clearTimeout(t!));
 }
 
+/** Load fallback URLs (issuer_patterns.amex.fallbackUrls) from YAML, if present. */
+function loadAmexFallbackUrls(): string[] {
+  try {
+    const candidatePaths = [
+      path.join(__dirname, "..", "rules", "benefit_patterns.yaml"),
+      path.join(process.cwd(), "src", "scrapers", "rules", "benefit_patterns.yaml"),
+      path.join(process.cwd(), "backend", "src", "scrapers", "rules", "benefit_patterns.yaml"),
+    ];
+
+    const rulesPath = candidatePaths.find((p) => fs.existsSync(p));
+    if (!rulesPath) return [];
+
+    const raw = fs.readFileSync(rulesPath, "utf8");
+    const doc = yaml.load(raw) as any;
+    return doc?.issuer_patterns?.amex?.fallbackUrls || [];
+  } catch {
+    return [];
+  }
+}
+
 /** Try to enrich adapter output with issuer-aware parser (if present). */
 async function applyBenefitsEnrichment(
   pageText: string,
   url: string
 ): Promise<BenefitsPayload | null> {
   try {
-    // Dynamic import so your file doesn't go red if parsers aren't created yet.
-    // @ts-ignore - allow resolving at runtime when you add the file.
-    const mod = await import("./parsers");
-    const pickParser: ((u: string) => (t: string, u?: string) => BenefitsPayload) | undefined =
-      mod?.pickParser;
-    if (!pickParser) return null;
-
     const parse = pickParser(url);
     const benefits: BenefitsPayload = parse(pageText, url);
     return benefits || null;
-  } catch (e) {
-    // Safe fallback if the registry isn't there yet.
+  } catch {
     console.warn("ℹ️ Parser registry not available yet, skipping enrichment.");
     return null;
   }
@@ -155,8 +172,21 @@ export async function scrapeCardUrl(url: string, slug: string): Promise<ScrapeRe
     await page.setExtraHTTPHeaders({
       "Accept-Language": "en-US,en;q=0.9",
       "Upgrade-Insecure-Requests": "1",
-      "Accept":
+      Accept:
         "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    });
+
+    // Capture HTML/JSON responses
+    const responseBodies: string[] = [];
+    page.on("response", async (resp) => {
+      try {
+        const ct = resp.headers()["content-type"] || "";
+        if (!/json|html|text/i.test(ct)) return;
+        const u = resp.url();
+        if (/\.(png|jpg|jpeg|gif|webp|svg|ico|woff2?|ttf|otf)(\?|$)/i.test(u)) return;
+        const body = await resp.text();
+        if (body && body.length >= 40) responseBodies.push(body);
+      } catch {}
     });
 
     console.log(`🌐 Navigating to ${url}...`);
@@ -166,7 +196,7 @@ export async function scrapeCardUrl(url: string, slug: string): Promise<ScrapeRe
       console.warn("⚠️ goto() warning (continuing):", (e as Error).message);
     }
 
-    // small idle + scroll to hydrate
+    // Hydrate
     await page.waitForTimeout(1200).catch(() => {});
     for (let i = 0; i < 3; i++) {
       await page.mouse.wheel(0, 700);
@@ -179,13 +209,68 @@ export async function scrapeCardUrl(url: string, slug: string): Promise<ScrapeRe
 
     const partial = await withTimeout(adapter.run(page, url), 90_000, `adapter ${adapter.id}`);
 
-    // Get visible text once for parser enrichment
+    // Expanders & cookies (light-touch)
+    await page.waitForLoadState("domcontentloaded").catch(() => {});
+    await page.waitForTimeout(600);
+
+    const consentSelectors = [
+      'button:has-text("Accept")',
+      'button:has-text("Agree")',
+      'button:has-text("I Accept")',
+      'button[aria-label*="Accept"]',
+    ];
+    for (const sel of consentSelectors) {
+      const el = await page.$(sel);
+      if (el) { await el.click().catch(() => {}); await page.waitForTimeout(250); }
+    }
+
+    const expanders = await page.$$("button, a");
+    for (const el of expanders) {
+      const txt = (await el.innerText().catch(() => ""))?.toLowerCase() || "";
+      if (/(learn more|view details|see details|terms apply|expand|show more)/.test(txt)) {
+        await el.click().catch(() => {});
+        await page.waitForTimeout(80);
+      }
+    }
+
+    for (let i = 0; i < 6; i++) {
+      await page.mouse.wheel(0, 900);
+      await page.waitForTimeout(150);
+    }
+
     const pageText: string = await page.evaluate(() => document.body.innerText || "");
+    const html = await page.content();
 
-    // Try to parse full benefits (YAML/issuer-aware)
-    const enrichment = await applyBenefitsEnrichment(pageText, url);
+    // 🔽 NEW: fetch fallback URLs from YAML and append their bodies
+    let fallbackConcat = "";
+    const fallbacks = loadAmexFallbackUrls();
+    for (const fUrl of fallbacks) {
+      try {
+        const res = await fetch(fUrl);
+        if (!res.ok) continue;
+        const body = await res.text();
+        fallbackConcat += `\n\n<!-- Fallback: ${fUrl} -->\n` + body;
+      } catch {}
+    }
 
-    // Build a fully shaped result with reliable defaults
+    const networkConcat = responseBodies.join("\n\n");
+    console.log("🪵 DEBUG lengths:", {
+      pageTextLen: pageText.length,
+      htmlLen: html.length,
+      networkLen: networkConcat.length,
+      fallbackLen: fallbackConcat.length,
+      responses: responseBodies.length,
+      fallbacks: fallbacks.length,
+    });
+
+    const searchable = `${pageText}\n${html}\n${networkConcat}\n${fallbackConcat}`;
+
+    // YAML/issuer-aware enrichment
+    const enrichment = await applyBenefitsEnrichment(searchable, url);
+    const benefitsDetail = enrichment
+      ? { ...enrichment, lastScraped: new Date().toISOString() }
+      : undefined;
+
     const result: ScrapeResult = {
       slug,
       name: partial.name || slug,
@@ -202,7 +287,7 @@ export async function scrapeCardUrl(url: string, slug: string): Promise<ScrapeRe
           ? enrichment.confidence!
           : 0.6,
       lastScraped: new Date().toISOString(),
-      // Enrichment fields (optional)
+      benefitsDetail,
       rewardsRotating: enrichment?.rewardsRotating,
       merchantCredits: enrichment?.merchantCredits,
       recurringCredits: enrichment?.recurringCredits,
@@ -229,21 +314,21 @@ export async function scrapeCardUrl(url: string, slug: string): Promise<ScrapeRe
   }
 }
 
-/** Optional bulk orchestrator stub to satisfy routes that call runScrapers(). */
+/** Optional bulk orchestrator stub */
 export async function runScrapers(issuers?: string[]) {
   return (issuers || []).map((issuer) => ({ issuer, count: 0, confidence: 0 }));
 }
 
 // --------------------
 // CLI runner (manual):
-// ts-node backend/scrapers/scrapeCard.ts <url> <slug>
+// ts-node src/scrapers/scrapeCard.ts "<url>" "<slug>"
 // --------------------
 if (require.main === module) {
   (async () => {
     const url = process.argv[2];
     const slug = process.argv[3] || "unknown-card";
     if (!url) {
-      console.error("Usage: ts-node backend/scrapers/scrapeCard.ts <url> <slug>");
+      console.error('Usage: ts-node src/scrapers/scrapeCard.ts "<url>" "<slug>"');
       process.exit(1);
     }
 
@@ -258,7 +343,6 @@ if (require.main === module) {
     const merged: StoredCard = {
       ...(existing || {}),
       ...(res || {}),
-      // Prefer newly scraped structured bits, otherwise keep existing
       rewardsByCategory:
         res?.rewardsByCategory && Object.keys(res.rewardsByCategory).length
           ? res.rewardsByCategory
@@ -272,6 +356,7 @@ if (require.main === module) {
       perks: res?.perks && res.perks.length ? res.perks : existing?.perks || [],
       signupOffer: res?.signupOffer ?? existing?.signupOffer ?? null,
       issuer: res?.issuer ?? existing?.issuer ?? null,
+      benefitsDetail: res?.benefitsDetail ?? existing?.benefitsDetail,
       lastScraped: res?.lastScraped ?? existing?.lastScraped ?? new Date().toISOString(),
       confidence:
         typeof res?.confidence === "number"
@@ -283,11 +368,26 @@ if (require.main === module) {
       slug,
     };
 
-    await col.updateOne(
-      { slug },
-      { $set: merged } as UpdateFilter<StoredCard>,
-      { upsert: true }
-    );
+    await col.updateOne({ slug }, { $set: merged } as UpdateFilter<StoredCard>, { upsert: true });
+
+    if (res?.benefitsDetail) {
+      const historyCol: Collection<BenefitsHistoryEntry> =
+        db.collection<BenefitsHistoryEntry>("benefits_history");
+      const hash = hashBenefits(res.benefitsDetail);
+      const last = await historyCol.find({ slug }).sort({ scrapedAt: -1 }).limit(1).toArray();
+      if (!last[0] || last[0].hash !== hash) {
+        await historyCol.insertOne({
+          slug,
+          scrapedAt: res.benefitsDetail.lastScraped || new Date().toISOString(),
+          sourceUrl: res.sourceUrl ?? url,
+          benefits: res.benefitsDetail,
+          hash,
+        });
+        console.log("🧾 Recorded benefits history snapshot");
+      } else {
+        console.log("🧾 Benefits unchanged; history snapshot skipped");
+      }
+    }
 
     const stored = await col.findOne({ slug });
     console.log("✅ Upserted:", stored?.slug || slug);

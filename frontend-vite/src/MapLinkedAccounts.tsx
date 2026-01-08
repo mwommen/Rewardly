@@ -5,7 +5,7 @@ type LinkedDoc = {
     type?: string; subtype?: string; mask?: string; mappedCardSlug?: string; }[];
 };
 
-const API = "http://localhost:5001";
+const API = import.meta.env.VITE_API_BASE_URL || "http://localhost:5001";
 const USER_ID = "devUser";
 
 export default function MapLinkedAccounts() {

@@ -8,6 +8,16 @@ const router = express.Router();
  * GET /api/cards
  * Returns all cards in the catalog.
  */
+router.get("/", async (_req, res) => {
+  try {
+    const col = await getCardsCollection();
+    const cards = await col.find({}).toArray();
+    res.json({ cards });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || "Failed to fetch cards" });
+  }
+});
+
 // GET /api/cards/slugs -> [{ slug, name }]
 router.get("/slugs", async (_req, res) => {
   try {
@@ -49,6 +59,31 @@ router.post("/", async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/cards/:slug/history
+ * Returns benefit history snapshots for a card.
+ * Query params: limit (default 10, max 100)
+ */
+router.get("/:slug/history", async (req: Request, res: Response) => {
+  try {
+    const slug = req.params.slug;
+    const limitRaw = Number(req.query.limit || 10);
+    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 100) : 10;
+
+    const db = await (await import("../db")).getDb();
+    const historyCol = db.collection("benefits_history");
+    const snapshots = await historyCol
+      .find({ slug })
+      .sort({ scrapedAt: -1 })
+      .limit(limit)
+      .toArray();
+
+    res.json({ slug, count: snapshots.length, snapshots });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || "Failed to load history" });
+  }
+});
+
+/**
  * POST /api/cards/best-card-for-merchant
  * Determines the best card among the user's Plaid-linked accounts.
  * Body: { merchant: string, userId?: string }
@@ -78,23 +113,16 @@ router.post("/best-card-for-merchant", async (req: Request, res: Response) => {
     // Always allow generic fallback if present
     allowed.add("generic-credit");
 
-    // If nothing linked, return a helpful note
-    if (allowed.size === 0) {
-      return res.json({
-        merchant,
-        category: "default",
-        bestCard: null,
-        candidates: [],
-        note: "No linked accounts found for this user. Link via Plaid first.",
-      });
-    }
-
     // 4) Merchant -> category mapping
     const category = toCategory(merchant);
 
-    // 5) Score only allowed cards
-    const scored = allCards
-      .filter((c: any) => c.slug && allowed.has(c.slug))
+    // 5) Score cards; use linked cards if available, otherwise fallback to all cards
+    const scopedCards =
+      allowed.size > 0
+        ? allCards.filter((c: any) => c.slug && allowed.has(c.slug))
+        : allCards;
+
+    const scored = scopedCards
       .map((c: any) => {
         const rate =
           (c.rewardsByCategory && (c.rewardsByCategory[category] ?? c.rewardsByCategory.default)) ||
@@ -109,9 +137,42 @@ router.post("/best-card-for-merchant", async (req: Request, res: Response) => {
       bestCard: scored[0]?.card || null,
       candidates: scored.slice(0, 5),
       linkedAccountSlugs: Array.from(allowed),
+      note: allowed.size === 0 ? "No linked accounts yet. Showing best match from full catalog." : undefined,
     });
   } catch (e: any) {
     console.error("best-card error:", e);
+    res.status(500).json({ error: e?.message || "best-card error" });
+  }
+});
+
+/**
+ * GET /api/cards/best-card/:category
+ * Lightweight endpoint for category-based highlighting.
+ */
+router.get("/best-card/:category", async (req: Request, res: Response) => {
+  try {
+    const category = (req.params.category || "").toLowerCase();
+    if (!category) return res.status(400).json({ error: "category required" });
+
+    const cardsCol = await getCardsCollection();
+    const allCards = await cardsCol.find({}).toArray();
+    if (!allCards.length) return res.json({ category, bestCard: null, candidates: [] });
+
+    const scored = allCards
+      .map((c: any) => {
+        const rate =
+          (c.rewardsByCategory && (c.rewardsByCategory[category] ?? c.rewardsByCategory.default)) ||
+          0;
+        return { card: c, score: Number(rate) || 0 };
+      })
+      .sort((a, b) => b.score - a.score);
+
+    return res.json({
+      category,
+      bestCard: scored[0]?.card || null,
+      candidates: scored.slice(0, 5),
+    });
+  } catch (e: any) {
     res.status(500).json({ error: e?.message || "best-card error" });
   }
 });

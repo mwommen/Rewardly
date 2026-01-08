@@ -1,12 +1,22 @@
 export type Period = "month" | "quarter" | "semi-annual" | "year";
+export type RewardUnit = "cash" | "points" | "miles";
 
-export type RewardsEntry =
-  | { keys: string[]; rate: string; unit: "cash" | "points" | "miles" }
-  | Record<string, string>;
+export type RewardsArrayEntry = {
+  keys: string[];
+  rate: string; // "3%", "4x"
+  unit: RewardUnit;
+  capPerPeriodUSD?: number;
+  period?: Period;
+  eligibleWhen?: { merchantPatterns?: string[]; mcc?: string[] };
+  sourceUrl?: string;
+  confidence?: number;
+};
+
+export type RewardsEntry = RewardsArrayEntry | Record<string, string>;
 
 export type RotatingWindow = {
   start?: string; end?: string; activationRequired?: boolean;
-  categories: { keys: string[]; rate: string; unit: "cash" | "points" | "miles" }[];
+  categories: RewardsArrayEntry[];
 };
 
 export type MerchantCredit = {
@@ -26,7 +36,7 @@ export type RecurringCredit = {
 
 export type BenefitsPayload = {
   rewardsByCategory?: RewardsEntry | RewardsEntry[];
-  rewardsFlat?: { rate: number; unit: "cash" | "points" | "miles" }[];
+  rewardsFlat?: { rate: number; unit: RewardUnit }[];
   rewardsRotating?: RotatingWindow[];
   merchantCredits?: MerchantCredit[];
   recurringCredits?: RecurringCredit[];

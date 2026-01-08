@@ -1,5 +1,6 @@
 // backend/src/db.ts
 import { MongoClient, Collection, Db } from "mongodb";
+import type { BenefitsPayload } from "./models/benefits";
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -49,6 +50,7 @@ export async function getLinkedAccountsCollection(): Promise<Collection<LinkedAc
 export interface Card {
   name: string;
   benefits?: Record<string, number>;
+  benefitsDetail?: BenefitsPayload;
   perks?: string[];
   slug?: string;
   issuer?: string;

@@ -1,3 +1,4 @@
+# backend/src/scrapers/rules/benefit_patterns.yaml
 period_tokens:
   monthly: month
   per month: month
@@ -9,73 +10,86 @@ period_tokens:
   yearly: year
 
 merchant_aliases:
-  lululemon:
-    - lululemon
-    - lululemon.com
-  saks fifth avenue:
-    - saks
-    - saks.com
-    - saks fifth avenue
+  lululemon: ["lululemon", "lululemon.com", "lulu lemon"]
+  saks fifth avenue: ["saks", "saks.com", "saks fifth avenue"]
 
 issuer_patterns:
   amex:
+    # 👇 Add 1–3 public pages that actually contain the merchant credit wording.
+    # These are examples; you can add/replace with pages you know have the text.
+    fallbackUrls:
+      - "https://www.americanexpress.com/en-us/benefits/the-platinum-card/"
+      - "https://www.americanexpress.com/en-us/card-benefits/detail/the-platinum-card"
+      - "https://www.americanexpress.com/en-us/benefits/the-gold-card/"
+      - "https://www.americanexpress.com/en-us/card-benefits/detail/the-gold-card"
+      - "https://www.americanexpress.com/us/credit-cards/card/gold-card/"
+
     recurring:
-      - match: "\$200[^\\n]*Uber Cash"
+      - match: "(\\$|\\u0024)200[\\s\\S]{0,160}uber\\s*cash"
         label: "$200 Uber Cash (annual; monthly accrual)"
         amountUSD: 200
         period: year
         partner: Uber
         requiresEnrollment: false
-      - match: "\$120[^\\n]*Uber One"
+
+      - match: "(\\$|\\u0024)120[\\s\\S]{0,160}uber\\s*one"
         label: "$120 Uber One membership credit (per year)"
         amountUSD: 120
         period: year
         partner: Uber One
         requiresEnrollment: true
-      - match: "CLEAR®? Plus[^\\n]*\$209"
+
+      - match: "clear®?\\s*plus[\\s\\S]{0,160}(\\$|\\u0024)209"
         label: "$209 CLEAR Plus statement credit (per year)"
         amountUSD: 209
         period: year
         partner: CLEAR
         requiresEnrollment: true
-      - match: "\$400[^\\n]*Resy"
+
+      - match: "(\\$|\\u0024)400[\\s\\S]{0,160}resy"
         label: "$400 Resy dining credit (quarterly buckets)"
         amountUSD: 400
         period: year
         partner: Resy
         requiresEnrollment: true
-      - match: "\$300[^\\n]*Digital Entertainment|\$300[^\\n]*streaming"
+
+      - match: "(\\$|\\u0024)300[\\s\\S]{0,160}(digital\\s*entertainment|streaming)"
         label: "$300 Digital Entertainment credit (per year)"
         amountUSD: 300
         period: year
         partner: Digital Entertainment
         requiresEnrollment: true
-      - match: "\$155[^\\n]*Walmart\\+"
+
+      - match: "(\\$|\\u0024)155[\\s\\S]{0,160}walmart\\+"
         label: "$155 Walmart+ credit (monthly reimbursement)"
         amountUSD: 155
         period: year
         partner: Walmart+
         requiresEnrollment: true
-      - match: "\$200[^\\n]*Airline Fee"
+
+      - match: "(\\$|\\u0024)200[\\s\\S]{0,160}airline\\s*fee"
         label: "$200 Airline Fee credit (per year)"
         amountUSD: 200
         period: year
         partner: Airline Fee
         requiresEnrollment: true
-      - match: "\$600[^\\n]*Hotel"
+
+      - match: "(\\$|\\u0024)600[\\s\\S]{0,160}hotel"
         label: "$600 Hotel credit (semi-annual $300 buckets via Amex Travel)"
         amountUSD: 600
         period: year
         partner: Amex Travel
         requiresEnrollment: true
+
     merchant_credits:
-      - match: "\$300[^\\n]*lululemon|\$75[^\\n]*quarter[^\\n]*lululemon"
+      - match: "(lululemon|lulu\\s*lemon)[\\s\\S]{0,200}((\\$|\\u0024)75|seventy[-\\s]?five)[\\s\\S]{0,200}(quarter|quarterly|per\\s*quarter|each\\s*quarter|statement\\s*credit)|((\\$|\\u0024)300)[\\s\\S]{0,200}lululemon"
         label: "$75 statement credit at lululemon each quarter (up to $300/yr)"
         amountUSD: 75
         period: quarter
         merchantKey: lululemon
         requiresEnrollment: true
-      - match: "\$100[^\\n]*Saks|\$50[^\\n]*semi-annual[^\\n]*Saks"
+
+      - match: "saks(\\s*fifth\\s*avenue)?[\\s\\S]{0,200}((\\$|\\u0024)50|fifty)[\\s\\S]{0,200}(semi[-\\s]?annual|twice\\s*(a|per)\\s*year|per\\s*six\\s*months|statement\\s*credit)|((\\$|\\u0024)100)[\\s\\S]{0,200}saks"
         label: "$50 statement credit at Saks semi-annually (up to $100/yr)"
         amountUSD: 50
         period: semi-annual

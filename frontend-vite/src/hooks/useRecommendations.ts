@@ -38,7 +38,40 @@ export function useRecommendations(inputs: QueryInputs) {
     return sp;
   };
 
+  const normalizeCard = (raw: any): { slug: string; name: string } => {
+    const slug = String(raw?.slug || raw?.card?.slug || "").trim();
+    const name = String(raw?.name || raw?.card?.name || slug || "Unknown card").trim();
+    return {
+      slug: slug || "unknown-card",
+      name: name || "Unknown card",
+    };
+  };
+
+  const toBestCard = (raw: any): BestCard => ({
+    card: normalizeCard(raw),
+    effectiveRate: typeof raw?.effectiveRate === "number" ? raw.effectiveRate : undefined,
+    explainer: raw?.reason || raw?.explainer,
+    confidence: typeof raw?.confidence === "number" ? raw.confidence : undefined,
+  });
+
+  const toOffer = (raw: any): Offer => ({
+    card: normalizeCard(raw),
+    signupOffer: raw?.signupOffer ?? null,
+    perks: Array.isArray(raw?.perks) ? raw.perks : [],
+  });
+
   const fetchAll = async () => {
+    const trimmedMerchant = inputs.merchant?.trim();
+    if (!trimmedMerchant) {
+      abortRef.current?.abort();
+      setLoading(false);
+      setError(null);
+      setTopPick(null);
+      setOtherBest([]);
+      setOffers([]);
+      return;
+    }
+
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -46,25 +79,16 @@ export function useRecommendations(inputs: QueryInputs) {
     setError(null);
 
     try {
-      const { merchant, domain, amount, mcc, limit = 5 } = inputs;
+      const { domain, amount, mcc, limit = 5 } = inputs;
 
       // ---- /best ----
-      const bestFields = [
-        "top.card.slug",
-        "top.card.name",
-        "top.effectiveRate",
-        "top.explainer",
-        "top.confidence",
-        "all.card.slug",
-        "all.card.name",
-        "all.effectiveRate",
-      ].join(",");
-      const bestParams = buildParams({ merchant, domain, amount, mcc, limit, fields: bestFields });
+      const bestFields = ["slug", "name", "effectiveRate", "confidence", "reason"].join(",");
+      const bestParams = buildParams({ merchant: trimmedMerchant, domain, amount, mcc, limit, fields: bestFields });
       const bestUrl = `${API_BASE}/api/recommendations/best?${bestParams.toString()}`;
 
       // ---- /offers ----
-      const offersFields = ["offers.card.slug", "offers.card.name", "offers.signupOffer", "offers.perks"].join(",");
-      const offersParams = buildParams({ merchant, domain, amount, mcc, fields: offersFields });
+      const offersFields = ["slug", "name", "signupOffer", "perks"].join(",");
+      const offersParams = buildParams({ merchant: trimmedMerchant, domain, amount, mcc, fields: offersFields });
       const offersUrl = `${API_BASE}/api/recommendations/offers?${offersParams.toString()}`;
 
       const [bestRes, offersRes] = await Promise.all([
@@ -78,15 +102,16 @@ export function useRecommendations(inputs: QueryInputs) {
       const bestJson = await bestRes.json();
       const offersJson = await offersRes.json();
 
-      const top = bestJson?.top?.[0] ?? null;
-      const others = (bestJson?.all || []).filter((b: BestCard) =>
-        top ? b.card.slug !== top.card.slug : true
-      );
-      const offersList = offersJson?.offers ?? offersJson?.all ?? offersJson?.top ?? [];
+      const bestListRaw = Array.isArray(bestJson?.recommendations) ? bestJson.recommendations : [];
+      const normalizedBest = bestListRaw.map(toBestCard);
+      const [first, ...rest] = normalizedBest;
 
-      setTopPick(top);
-      setOtherBest(others);
-      setOffers(offersList);
+      const offersRaw = Array.isArray(offersJson?.offers) ? offersJson.offers : [];
+      const normalizedOffers = offersRaw.map(toOffer);
+
+      setTopPick(first ?? null);
+      setOtherBest(rest);
+      setOffers(normalizedOffers);
     } catch (e: any) {
       if (e.name === "AbortError") return;
       setError(e.message || "Request failed");
