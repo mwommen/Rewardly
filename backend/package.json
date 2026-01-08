@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "ts-node src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js",
+    "start": "node dist/src/server.js",
     "test": "jest --passWithNoTests",
     "seed": "ts-node ./src/seed.ts",
     "scrape:card": "ts-node ./src/scrapers/scrapeCard.ts"
