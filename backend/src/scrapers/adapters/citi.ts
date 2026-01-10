@@ -51,6 +51,16 @@ function extractAnnualFee(text: string): number | null {
   return m ? parseInt(m[1], 10) : null;
 }
 
+function annualFeeOverrideFromUrl(url: string): number | null {
+  const u = url.toLowerCase();
+  if (u.includes("custom-cash")) return 0;
+  if (u.includes("double-cash")) return 0;
+  if (u.includes("rewards-plus")) return 0;
+  if (u.includes("simplicity")) return 0;
+  if (u.includes("premier")) return 95;
+  return null;
+}
+
 function parseRate(s: string): number {
   // "5%", "3 x", "3x", "3X"
   const pct = s.match(/(\d+(\.\d+)?)\s*%/);
@@ -155,7 +165,7 @@ export const citiAdapter: ScrapeAdapter = {
     if (!text) throw new Error("Unable to read page text");
 
     const name = first(extractName(text), "Citi Card");
-    const annualFee = extractAnnualFee(text);
+    const annualFee = annualFeeOverrideFromUrl(url) ?? extractAnnualFee(text);
     const rewardsByCategory = extractRewards(text);
     const perks = extractPerks(text);
     const signupOffer = extractSignup(text);

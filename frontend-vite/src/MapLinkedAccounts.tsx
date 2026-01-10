@@ -19,8 +19,12 @@ export default function MapLinkedAccounts() {
     setLoading(true); setError(null);
     try {
       const [s, l] = await Promise.all([
-        fetch(`${API}/api/cards/slugs`).then(r => r.json()),
-        fetch(`${API}/api/plaid/linked-accounts?userId=${encodeURIComponent(USER_ID)}`).then(r => r.json())
+        fetch(`${API}/api/cards/slugs`).then(r => r.ok ? r.json() : Promise.reject(new Error("Failed to load slugs"))),
+        fetch(`${API}/api/plaid/linked-accounts?userId=${encodeURIComponent(USER_ID)}`).then(async (r) => {
+          if (r.status === 404) return { linked: [] };
+          if (!r.ok) throw new Error("Failed to load linked accounts");
+          return r.json();
+        })
       ]);
       setSlugs(s.slugs || []); setLinked(l.linked || []);
     } catch (e: any) { setError(e?.message || "Failed to load"); }

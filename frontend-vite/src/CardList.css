@@ -52,19 +52,21 @@
   font-size: 0.95rem;
 }
 
-.benefits, .perks {
+.benefits, .perks, .credits {
   margin-bottom: 1rem;
 }
 
 .benefits h3,
-.perks h3 {
+.perks h3,
+.credits h3 {
   margin: 0 0 0.6rem;
   font-size: 0.95rem;
   color: var(--tone-strong);
 }
 
 .benefits ul,
-.perks ul {
+.perks ul,
+.credits ul {
   list-style: none;
   padding: 0;
   margin: 0;
@@ -73,12 +75,36 @@
 }
 
 .benefits li,
-.perks li {
+.perks li,
+.credits li {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   font-size: 0.92rem;
   color: var(--tone-muted);
+}
+
+.credits li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.4rem 0.8rem;
+}
+
+.credits li strong {
+  color: var(--tone-strong);
+  font-weight: 600;
+}
+
+.credits li span {
+  font-size: 0.85rem;
+  color: var(--tone-muted);
+}
+
+.credits li em {
+  grid-column: 1 / -1;
+  font-size: 0.75rem;
+  color: #8b5a2b;
+  font-style: normal;
 }
 
 .category-icon {

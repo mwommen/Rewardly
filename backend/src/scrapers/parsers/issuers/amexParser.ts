@@ -90,38 +90,16 @@ function buildSearchable(input: string): string {
 
 export function parseAmex(textOrHtml: string, url?: string): BenefitsPayload {
   const haystack = buildSearchable(textOrHtml);
+  const rawDecoded = decodeEntities(textOrHtml);
   const rewardHaystack = haystack
     .replace(/\\\"/g, '"')
     .replace(/\\u0026#8225;/gi, " ")
     .replace(/[\\[\\]{}"]/g, " ")
+    .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ");
   const out: BenefitsPayload = { sourceUrl: url, confidence: 0.7, perks: [] };
 
-  const rewardDebug = rewardHaystack.match(/(?:\\d\\s*(?:x|×)|\\d+%)[\\s\\S]{0,120}?(?:restaurants?|supermarkets?|grocery|flights?|airlines?|amex\\s*travel)/gi) || [];
-  if (rewardDebug.length) {
-    console.log("🧪 Amex reward snippets:", rewardDebug.slice(0, 8));
-  } else {
-    const probeTerms = ["4x", "4×", "restaurants", "supermarkets", "grocery", "membership rewards", "points"];
-    const probes = probeTerms.reduce<Record<string, boolean>>((acc, term) => {
-      acc[term] = rewardHaystack.toLowerCase().includes(term);
-      return acc;
-    }, {});
-
-    const sampleContext = (term: string) => {
-      const idx = rewardHaystack.toLowerCase().indexOf(term);
-      if (idx === -1) return null;
-      const start = Math.max(0, idx - 80);
-      const end = Math.min(rewardHaystack.length, idx + 120);
-      return rewardHaystack.slice(start, end);
-    };
-
-    const restaurantContext = sampleContext("restaurants");
-    const supermarketContext = sampleContext("supermarkets");
-
-    console.log("🧪 Amex reward probes:", probes);
-    if (restaurantContext) console.log("🧪 Context restaurants:", restaurantContext);
-    if (supermarketContext) console.log("🧪 Context supermarkets:", supermarketContext);
-  }
+  // debug logging removed
 
   // Recurring credits
   const rr: NonNullable<BenefitsPayload["recurringCredits"]> = [];
@@ -203,9 +181,12 @@ export function parseAmex(textOrHtml: string, url?: string): BenefitsPayload {
   }
 
   function extractCap(context: string): { capPerPeriodUSD?: number; period?: any } {
-    const capMatch = context.match(/up to\\s*(?:\\$|\\u0024)?([0-9,]+)/i);
+    const capMatch = context.match(/up to\\s*(?:\\$|\\u0024)?\\s*([0-9.,]+)\\s*([kKmM])?/i);
     if (!capMatch) return {};
-    const cap = Number((capMatch[1] || "").replace(/,/g, ""));
+    let cap = Number((capMatch[1] || "").replace(/,/g, ""));
+    const suffix = (capMatch[2] || "").toLowerCase();
+    if (Number.isFinite(cap) && suffix === "k") cap *= 1000;
+    if (Number.isFinite(cap) && suffix === "m") cap *= 1000000;
     if (!Number.isFinite(cap)) return {};
     let period: any = undefined;
     if (/per\\s*month|monthly/i.test(context)) period = "month";
@@ -252,7 +233,29 @@ export function parseAmex(textOrHtml: string, url?: string): BenefitsPayload {
     }
   }
 
-  const pointsAtRegex = /(\d+(?:\.\d+)?)\s*(?:x|×)\s*points[\s\S]{0,80}?at\s+([^,\n.]{3,80})/gi;
+  const pointsAtCapRegex =
+    /(\d+(?:\.\d+)?)\s*(?:x|×)\s*points?[\s\S]{0,120}?at\s+([^,\n.]{3,120}),[\s\S]{0,120}?up to\\s*(?:\\$|\\u0024)?\\s*([0-9.,]+)\\s*([kKmM])?[\s\\S]{0,80}?(?:per|a)\\s*(?:calendar\\s*)?year/gi;
+  for (const m of rewardHaystack.matchAll(pointsAtCapRegex)) {
+    const rate = m[1];
+    const rawCat = m[2] || "";
+    const capRaw = m[3] || "";
+    const capSuffix = (m[4] || "").toLowerCase();
+    let cap = Number(capRaw.replace(/,/g, ""));
+    if (Number.isFinite(cap) && capSuffix === "k") cap *= 1000;
+    if (Number.isFinite(cap) && capSuffix === "m") cap *= 1000000;
+
+    pushReward({
+      keys: [normalizeCategory(rawCat)],
+      rate: `${rate}x`,
+      unit: "points",
+      capPerPeriodUSD: Number.isFinite(cap) ? cap : undefined,
+      period: "year",
+      sourceUrl: url,
+      confidence: 0.8,
+    });
+  }
+
+  const pointsAtRegex = /(\d+(?:\.\d+)?)\s*(?:x|×)\s*points?[\s\S]{0,80}?at\s+([^,\n.]{3,120})/gi;
   for (const m of rewardHaystack.matchAll(pointsAtRegex)) {
     const rate = m[1];
     const rawCat = m[2] || "";
@@ -290,6 +293,145 @@ export function parseAmex(textOrHtml: string, url?: string): BenefitsPayload {
         confidence: 0.75,
       });
     }
+  }
+
+  // Parse JSON "header" fields directly (where Amex stores reward copy)
+  const headerRegex = /\\?"header\\?",\\?"([^\\"]{10,240})\\?"/gi;
+  for (const m of rawDecoded.matchAll(headerRegex)) {
+    const headerRaw = m[1] || "";
+    const headerText = headerRaw
+      .replace(/\\"/g, '"')
+      .replace(/\\u003c/gi, "<")
+      .replace(/\\u003e/gi, ">")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!headerText) continue;
+
+    const capMatch = headerText.match(/up to\s*\$?\s*([0-9.,]+)\s*([kKmM])?/i);
+    let cap: number | undefined;
+    if (capMatch) {
+      cap = Number((capMatch[1] || "").replace(/,/g, ""));
+      const suffix = (capMatch[2] || "").toLowerCase();
+      if (Number.isFinite(cap) && suffix === "k") cap *= 1000;
+      if (Number.isFinite(cap) && suffix === "m") cap *= 1000000;
+    }
+
+    const atMatch = headerText.match(/(\d+(?:\.\d+)?)\s*(?:x|×)\s*points?\s*at\s+([^,]+?)(?:,|$)/i);
+    if (atMatch) {
+      pushReward({
+        keys: [normalizeCategory(atMatch[2] || "")],
+        rate: `${atMatch[1]}x`,
+        unit: "points",
+        capPerPeriodUSD: Number.isFinite(cap!) ? cap : undefined,
+        period: capMatch ? "year" : undefined,
+        sourceUrl: url,
+        confidence: 0.85,
+      });
+      continue;
+    }
+
+    const onMatch = headerText.match(/(\d+(?:\.\d+)?)\s*(?:x|×)\s*points?\s*on\s+([^,]+?)(?:,|$)/i);
+    if (onMatch) {
+      pushReward({
+        keys: [normalizeCategory(onMatch[2] || "")],
+        rate: `${onMatch[1]}x`,
+        unit: "points",
+        capPerPeriodUSD: Number.isFinite(cap!) ? cap : undefined,
+        period: capMatch ? "year" : undefined,
+        sourceUrl: url,
+        confidence: 0.82,
+      });
+    }
+  }
+
+  const escapedHeaderRegex = /\\\"header\\\",\\\"([^\\\"]{10,240})\\\"/gi;
+  for (const m of rawDecoded.matchAll(escapedHeaderRegex)) {
+    const headerRaw = m[1] || "";
+    const headerText = headerRaw
+      .replace(/\\"/g, '"')
+      .replace(/\\u003c/gi, "<")
+      .replace(/\\u003e/gi, ">")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!headerText) continue;
+
+    const capMatch = headerText.match(/up to\s*\$?\s*([0-9.,]+)\s*([kKmM])?/i);
+    let cap: number | undefined;
+    if (capMatch) {
+      cap = Number((capMatch[1] || "").replace(/,/g, ""));
+      const suffix = (capMatch[2] || "").toLowerCase();
+      if (Number.isFinite(cap) && suffix === "k") cap *= 1000;
+      if (Number.isFinite(cap) && suffix === "m") cap *= 1000000;
+    }
+
+    const atMatch = headerText.match(/(\d+(?:\.\d+)?)\s*(?:x|×)\s*points?\s*at\s+([^,]+?)(?:,|$)/i);
+    if (atMatch) {
+      pushReward({
+        keys: [normalizeCategory(atMatch[2] || "")],
+        rate: `${atMatch[1]}x`,
+        unit: "points",
+        capPerPeriodUSD: Number.isFinite(cap!) ? cap : undefined,
+        period: capMatch ? "year" : undefined,
+        sourceUrl: url,
+        confidence: 0.86,
+      });
+      continue;
+    }
+
+    const onMatch = headerText.match(/(\d+(?:\.\d+)?)\s*(?:x|×)\s*points?\s*on\s+([^,]+?)(?:,|$)/i);
+    if (onMatch) {
+      pushReward({
+        keys: [normalizeCategory(onMatch[2] || "")],
+        rate: `${onMatch[1]}x`,
+        unit: "points",
+        capPerPeriodUSD: Number.isFinite(cap!) ? cap : undefined,
+        period: capMatch ? "year" : undefined,
+        sourceUrl: url,
+        confidence: 0.84,
+      });
+    }
+  }
+
+  // Directly parse inline header snippets from the normalized reward haystack
+  const headerInlineRegex = /header","([^"]{10,240})"/gi;
+  for (const m of rewardHaystack.matchAll(headerInlineRegex)) {
+    const headerText = (m[1] || "").replace(/\s+/g, " ").trim();
+    if (!headerText) continue;
+    const cap = extractCap(headerText);
+    const atMatch = headerText.match(/(\d+(?:\.\d+)?)\s*(?:x|×)\s*points?\s*(?:at|on)\s+([^,]+?)(?:,|$)/i);
+    if (!atMatch) continue;
+
+    pushReward({
+      keys: [normalizeCategory(atMatch[2] || "")],
+      rate: `${atMatch[1]}x`,
+      unit: "points",
+      capPerPeriodUSD: cap.capPerPeriodUSD,
+      period: cap.period,
+      sourceUrl: url,
+      confidence: 0.85,
+    });
+  }
+
+  // Fallback: parse header blocks from normalized reward haystack
+  const headerTextRegex = /header\s*[, ]\s*(\d+\s*(?:x|×)\s*points?[^"]{0,180})/gi;
+  for (const m of rewardHaystack.matchAll(headerTextRegex)) {
+    const headerText = (m[1] || "").replace(/\s+/g, " ").trim();
+    if (!headerText) continue;
+    const cap = extractCap(headerText);
+    const atMatch = headerText.match(/(\d+(?:\.\d+)?)\s*(?:x|×)\s*points?\s*(?:at|on)\s+([^,]+?)(?:,|$)/i);
+    if (!atMatch) continue;
+
+    pushReward({
+      keys: [normalizeCategory(atMatch[2] || "")],
+      rate: `${atMatch[1]}x`,
+      unit: "points",
+      capPerPeriodUSD: cap.capPerPeriodUSD,
+      period: cap.period,
+      sourceUrl: url,
+      confidence: 0.8,
+    });
   }
 
   if (rewards.length) out.rewardsByCategory = rewards;

@@ -10,6 +10,7 @@ import yaml from "js-yaml";
 import fetch from "node-fetch";
 import crypto from "node:crypto";
 import { pickParser } from "./parsers";
+import { CARD_OVERRIDES } from "./overrides/cards";
 import type {
   BenefitsPayload,
   MerchantCredit,
@@ -62,6 +63,33 @@ type BenefitsHistoryEntry = {
   benefits: BenefitsPayload;
   hash: string;
 };
+
+function sanitizeCredits<T extends { label: string; amountUSD: number; period: string; confidence?: number }>(
+  credits: T[] | undefined
+): T[] {
+  if (!credits?.length) return [];
+  const seen = new Set<string>();
+  return credits.filter((credit) => {
+    const label = (credit.label || "").trim();
+    if (!label || label.length > 160) return false;
+    if (/[<>]/.test(label) || /https?:\/\//i.test(label)) return false;
+    if (
+      !/(credit|statement|cash|reimburse|membership|hotel|travel|airline|uber|saks|resy|walmart|lululemon|clear|digital)/i.test(
+        label
+      )
+    ) {
+      return false;
+    }
+    if (!Number.isFinite(credit.amountUSD) || credit.amountUSD < 10 || credit.amountUSD > 1000) {
+      return false;
+    }
+    if (credit.confidence != null && credit.confidence < 0.7) return false;
+    const key = `${label}|${credit.amountUSD}|${credit.period}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 
 function stableSort(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stableSort);
@@ -289,11 +317,23 @@ export async function scrapeCardUrl(url: string, slug: string): Promise<ScrapeRe
       lastScraped: new Date().toISOString(),
       benefitsDetail,
       rewardsRotating: enrichment?.rewardsRotating,
-      merchantCredits: enrichment?.merchantCredits,
-      recurringCredits: enrichment?.recurringCredits,
+      merchantCredits: sanitizeCredits(enrichment?.merchantCredits),
+      recurringCredits: sanitizeCredits(enrichment?.recurringCredits),
       access: enrichment?.access,
       insurances: enrichment?.insurances,
     };
+
+    const override = CARD_OVERRIDES[slug];
+    if (override) {
+      result.name = override.name ?? result.name;
+      result.issuer = override.issuer ?? result.issuer;
+      result.annualFee = override.annualFee ?? result.annualFee;
+      result.rewardsByCategory = override.rewardsByCategory ?? result.rewardsByCategory;
+      result.perks = override.perks ?? result.perks;
+      result.merchantCredits = sanitizeCredits(override.merchantCredits ?? result.merchantCredits);
+      result.recurringCredits = sanitizeCredits(override.recurringCredits ?? result.recurringCredits);
+      if (override.benefitsDetail) result.benefitsDetail = override.benefitsDetail;
+    }
 
     console.log("✅ Extracted (adapter + enrichment)", {
       name: result.name,

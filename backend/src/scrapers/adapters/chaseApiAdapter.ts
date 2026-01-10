@@ -22,6 +22,15 @@ function productNameFromUrl(url: string): string | null {
   return null;
 }
 
+function annualFeeOverrideFromUrl(url: string): number | null {
+  const u = url.toLowerCase();
+  if (u.includes("freedom-unlimited")) return 0;
+  if (u.includes("freedom-flex")) return 0;
+  if (u.includes("sapphire-preferred")) return 95;
+  if (u.includes("sapphire-reserve")) return 550;
+  return null;
+}
+
 function computeConfidence(p: PartialCard) {
   return (
     (p.name ? 0.3 : 0) +
@@ -95,6 +104,7 @@ export const chaseApiAdapter: ScrapeAdapter = {
       name = productNameFromUrl(url) || name;
 
       const annualFee =
+        annualFeeOverrideFromUrl(url) ??
         json?.card?.annualFee ??
         json?.details?.annualFee ??
         json?.annualFee ??
