@@ -14,6 +14,29 @@ type StoredCard = {
   annualFee?: number | null;
   rewardsByCategory?: Record<string, number>;
   perks?: string[];
+  merchantCredits?: Array<{
+    id?: string;
+    label?: string;
+    amountUSD?: number;
+    period?: string;
+    capPerPeriodUSD?: number;
+    eligibleWhen?: { merchantPatterns?: string[] };
+    requiresEnrollment?: boolean;
+    sourceUrl?: string;
+    partner?: string;
+    confidence?: number;
+  }>;
+  recurringCredits?: Array<{
+    id?: string;
+    label?: string;
+    amountUSD?: number;
+    period?: string;
+    capPerPeriodUSD?: number;
+    requiresEnrollment?: boolean;
+    sourceUrl?: string;
+    partner?: string;
+    confidence?: number;
+  }>;
   signupOffer?: string | null;
   sourceUrl?: string;
   confidence?: number;
@@ -61,6 +84,8 @@ router.post("/cards/scrape", async (req, res) => {
       annualFee: typeof resultRaw.annualFee === "number" ? resultRaw.annualFee : null,
       rewardsByCategory: resultRaw.rewardsByCategory || {},
       perks: resultRaw.perks || [],
+      merchantCredits: resultRaw.merchantCredits || [],
+      recurringCredits: resultRaw.recurringCredits || [],
       signupOffer: resultRaw.signupOffer ?? null,
       sourceUrl: resultRaw.sourceUrl || url,
       confidence: typeof (resultRaw as any).confidence === "number" ? (resultRaw as any).confidence : 0,
@@ -86,6 +111,15 @@ router.post("/cards/scrape", async (req, res) => {
 
       // keep non-empty perks
       perks: result.perks && result.perks.length ? result.perks : existing?.perks || [],
+      // keep non-empty credits
+      merchantCredits:
+        result.merchantCredits && result.merchantCredits.length
+          ? result.merchantCredits
+          : existing?.merchantCredits || [],
+      recurringCredits:
+        result.recurringCredits && result.recurringCredits.length
+          ? result.recurringCredits
+          : existing?.recurringCredits || [],
 
       // prefer newest non-null fields
       signupOffer: result.signupOffer ?? existing?.signupOffer ?? null,
