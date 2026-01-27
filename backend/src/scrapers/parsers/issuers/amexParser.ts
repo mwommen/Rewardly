@@ -122,6 +122,86 @@ export function parseAmex(textOrHtml: string, url?: string): BenefitsPayload {
 
   // Merchant credits (e.g., Lululemon, Saks)
   const mc: NonNullable<BenefitsPayload["merchantCredits"]> = [];
+  const seenMerchantCredits = new Set<string>();
+  type MerchantPeriod = NonNullable<BenefitsPayload["merchantCredits"]>[number]["period"];
+  const periodMap: Record<string, MerchantPeriod> = {
+    month: "month",
+    monthly: "month",
+    quarter: "quarter",
+    quarterly: "quarter",
+    "semi-annual": "semi-annual",
+    "semiannual": "semi-annual",
+    year: "year",
+    yearly: "year",
+    annual: "year",
+    "per year": "year",
+    "per calendar year": "year",
+  };
+
+  function normalizeCreditKey(label: string, amountUSD: number, period: MerchantPeriod): string {
+    const base = label
+      .toLowerCase()
+      .replace(/\benrollment required\b/gi, "")
+      .replace(/\bu\.?s\.?\b/gi, "")
+      .replace(/locations?|stores?/gi, "")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+    return `${amountUSD}|${period}|${base}`;
+  }
+
+  function addMerchantCredit(input: {
+    label: string;
+    amountUSD: number;
+    period: MerchantPeriod;
+    patterns: string[];
+    requiresEnrollment?: boolean;
+  }) {
+    const key = normalizeCreditKey(input.label, input.amountUSD, input.period);
+    if (seenMerchantCredits.has(key)) return;
+    seenMerchantCredits.add(key);
+    mc.push({
+      id: `amex-merchant-${mc.length + 1}`,
+      label: input.label,
+      amountUSD: input.amountUSD,
+      period: input.period,
+      capPerPeriodUSD: input.amountUSD,
+      eligibleWhen: { merchantPatterns: input.patterns },
+      requiresEnrollment: !!input.requiresEnrollment,
+      sourceUrl: url,
+      confidence: 0.88,
+    });
+  }
+
+  function normalizeMerchantPatterns(raw: string): string[] {
+    const cleaned = raw
+      .toLowerCase()
+      .replace(/\bu\.?s\.?\b/g, "")
+      .replace(/\b(locations?|stores?)\b/g, "")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+    const tokens = cleaned.split(/\s+/).filter((t) => t.length >= 3);
+    const joined = tokens.join(" ");
+    const out = new Set<string>();
+    if (joined) out.add(joined);
+    tokens.forEach((t) => out.add(t));
+    return [...out];
+  }
+
+  function extractStatementCredits() {
+    const re =
+      /(\$|\\u0024)\s*([0-9]+(?:\.[0-9]+)?)\s*(?:in\s*)?(monthly|quarterly|semi-annual|semiannual|annual|yearly|per\s+month|per\s+quarter|per\s+year|per\s+calendar\s+year)\s*statement\s*credits?[\s\S]{0,180}?\bat\s+([A-Za-z0-9&'’\-\.\s]{2,80})/gi;
+    for (const m of haystack.matchAll(re)) {
+      const amount = Number(m[2]);
+      if (!Number.isFinite(amount) || amount <= 0) continue;
+      const periodToken = m[3].toLowerCase().replace(/\s+/g, " ").trim();
+      const period = periodMap[periodToken] || "year";
+      const merchantRaw = m[4].trim();
+      const patterns = normalizeMerchantPatterns(merchantRaw);
+      if (!patterns.length) continue;
+      const label = `$${amount} statement credit at ${merchantRaw.replace(/\s+/g, " ").trim()}`;
+      addMerchantCredit({ label, amountUSD: amount, period, patterns, requiresEnrollment: true });
+    }
+  }
   for (const r of RULES.issuer_patterns?.amex?.merchant_credits || []) {
     const re = new RegExp(r.match, "i");
     if (re.test(haystack)) {
@@ -130,19 +210,16 @@ export function parseAmex(textOrHtml: string, url?: string): BenefitsPayload {
           ? RULES.merchant_aliases![r.merchantKey]
           : [r.merchantKey];
 
-      mc.push({
-        id: `amex-merchant-${mc.length + 1}`,
+      addMerchantCredit({
         label: r.label,
         amountUSD: r.amountUSD,
         period: (r.period as any) || "year",
-        capPerPeriodUSD: r.amountUSD,
-        eligibleWhen: { merchantPatterns: patterns },
-        requiresEnrollment: !!r.requiresEnrollment,
-        sourceUrl: url,
-        confidence: 0.92,
+        patterns,
+        requiresEnrollment: r.requiresEnrollment,
       });
     }
   }
+  extractStatementCredits();
   if (mc.length) out.merchantCredits = mc;
 
   // Rewards parsing (capture rate, unit, category, caps)

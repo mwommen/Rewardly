@@ -1,31 +1,48 @@
 // frontend/src/CardItem.tsx
 import type { Card } from "./cardModules";
+import { getCardLogo } from "./lib/cardLogos";
 import "./CardList.css";
 
 interface Props {
   card: Card;
   highlight?: boolean;
+  expanded?: boolean;
+  onToggle?: () => void;
 }
 
-const CardItem = ({ card, highlight = false }: Props) => {
+const CardItem = ({ card, highlight = false, expanded = false, onToggle }: Props) => {
   const benefitSource = Object.keys(card.benefits || {}).length
     ? card.benefits
     : (card.rewardsByCategory || {});
   const benefits = Object.entries(benefitSource || {});
   const merchantCredits = filterCredits(card.merchantCredits || []);
   const recurringCredits = filterCredits(card.recurringCredits || []);
+  const filteredPerks = filterPerks(card.perks || []);
+  const creditsTotal = sumCreditsAnnual(merchantCredits) + sumCreditsAnnual(recurringCredits);
   const annualFee = Number.isFinite(card.annualFee) ? `$${card.annualFee}` : "—";
   const apr = card.apr ? `${card.apr}` : "—";
+  const updated = card.lastScraped || card.lastUpdated;
+  const creditCount = merchantCredits.length + recurringCredits.length;
+
+  const logo = getCardLogo(card);
 
   return (
     <div className={`card-item ${highlight ? "highlight" : ""}`}>
       {highlight && <div className="badge">Top Pick</div>}
 
       <div className="card-header">
-        <div>
-          <h2 className="card-name">{card.name}</h2>
-          <p className="card-type">{card.issuer || "Issuer"} · {card.type || "Rewards"}</p>
-        </div>
+        {logo && (
+          <img
+            className="card-logo"
+            src={logo}
+            alt={`${card.name} card`}
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.display = "none";
+            }}
+          />
+        )}
+        <h2 className="card-name">{card.name}</h2>
+        <p className="card-type">{card.issuer || "Issuer"}</p>
         <div className="card-meta">
           <span>Annual Fee</span>
           <strong>{annualFee}</strong>
@@ -34,59 +51,97 @@ const CardItem = ({ card, highlight = false }: Props) => {
         </div>
       </div>
 
-      <div className="benefits">
-        <h3>Benefits</h3>
-        {benefits.length ? (
-          <ul>
-            {benefits.map(([category, multiplier], i) => (
-              <li key={i}>
-                <span className="category-icon">{getCategoryIcon(category)}</span>
-                <strong>{category.charAt(0).toUpperCase() + category.slice(1)}:</strong>{" "}
-                {formatRewardValue(multiplier)}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="empty-copy">No structured rewards parsed yet.</p>
+      <div className="card-summary">
+        <div>
+          <strong>{benefits.length}</strong> reward categories
+        </div>
+        {card.signupOffer && (
+          <div className="card-signup">
+            <strong>Welcome offer</strong>
+            <span>{card.signupOffer}</span>
+          </div>
         )}
+        <div>
+          <strong>{creditCount}</strong> credits
+          {creditsTotal > 0 && <span className="summary-muted"> · up to ${creditsTotal}/yr</span>}
+        </div>
+        <div>
+          <strong>{filteredPerks.length}</strong> perks
+        </div>
       </div>
 
-      <div className="credits">
-        <h3>Credits</h3>
-        {merchantCredits.length || recurringCredits.length ? (
-          <ul>
-            {merchantCredits.map((credit) => (
-              <li key={credit.id}>
-                <strong>{credit.label}</strong>
-                <span>{formatCredit(credit.amountUSD, credit.period)}</span>
-                {credit.requiresEnrollment && <em>Enrollment required</em>}
-              </li>
-            ))}
-            {recurringCredits.map((credit) => (
-              <li key={credit.id}>
-                <strong>{credit.label}</strong>
-                <span>{formatCredit(credit.amountUSD, credit.period)}</span>
-                {credit.requiresEnrollment && <em>Enrollment required</em>}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="empty-copy">No credits parsed yet.</p>
-        )}
-      </div>
+      <button className="card-toggle" onClick={onToggle}>
+        {expanded ? "Hide benefits" : "See all benefits"}
+      </button>
 
-      <div className="perks">
-        <h3>Perks</h3>
-        {card.perks.length ? (
-          <ul>
-            {card.perks.map((perk, i) => (
-              <li key={i}>{perk}</li>
-            ))}
-          </ul>
-        ) : (
-          <p className="empty-copy">Add perks as they are detected.</p>
-        )}
-      </div>
+      {expanded && (
+        <>
+          <div className="benefits">
+            <h3>Benefits</h3>
+            {benefits.length ? (
+              <ul>
+                {benefits.map(([category, multiplier], i) => (
+                  <li key={i}>
+                    <span className="category-icon">{getCategoryIcon(category)}</span>
+                    <strong>{category.charAt(0).toUpperCase() + category.slice(1)}:</strong>{" "}
+                    {formatRewardValue(multiplier)}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="empty-copy">No structured rewards parsed yet.</p>
+            )}
+          </div>
+
+          <div className="credits">
+            <div className="section-title">
+              <h3>Credits</h3>
+              {creditsTotal > 0 && (
+                <span className="section-meta">Up to ${creditsTotal}/yr</span>
+              )}
+            </div>
+            {merchantCredits.length || recurringCredits.length ? (
+              <ul>
+                {merchantCredits.map((credit) => (
+                  <li key={credit.id}>
+                    <strong>
+                      <span className="credit-icon">{getCreditIcon(credit.label)}</span>
+                      {credit.label}
+                    </strong>
+                    <span>{formatCredit(credit.amountUSD, credit.period)}</span>
+                    {credit.requiresEnrollment && renderOptIn(card, credit)}
+                  </li>
+                ))}
+                {recurringCredits.map((credit) => (
+                  <li key={credit.id}>
+                    <strong>
+                      <span className="credit-icon">{getCreditIcon(credit.label)}</span>
+                      {credit.label}
+                    </strong>
+                    <span>{formatCredit(credit.amountUSD, credit.period)}</span>
+                    {credit.requiresEnrollment && renderOptIn(card, credit)}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="empty-copy">No credits parsed yet.</p>
+            )}
+          </div>
+
+          <div className="perks">
+            <h3>Perks</h3>
+            {filteredPerks.length ? (
+              <ul>
+                {filteredPerks.map((perk, i) => (
+                  <li key={i}>{perk}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="empty-copy">Add perks as they are detected.</p>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 };
@@ -112,6 +167,20 @@ const formatCredit = (amountUSD: number, period: string) => {
   return `${amount} ${per}`;
 };
 
+const getCreditIcon = (label: string) => {
+  const s = (label || "").toLowerCase();
+  if (s.includes("uber")) return "🚗";
+  if (s.includes("saks")) return "🛍️";
+  if (s.includes("lululemon") || s.includes("lulu")) return "👟";
+  if (s.includes("resy") || s.includes("dining")) return "🍽️";
+  if (s.includes("hotel") || s.includes("travel")) return "✈️";
+  if (s.includes("airline")) return "🧳";
+  if (s.includes("walmart")) return "🛒";
+  if (s.includes("clear")) return "🛂";
+  if (s.includes("digital") || s.includes("stream")) return "📺";
+  return "💳";
+};
+
 const filterCredits = <
   T extends { label: string; amountUSD: number; period: string; confidence?: number }
 >(credits: T[]) => {
@@ -120,7 +189,7 @@ const filterCredits = <
     const label = (credit.label || "").trim();
     if (!label || label.length > 160) return false;
     if (/[<>]/.test(label) || /https?:\/\//i.test(label)) return false;
-    if (!Number.isFinite(credit.amountUSD) || credit.amountUSD < 10 || credit.amountUSD > 1000) {
+    if (!Number.isFinite(credit.amountUSD) || credit.amountUSD < 5 || credit.amountUSD > 1000) {
       return false;
     }
     if (credit.confidence != null && credit.confidence < 0.7) return false;
@@ -134,8 +203,67 @@ const filterCredits = <
 
 const formatRewardValue = (value: number) => {
   if (!Number.isFinite(value)) return "—";
-  if (value > 0 && value < 1) return `${Math.round(value * 100)}% back`;
+  if (value > 0 && value < 1) {
+    const pct = value * 100;
+    const rounded = Number.isInteger(pct) ? pct.toFixed(0) : pct.toFixed(1);
+    return `${rounded}% back`;
+  }
   return `${value}x points`;
+};
+
+const sumCreditsAnnual = (credits: Array<{ amountUSD: number; period: string }>) => {
+  const factor = (period: string) => {
+    if (period === "month") return 12;
+    if (period === "quarter") return 4;
+    if (period === "semi-annual") return 2;
+    return 1;
+  };
+  return Math.round(
+    credits.reduce((sum, c) => sum + (Number.isFinite(c.amountUSD) ? c.amountUSD * factor(c.period) : 0), 0)
+  );
+};
+
+const filterPerks = (perks: string[]) => {
+  const seen = new Set<string>();
+  const keepers = perks
+    .map((p) => p.replace(/\s+/g, " ").trim())
+    .filter((p) => p.length > 10 && p.length < 160)
+    .filter((p) => /(credit|bonus|points|cash back|dining|travel|airport|lounge|protection|insurance|hotel|transfer|dashpass|uber|saks|resy|walmart)/i.test(p))
+    .filter((p) => !/opens new credit card offers|reward(s)? program|credit card offers/i.test(p))
+    .filter((p) => {
+      const key = p.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  return keepers.slice(0, 8);
+};
+
+const formatDate = (value: string) => {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+};
+
+const OPT_IN_URLS: Record<string, string> = {
+  "american express": "https://www.americanexpress.com/en-us/benefits/",
+  chase: "https://creditcards.chase.com/",
+  citi: "https://www.citi.com/credit-cards",
+  "capital one": "https://www.capitalone.com/credit-cards/",
+};
+
+const renderOptIn = (
+  card: { issuer?: string; sourceUrl?: string },
+  credit: { sourceUrl?: string }
+) => {
+  const issuerKey = (card.issuer || "").toLowerCase();
+  const url = credit.sourceUrl || card.sourceUrl || OPT_IN_URLS[issuerKey];
+  if (!url) return <em>Enrollment required</em>;
+  return (
+    <a className="optin-btn" href={url} target="_blank" rel="noreferrer">
+      Opt in
+    </a>
+  );
 };
 
 export default CardItem;

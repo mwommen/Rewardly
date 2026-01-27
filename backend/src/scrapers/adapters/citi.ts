@@ -3,8 +3,16 @@ import type { ScrapeAdapter } from "./base";
 import type { Page } from "playwright";
 
 const SELS = [
-  "main", "body", "[role=main]", ".page", ".content", "#content",
-  "h1", "h1 span", "h1[data-testid]", "[data-testid*=title]"
+  "main",
+  "[role=main]",
+  ".page",
+  ".content",
+  "#content",
+  "body",
+  "h1",
+  "h1 span",
+  "h1[data-testid]",
+  "[data-testid*=title]",
 ];
 
 const NAME_HINTS = [
@@ -61,77 +69,66 @@ function annualFeeOverrideFromUrl(url: string): number | null {
   return null;
 }
 
-function parseRate(s: string): number {
-  // "5%", "3 x", "3x", "3X"
-  const pct = s.match(/(\d+(\.\d+)?)\s*%/);
-  if (pct) return Math.max(0, parseFloat(pct[1]) / 100);
-  const mult = s.match(/(\d+(\.\d+)?)\s*x\b/i);
-  if (mult) return Math.max(0, parseFloat(mult[1])); // multiplier (points)
-  return 0;
+function parseRate(num: string, unit: string): number | null {
+  const n = Number.parseFloat(num);
+  if (!Number.isFinite(n)) return null;
+  if (unit === "%") return n / 100;
+  return n;
+}
+
+function categoriesFromText(raw: string): string[] {
+  const s = (raw || "").toLowerCase();
+  const out: string[] = [];
+  if (s.includes("dining") || s.includes("restaurant") || s.includes("eating out")) out.push("dining");
+  if (s.includes("grocery") || s.includes("supermarket")) out.push("groceries");
+  if (s.includes("gas") || s.includes("fuel")) out.push("gas");
+  if (s.includes("transit") || s.includes("subway") || s.includes("train") || s.includes("bus")) out.push("transit");
+  if (s.includes("drugstore") || s.includes("pharmacy")) out.push("drugstores");
+  if (s.includes("online") || s.includes("e-commerce")) out.push("online_shopping");
+  if (s.includes("all other") || s.includes("other purchases") || s.includes("everywhere")) out.push("other");
+  return Array.from(new Set(out));
 }
 
 function extractRewards(text: string): Record<string, number> {
   const out: Record<string, number> = {};
-  const lower = text.toLowerCase();
+  const rewardRegex =
+    /(\d+(?:\.\d+)?)\s*(x|%)(?:\s*(?:points|miles|cash back|back))?[^.\n]{0,140}/gi;
 
-  // Heuristics
-  // Dining / Restaurants
-  if (/(dining|restaurants?|eating out|coffee)/i.test(text)) {
-    const m = text.match(/(\d+(\.\d+)?)\s*(%|x).{0,24}(dining|restaurants?)/i);
-    if (m) out["dining"] = parseRate(m[0]);
+  for (const match of text.matchAll(rewardRegex)) {
+    const [snippet, num, unit] = match;
+    if (/bonus|welcome|intro/i.test(snippet)) continue;
+    const rate = parseRate(num, unit);
+    if (rate == null) continue;
+    const cats = categoriesFromText(snippet);
+    if (!cats.length) continue;
+    for (const cat of cats) {
+      out[cat] = Math.max(out[cat] || 0, rate);
+    }
   }
-  // Groceries
-  if (/grocer|supermarket/i.test(text)) {
-    const m = text.match(/(\d+(\.\d+)?)\s*(%|x).{0,24}(grocer|supermarket)/i);
-    if (m) out["groceries"] = parseRate(m[0]);
-  }
-  // Gas
-  if (/\bgas|fuel\b/i.test(lower)) {
-    const m = text.match(/(\d+(\.\d+)?)\s*(%|x).{0,24}(gas|fuel)/i);
-    if (m) out["gas"] = parseRate(m[0]);
-  }
-  // Transit
-  if (/transit|subway|train|bus/i.test(text)) {
-    const m = text.match(/(\d+(\.\d+)?)\s*(%|x).{0,24}(transit|subway|train|bus)/i);
-    if (m) out["transit"] = parseRate(m[0]);
-  }
-  // Drugstores
-  if (/drugstore|pharmacy/i.test(text)) {
-    const m = text.match(/(\d+(\.\d+)?)\s*(%|x).{0,24}(drugstore|pharmacy)/i);
-    if (m) out["drugstores"] = parseRate(m[0]);
-  }
-  // Online
-  if (/online|e-?commerce/i.test(text)) {
-    const m = text.match(/(\d+(\.\d+)?)\s*(%|x).{0,24}(online|e-?commerce)/i);
-    if (m) out["online"] = parseRate(m[0]);
-  }
-
-  // Baseline (catch-all)
-  if (!("other" in out)) {
-    // look for lone "1%" or "1x everywhere"
-    const base = text.match(/\b(1(\.0+)?)\s*(%|x)\s+(everywhere|all|base|other|purchases)/i);
-    if (base) out["other"] = parseRate(base[0]);
-  }
-
   return out;
 }
 
-function extractPerks(text: string): string[] {
-  const lines = text
-    .split("\n")
-    .map(l => l.trim())
-    .filter(Boolean);
-
+function cleanPerks(lines: string[], cardName?: string): string[] {
   const keepers: string[] = [];
-  for (const l of lines) {
-    if (/no annual fee/i.test(l)) keepers.push("No annual fee");
-    if (/0% intro/i.test(l)) keepers.push(l);
-    if (/global entry|tsa precheck/i.test(l)) keepers.push(l);
-    if (/purchase protection|extended warranty|travel insurance|cell phone protection/i.test(l)) keepers.push(l);
-    if (/points transfer|transfer partners/i.test(l)) keepers.push(l);
-  }
-  // dedupe + shorten
   const seen = new Set<string>();
+  const normalizedCardName = (cardName || "").toLowerCase();
+
+  for (const raw of lines) {
+    const line = raw.replace(/\s+/g, " ").trim();
+    if (!line || line.length < 12 || line.length > 180) continue;
+    if (normalizedCardName && line.toLowerCase().includes(normalizedCardName)) continue;
+    if (/selector_\d+|window\.|utm_|tnt_|privacy|cookie|consent|javascript|@charset|<script|<\/script/i.test(line)) {
+      continue;
+    }
+    if (/earn\s+[\d,]+\s+.*?bonus\s+points/i.test(line)) continue;
+    if (/reward(s)? program|credit cards? offers|opens new credit card offers/i.test(line)) continue;
+    if (/no annual fee/i.test(line)) keepers.push("No annual fee");
+    if (/0% intro/i.test(line)) keepers.push(line);
+    if (/global entry|tsa precheck/i.test(line)) keepers.push(line);
+    if (/purchase protection|extended warranty|travel insurance|cell phone protection/i.test(line)) keepers.push(line);
+    if (/points transfer|transfer partners/i.test(line)) keepers.push(line);
+  }
+
   return keepers
     .map(s => s.replace(/[™®©]/g, "").replace(/\s+/g, " ").trim())
     .filter(s => {
@@ -167,7 +164,7 @@ export const citiAdapter: ScrapeAdapter = {
     const name = first(extractName(text), "Citi Card");
     const annualFee = annualFeeOverrideFromUrl(url) ?? extractAnnualFee(text);
     const rewardsByCategory = extractRewards(text);
-    const perks = extractPerks(text);
+    const perks = cleanPerks(text.split("\n").map((l) => l.trim()), name);
     const signupOffer = extractSignup(text);
 
     return {

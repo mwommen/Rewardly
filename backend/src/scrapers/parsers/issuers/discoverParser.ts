@@ -9,20 +9,20 @@ import {
   extractJsonBlobs,
   mergeBenefitsPayload,
 } from "../jsonExtract";
-import { chaseJsonMap } from "../issuerJsonMaps";
+import { discoverJsonMap } from "../issuerJsonMaps";
 
 const keyRegex =
-  /(benefit|feature|reward|perk|offer|headline|subheadline|description|copy|earning|points|miles|cash|credit|annual fee|apr|rate)/i;
+  /(benefit|feature|reward|perk|offer|headline|subheadline|description|copy|cashback|match|credit|annual fee|apr|rate)/i;
 const valueRegex =
-  /(credit|statement|points|miles|cash back|cashback|reward|benefit|annual fee|apr|%|\bx\b|travel|dining|grocery|hotel|lounge|bonus|anniversary|monthly|annual)/i;
+  /(cashback match|cash back|cashback|reward|benefit|annual fee|apr|%|\bx\b|rotating|category|bonus|monthly|annual|statement credit)/i;
 
-export function parseChase(text: string, url?: string): BenefitsPayload {
+export function parseDiscover(text: string, url?: string): BenefitsPayload {
   const base = parseGeneric(text, url);
   const blobs = extractJsonBlobs(text);
-  const mapped = extractIssuerBenefitsFromJson(blobs, chaseJsonMap, url);
-  const strings = collectStringsFromJson(blobs, { keyRegex, valueRegex, max: 240 });
+  const mapped = extractIssuerBenefitsFromJson(blobs, discoverJsonMap, url);
+  const strings = collectStringsFromJson(blobs, { keyRegex, valueRegex, max: 200 });
   const htmlStrings = collectHtmlValuesFromJson(blobs, {
-    max: 240,
+    max: 200,
     contentTypeRegex: /html|richtext/i,
   });
   let combined = mergeBenefitsPayload(base, mapped);

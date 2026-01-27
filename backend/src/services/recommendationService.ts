@@ -129,6 +129,47 @@ function cleanPerks(input: string[] | undefined, maxLen = 140, maxItems = 8): st
   return candidates.slice(0, maxItems).map(c => c.text);
 }
 
+function formatPeriodLabel(period: string | undefined): string {
+  if (!period) return "";
+  if (period === "semi-annual") return "every 6 months";
+  return `per ${period}`;
+}
+
+function collectCreditPerks(card: any): string[] {
+  const rawMerchant = normalizeArray<any>(card?.benefitsDetail?.merchantCredits ?? card?.merchantCredits);
+  const rawRecurring = normalizeArray<any>(card?.benefitsDetail?.recurringCredits ?? card?.recurringCredits);
+  const combined = rawMerchant.concat(rawRecurring);
+  if (!combined.length) return [];
+
+  const out: string[] = [];
+  const seen = new Set<string>();
+
+  for (const c of combined) {
+    const labelBase = String(c?.label || "").replace(/\s+/g, " ").trim();
+    const amount = Number.isFinite(c?.amountUSD) ? Number(c.amountUSD) : null;
+    const period = formatPeriodLabel(c?.period);
+    const enrollment = c?.requiresEnrollment ? "enrollment required" : "";
+
+    let line = labelBase;
+    if (!line && amount) line = `$${amount} statement credit`;
+    if (line && period && !line.toLowerCase().includes(period)) {
+      line = `${line} (${period})`;
+    }
+    if (line && enrollment && !line.toLowerCase().includes(enrollment)) {
+      line = `${line} — ${enrollment}`;
+    }
+
+    const normalized = line.trim();
+    if (!normalized) continue;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(normalized);
+  }
+
+  return out;
+}
+
 // ---------- Types ----------
 type RewardEntry = { keys?: unknown[]; rate: number | string; unit?: "cash" | "points" | "miles" };
 type RotatingQuarter = {
@@ -353,7 +394,7 @@ export async function recommendAllBenefits(opts: {
       reason: `${src}; ${notes.join(", ") || "baseline"}`,
       matchingCategories: [...seenMatches],
       annualFee: typeof c.annualFee === "number" ? c.annualFee : 0,
-      perks: cleanPerks(normalizeArray<string>(c.perks)),
+      perks: cleanPerks(normalizeArray<string>(c.perks).concat(collectCreditPerks(c))),
       signupOffer: c.signupOffer ?? null,
       sourceUrl: c.sourceUrl ?? null,
     };

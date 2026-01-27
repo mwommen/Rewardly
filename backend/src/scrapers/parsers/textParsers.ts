@@ -29,16 +29,40 @@ export function extractRewardsFromText(text: string): Record<string, number> {
   return out;
 }
 
+function decodeHtmlEntities(input: string): string {
+  return input
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, "\"")
+    .replace(/&apos;|&#39;/gi, "'")
+    .replace(/&reg;|&trade;|&copy;/gi, "");
+}
+
+export function sanitizeTextForParsing(text: string): string {
+  const withoutTags = text.replace(/<[^>]+>/g, "\n");
+  return decodeHtmlEntities(withoutTags).replace(/[ \t]+/g, " ");
+}
+
+function cleanPerkLine(line: string, maxLen = 200): string | null {
+  const cleaned = decodeHtmlEntities(line).replace(/\s+/g, " ").trim();
+  if (!cleaned) return null;
+  if (cleaned.length > maxLen) return null;
+  return cleaned;
+}
+
 export function extractPerksFromText(text: string, max = 12): string[] {
-  const lines = text.split(/[\.\n]|•|-/).map(s => s.trim());
+  const safeText = sanitizeTextForParsing(text);
+  const lines = safeText.split(/[\.\n]|•|-/).map(s => s.trim());
   const perks: string[] = [];
   for (const line of lines) {
+    const cleaned = cleanPerkLine(line);
+    if (!cleaned) continue;
     if (
-      /points|miles|cash back|benefit|reward|credit|travel|dining|airport|lounge|warranty|protection/i.test(line) &&
-      line.length > 25 &&
-      !/^©/.test(line)
+      /points|miles|cash back|benefit|reward|credit|travel|dining|airport|lounge|warranty|protection/i.test(cleaned) &&
+      cleaned.length > 25 &&
+      !/^©/.test(cleaned)
     ) {
-      perks.push(line);
+      perks.push(cleaned);
       if (perks.length >= max) break;
     }
   }

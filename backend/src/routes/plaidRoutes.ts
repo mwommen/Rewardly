@@ -150,12 +150,23 @@ router.post("/accounts", async (req: Request, res: Response) => {
 });
 
 // Return linked accounts from Mongo
-// NOTE: Path kept as /plaid/linked-accounts for compatibility with your existing calls.
-router.get("/plaid/linked-accounts", async (req: Request, res: Response) => {
+router.get("/linked-accounts", async (req: Request, res: Response) => {
   const userId = (req.query.userId as string) || "devUser";
   const linkedCol = await getLinkedAccountsCollection();
   const docs = await linkedCol.find({ userId }).toArray();
   res.json({ linked: docs });
+});
+
+// Clear linked accounts for a user (dev only)
+router.delete("/linked-accounts", async (req: Request, res: Response) => {
+  try {
+    const userId = (req.query.userId as string) || "devUser";
+    const linkedCol = await getLinkedAccountsCollection();
+    const result = await linkedCol.deleteMany({ userId });
+    res.json({ ok: true, deleted: result.deletedCount || 0 });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || "Failed to clear linked accounts" });
+  }
 });
 
 /** NEW: Map a specific Plaid account -> a card slug
@@ -187,11 +198,26 @@ router.post("/map-account", async (req: Request, res: Response) => {
 
 function mapAccountToCardSlug(a: AccountBase): string {
   const text = `${a?.official_name || ""} ${a?.name || ""}`.toLowerCase();
-  if (text.includes("sapphire") || text.includes("chase")) return "csp";
-  if (text.includes("freedom")) return "chase-freedom";
-  if (text.includes("amex") || text.includes("american express") || text.includes("platinum") || text.includes("gold"))
+  const type = (a?.type || "").toLowerCase();
+  const subtype = (a?.subtype || "").toLowerCase();
+  const isCredit = type.includes("credit") || subtype.includes("credit");
+  if (!isCredit) return "";
+  if (text.includes("sapphire preferred")) return "chase-sapphire-preferred";
+  if (text.includes("sapphire reserve")) return "chase-sapphire-reserve";
+  if (text.includes("freedom unlimited")) return "chase-freedom-unlimited";
+  if (text.includes("freedom flex")) return "chase-freedom-flex";
+  if (text.includes("chase") && text.includes("sapphire")) return "chase-sapphire-preferred";
+  if (text.includes("chase") && text.includes("freedom")) return "chase-freedom-unlimited";
+  if (text.includes("platinum") && (text.includes("amex") || text.includes("american express")))
+    return "amex-platinum";
+  if (text.includes("gold") && (text.includes("amex") || text.includes("american express")))
     return "amex-gold";
-  if (text.includes("citibank") || text.includes("citi")) return "custom-cash";
+  if (text.includes("american express")) return "amex-gold";
+  if (text.includes("custom cash")) return "citi-custom-cash";
+  if (text.includes("citi")) return "citi-custom-cash";
+  if (text.includes("savorone")) return "capital-one-savorone";
+  if (text.includes("venture x")) return "capital-one-venture-x";
+  if (text.includes("capital one")) return "capital-one-savorone";
   if ((a?.subtype || "").toLowerCase().includes("credit")) return "generic-credit";
   return "unknown";
 }

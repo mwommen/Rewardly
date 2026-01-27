@@ -6,10 +6,7 @@
   "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": [
     "http://localhost:5001/*",
-    "https://*.lululemon.com/*",
-    "https://*.nike.com/*",
-    "https://*.amazon.com/*",
-    "https://*.walmart.com/*"
+    "<all_urls>"
   ],
   "background": {
     "service_worker": "background.js"
@@ -17,10 +14,7 @@
   "content_scripts": [
     {
       "matches": [
-        "https://*.lululemon.com/*",
-        "https://*.nike.com/*",
-        "https://*.amazon.com/*",
-        "https://*.walmart.com/*"
+        "<all_urls>"
       ],
       "js": ["content.js"],
       "run_at": "document_idle"
@@ -29,5 +23,11 @@
   "action": {
     "default_popup": "popup.html",
     "default_title": "Credit Card Optimizer"
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/card-logos/*"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }

@@ -4,6 +4,7 @@ export type PartialCard = {
   name?: string;
   issuer?: string | null;
   annualFee?: number | null;
+  apr?: string | null;
   rewardsByCategory?: Record<string, number>;
   perks?: string[];
   signupOffer?: string | null;

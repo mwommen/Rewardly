@@ -1,14 +1,43 @@
 import type { Page } from "playwright";
 import type { ScrapeAdapter, PartialCard } from "./base";
 
-function normalizeCategory(raw: string) {
+function categoriesFromText(raw: string): string[] {
   const s = (raw || "").toLowerCase();
-  if (s.includes("grocery")) return "groceries";
-  if (s.includes("dining") || s.includes("restaurant")) return "dining";
-  if (s.includes("travel")) return "travel";
-  if (s.includes("online")) return "online_shopping";
-  if (s.includes("gas")) return "gas";
-  return null;
+  const out: string[] = [];
+  if (s.includes("grocery") || s.includes("supermarket")) out.push("groceries");
+  if (s.includes("dining") || s.includes("restaurant")) out.push("dining");
+  if (s.includes("travel") || s.includes("chase travel") || s.includes("airfare")) out.push("travel");
+  if (s.includes("online")) out.push("online_shopping");
+  if (s.includes("gas")) out.push("gas");
+  if (s.includes("drugstore") || s.includes("pharmacy")) out.push("drugstore");
+  if (s.includes("all other") || s.includes("other purchases") || s.includes("everywhere")) out.push("other");
+  return Array.from(new Set(out));
+}
+
+function parseRate(raw: string, unit: string): number | null {
+  const n = Number.parseFloat(raw);
+  if (!Number.isFinite(n)) return null;
+  if (unit === "%") return n / 100;
+  return n;
+}
+
+function extractRewards(text: string): Record<string, number> {
+  const out: Record<string, number> = {};
+  const rewardRegex =
+    /(\d+(?:\.\d+)?)\s*(x|%)(?:\s*(?:points|miles|cash back|back))?[^.\n]{0,140}/gi;
+
+  for (const match of text.matchAll(rewardRegex)) {
+    const [snippet, num, unit] = match;
+    if (/bonus|welcome|intro/i.test(snippet)) continue;
+    const rate = parseRate(num, unit);
+    if (rate == null) continue;
+    const cats = categoriesFromText(snippet);
+    if (!cats.length) continue;
+    for (const cat of cats) {
+      out[cat] = Math.max(out[cat] || 0, rate);
+    }
+  }
+  return out;
 }
 
 function productNameFromUrl(url: string): string | null {
@@ -30,10 +59,8 @@ export const chaseAdapter: ScrapeAdapter = {
       page.locator('button:has-text("I Accept")').click({ timeout: 1500 }).catch(() => {}),
     ]);
 
-    let text = "";
-    try {
-      text = await page.locator("main, body").innerText({ timeout: 5000 });
-    } catch {
+    let text = await page.locator("main").innerText({ timeout: 5000 }).catch(() => "");
+    if (!text || text.trim().length < 500) {
       text = await page.locator("body").innerText().catch(() => "");
     }
 
@@ -47,18 +74,13 @@ export const chaseAdapter: ScrapeAdapter = {
     const feeMatch = text.match(/Annual Fee[^$]*(\$?\s*\d{2,4})/i);
     if (feeMatch) annualFee = Number(feeMatch[1].replace(/[^0-9]/g, ""));
 
-    const rewardsByCategory: Record<string, number> = {};
-    const rewardRegex =
-      /(\d+(?:\.\d+)?)\s*(?:x|X|%)(?:\s*(?:points|back|cash back))?\s*(?:on|at|for)\s+([a-zA-Z\s]+)/g;
-    for (const m of text.matchAll(rewardRegex)) {
-      const n = Number(m[1]);
-      const cat = normalizeCategory(m[2] || "");
-      if (cat && Number.isFinite(n)) rewardsByCategory[cat] = Math.max(rewardsByCategory[cat] || 0, n);
-    }
+    const rewardsByCategory = extractRewards(text);
 
     const perks: string[] = [];
     for (const line of text.split(/\n|•|–|—|\./).map((s) => s.trim())) {
-      if (/points|miles|cash back|credit|travel|dining|lounge|protection|warranty|insurance/i.test(line) && line.length > 25) {
+      if (!line || line.length < 20) continue;
+      if (/opens new credit card offers|credit cards? offers|reward(s)? program|credit card offers/i.test(line)) continue;
+      if (/points|miles|cash back|credit|travel|dining|lounge|protection|warranty|insurance|dashpass|door\s*dash/i.test(line)) {
         perks.push(line);
         if (perks.length >= 12) break;
       }

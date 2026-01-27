@@ -1,6 +1,7 @@
 // backend/src/routes/cardRoutes.ts
 import express, { Request, Response } from "express";
 import { getCardsCollection, getLinkedAccountsCollection } from "../db";
+import { collectCreditMatches } from "../utils/merchantMatching";
 
 const router = express.Router();
 
@@ -12,7 +13,7 @@ router.get("/", async (_req, res) => {
   try {
     const col = await getCardsCollection();
     const cards = await col.find({}).toArray();
-    res.json({ cards });
+    res.json({ cards: dedupeCards(cards) });
   } catch (e: any) {
     res.status(500).json({ error: e?.message || "Failed to fetch cards" });
   }
@@ -26,7 +27,14 @@ router.get("/slugs", async (_req, res) => {
       { slug: { $exists: true } },
       { projection: { _id: 0, slug: 1, name: 1 } }
     ).toArray();
-    res.json({ slugs: cards });
+    const seen = new Set<string>();
+    const slugs = cards.filter((c) => {
+      const key = String(c.slug || "").trim().toLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    res.json({ slugs });
   } catch (e: any) {
     res.status(500).json({ error: e?.message || "Failed to fetch slugs" });
   }
@@ -86,11 +94,11 @@ router.get("/:slug/history", async (req: Request, res: Response) => {
 /**
  * POST /api/cards/best-card-for-merchant
  * Determines the best card among the user's Plaid-linked accounts.
- * Body: { merchant: string, userId?: string }
+ * Body: { merchant: string, userId?: string, restrictToLinked?: boolean }
  */
 router.post("/best-card-for-merchant", async (req: Request, res: Response) => {
   try {
-    const { merchant, userId = "devUser" } = req.body || {};
+    const { merchant, userId = "devUser", restrictToLinked = false } = req.body || {};
     if (!merchant || typeof merchant !== "string") {
       return res.status(400).json({ error: "merchant required" });
     }
@@ -110,34 +118,87 @@ router.post("/best-card-for-merchant", async (req: Request, res: Response) => {
         if (a?.mappedCardSlug) allowed.add(a.mappedCardSlug);
       }
     }
-    // Always allow generic fallback if present
-    allowed.add("generic-credit");
+    const hasLinkedCards = allowed.size > 0;
+    // Allow generic fallback only when not restricting to linked cards
+    if (!restrictToLinked) {
+      allowed.add("generic-credit");
+    }
 
     // 4) Merchant -> category mapping
     const category = toCategory(merchant);
+    const isCategoryQuery = isCategorySearch(merchant);
 
-    // 5) Score cards; use linked cards if available, otherwise fallback to all cards
-    const scopedCards =
-      allowed.size > 0
-        ? allCards.filter((c: any) => c.slug && allowed.has(c.slug))
-        : allCards;
+    // 5) Score cards; use linked cards only when explicitly requested
+    const allowedCards = allCards.filter((c: any) => c.slug && allowed.has(c.slug));
+    const scopedCards = restrictToLinked ? allowedCards : allCards;
+
+    if (!scopedCards.length) {
+      return res.json({
+        merchant,
+        category,
+        bestCard: null,
+        reason: null,
+        candidates: [],
+        benefitMatches: [],
+        linkedAccountSlugs: Array.from(allowed),
+        note: "No linked cards found for this user.",
+      });
+    }
 
     const scored = scopedCards
       .map((c: any) => {
-        const rate =
-          (c.rewardsByCategory && (c.rewardsByCategory[category] ?? c.rewardsByCategory.default)) ||
-          0;
-        return { card: c, score: Number(rate) || 0 };
+        const rewardsByCategory = getRewardsByCategory(c);
+        const rate = getCategoryRate(rewardsByCategory, category);
+        const creditMatches = isCategoryQuery ? [] : collectCreditMatches(c, merchant);
+        const score = rate + (creditMatches.length ? 100 : 0);
+        return { card: c, score, creditMatches };
       })
       .sort((a, b) => b.score - a.score);
+
+    const filteredScored = isCategoryQuery ? scored : scored.filter((entry) => entry.creditMatches.length);
+
+    if (!filteredScored.length) {
+      return res.json({
+        merchant,
+        category,
+        bestCard: null,
+        reason: null,
+        candidates: [],
+        benefitMatches: [],
+        linkedAccountSlugs: Array.from(allowed),
+        note: "No merchant-specific benefits found for this merchant.",
+      });
+    }
+
+    const best = filteredScored[0]?.card || null;
+    const reason = best ? buildReason(best, merchant, category, isCategoryQuery) : null;
+    const candidatesWithReason = filteredScored.slice(0, 5).map((entry) => ({
+      ...entry,
+      reason: buildReason(entry.card, merchant, category, isCategoryQuery),
+    }));
+    const benefitMatches = filteredScored
+      .filter((entry) => entry.creditMatches && entry.creditMatches.length)
+      .filter((entry) => entry.card && entry.card._id !== best?._id)
+      .reduce<{ card: any; reason: ReturnType<typeof buildReason> }[]>((acc, entry) => {
+        const slug = entry.card?.slug || entry.card?._id || entry.card?.name;
+        if (!slug) return acc;
+        if (acc.some((x) => (x.card?.slug || x.card?._id || x.card?.name) === slug)) return acc;
+        acc.push({ card: entry.card, reason: buildReason(entry.card, merchant, category, isCategoryQuery) });
+        return acc;
+      }, [])
+      .slice(0, 5);
 
     return res.json({
       merchant,
       category,
-      bestCard: scored[0]?.card || null,
-      candidates: scored.slice(0, 5),
+      bestCard: best,
+      reason,
+      candidates: candidatesWithReason,
+      benefitMatches,
       linkedAccountSlugs: Array.from(allowed),
-      note: allowed.size === 0 ? "No linked accounts yet. Showing best match from full catalog." : undefined,
+      note: !hasLinkedCards && !restrictToLinked
+        ? "No linked accounts yet. Showing best match from full catalog."
+        : undefined,
     });
   } catch (e: any) {
     console.error("best-card error:", e);
@@ -184,7 +245,155 @@ function toCategory(merchant: string): string {
   if (m.includes("amazon")) return "online_shopping";
   if (m.includes("walmart") || m.includes("target") || m.includes("costco")) return "groceries";
   if (m.includes("lululemon") || m.includes("nike") || m.includes("adidas")) return "apparel";
+  if (m.includes("uber") || m.includes("lyft")) return "rideshare";
+  if (m.includes("saks")) return "departmentstores";
   return "default";
+}
+
+function isCategorySearch(merchant: string): boolean {
+  const m = merchant.toLowerCase().trim();
+  return [
+    "travel",
+    "dining",
+    "groceries",
+    "gas",
+    "drugstore",
+    "streaming",
+    "entertainment",
+    "apparel",
+    "rideshare",
+    "departmentstores",
+    "online_shopping",
+  ].includes(m);
+}
+
+function buildReason(
+  card: any,
+  merchant: string,
+  category: string,
+  isCategoryQuery = false
+): { text: string; matches: string[]; credits: Array<{ label: string; requiresEnrollment?: boolean; sourceUrl?: string; partner?: string }> } {
+  const reasons: string[] = [];
+  const matches: string[] = [];
+  const credits: Array<{ label: string; requiresEnrollment?: boolean; sourceUrl?: string; partner?: string }> = [];
+  const rate = getCategoryRate(getRewardsByCategory(card), category);
+  if (rate > 0) {
+    reasons.push(`${rate}x on ${category}`);
+  }
+
+  const matchedCredits = isCategoryQuery ? [] : collectCreditMatches(card, merchant);
+  if (matchedCredits.length) {
+    const labels = matchedCredits
+      .slice(0, 2)
+      .map((c: any) => sanitizeLabel(c.label || "credit"));
+    matches.push(...labels);
+    credits.push(
+      ...matchedCredits.map((c: any) => ({
+        label: sanitizeLabel(c.label || "credit"),
+        requiresEnrollment: !!c.requiresEnrollment,
+        sourceUrl: c.sourceUrl,
+        partner: c.partner,
+      }))
+    );
+    reasons.push(`credit match: ${labels.join(", ")}`);
+  }
+
+  const text = reasons.length ? reasons.join(" • ") : "best available rate in your catalog";
+  return { text, matches, credits };
+}
+
+function sanitizeLabel(label: string): string {
+  return (label || "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|&#160;|\u00a0/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getBenefits(card: any) {
+  return card?.benefitsDetail || card || {};
+}
+
+function getRewardsByCategory(card: any) {
+  return getBenefits(card)?.rewardsByCategory || card?.rewardsByCategory || null;
+}
+
+function getCardCredits(card: any) {
+  const benefits = getBenefits(card);
+  return {
+    merchantCredits: benefits.merchantCredits || card?.merchantCredits || [],
+    recurringCredits: benefits.recurringCredits || card?.recurringCredits || [],
+  };
+}
+
+function parseRateValue(rate: unknown): number {
+  if (typeof rate === "number" && Number.isFinite(rate)) return rate;
+  if (typeof rate === "string") {
+    const n = parseFloat(rate);
+    return Number.isFinite(n) ? n : 0;
+  }
+  return 0;
+}
+
+function getCategoryRate(rewardsByCategory: any, category: string): number {
+  if (!rewardsByCategory) return 0;
+  if (Array.isArray(rewardsByCategory)) {
+    let best = 0;
+    for (const entry of rewardsByCategory) {
+      const keys = Array.isArray(entry?.keys) ? entry.keys.map((k: any) => String(k).toLowerCase()) : [];
+      if (!keys.length) continue;
+      if (!keys.includes(category) && !keys.includes("default") && !keys.includes("other")) continue;
+      const rate = parseRateValue(entry?.rate);
+      if (rate > best) best = rate;
+    }
+    return best;
+  }
+  const direct = parseRateValue(rewardsByCategory[category]);
+  if (direct) return direct;
+  return parseRateValue(rewardsByCategory.default ?? rewardsByCategory.other);
+}
+
+function dedupeCards(cards: any[]) {
+  const byKey = new Map<string, any>();
+  for (const card of cards) {
+    const key = cardKey(card);
+    if (!key) continue;
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, card);
+      continue;
+    }
+    if (cardQualityScore(card) > cardQualityScore(existing)) {
+      byKey.set(key, card);
+    }
+  }
+  return Array.from(byKey.values());
+}
+
+function cardKey(card: any): string | null {
+  const name = String(card?.name || "").trim().toLowerCase();
+  const issuer = String(card?.issuer || "").trim().toLowerCase();
+  if (name) return `name:${name}|issuer:${issuer}`;
+  const slug = String(card?.slug || "").trim().toLowerCase();
+  if (slug) return `slug:${slug}`;
+  return null;
+}
+
+function cardQualityScore(card: any): number {
+  let score = 0;
+  if (card?.benefitsDetail) score += 6;
+  const rewards = card?.rewardsByCategory;
+  if (Array.isArray(rewards)) score += Math.min(rewards.length, 6);
+  if (rewards && typeof rewards === "object" && !Array.isArray(rewards)) {
+    score += Math.min(Object.keys(rewards).length, 6);
+  }
+  score += Math.min((card?.merchantCredits || []).length, 4);
+  score += Math.min((card?.recurringCredits || []).length, 4);
+  score += Math.min((card?.perks || []).length, 4);
+  if (Number.isFinite(card?.annualFee)) score += 2;
+  if (card?.sourceUrl) score += 1;
+  if (card?.lastScraped || card?.lastUpdated) score += 1;
+  return score;
 }
 
 export default router;

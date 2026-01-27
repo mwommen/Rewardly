@@ -24,6 +24,7 @@ type ScrapeResult = PartialCard & {
   name: string;
   issuer: string | null;
   annualFee: number | null;
+  apr: string | null;
   rewardsByCategory: Record<string, number>;
   perks: string[];
   signupOffer: string | null;
@@ -42,6 +43,7 @@ type StoredCard = {
   name?: string;
   issuer?: string | null;
   annualFee?: number | null;
+  apr?: string | null;
   rewardsByCategory?: Record<string, number>;
   benefitsDetail?: BenefitsPayload;
   rewardsRotating?: RotatingWindow[];
@@ -69,10 +71,36 @@ function sanitizeCredits<T extends { label: string; amountUSD: number; period: s
 ): T[] {
   if (!credits?.length) return [];
   const seen = new Set<string>();
+  const normalizedSeen = new Set<string>();
   return credits.filter((credit) => {
-    const label = (credit.label || "").trim();
+    const cleaned = (credit.label || "")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;|&#160;|\u00a0/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    let label = cleaned;
+    if (/anniversary bonus|bonus miles|bonus points/i.test(label)) {
+      label = label
+        .replace(/\b\d{1,3}(?:,\d{3})?\s*(miles?|points?)\b/gi, "")
+        .replace(/anniversary bonus|bonus miles|bonus points/gi, "")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+    if (label !== credit.label) {
+      (credit as any).label = label;
+    }
     if (!label || label.length > 160) return false;
     if (/[<>]/.test(label) || /https?:\/\//i.test(label)) return false;
+    if (
+      /(credit\s*cards?|creditcards|\/credit-cards|icell=|jp_ltg=|utm_|hamnav|footer|header|nav)/i.test(label)
+    ) {
+      return false;
+    }
+    if (/without notice|any time/i.test(label)) return false;
+    if (/\$\{[^}]+\}/.test(label)) return false;
+    if (/\.svg\b/i.test(label) || /\blogo\b/i.test(label)) return false;
+    if (/^showcase[-_]/i.test(label)) return false;
+    if (/\b(www\.|\.com|\.net|\.org)\b/i.test(label)) return false;
     if (
       !/(credit|statement|cash|reimburse|membership|hotel|travel|airline|uber|saks|resy|walmart|lululemon|clear|digital)/i.test(
         label
@@ -80,13 +108,24 @@ function sanitizeCredits<T extends { label: string; amountUSD: number; period: s
     ) {
       return false;
     }
-    if (!Number.isFinite(credit.amountUSD) || credit.amountUSD < 10 || credit.amountUSD > 1000) {
+    if (!Number.isFinite(credit.amountUSD) || credit.amountUSD < 5 || credit.amountUSD > 1000) {
       return false;
     }
     if (credit.confidence != null && credit.confidence < 0.7) return false;
     const key = `${label}|${credit.amountUSD}|${credit.period}`;
     if (seen.has(key)) return false;
     seen.add(key);
+    const normalizedLabel = label
+      .toLowerCase()
+      .replace(/\$\s*/g, "")
+      .replace(/[^a-z0-9]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (normalizedLabel) {
+      const normalizedKey = `${credit.amountUSD}|${credit.period}|${normalizedLabel}`;
+      if (normalizedSeen.has(normalizedKey)) return false;
+      normalizedSeen.add(normalizedKey);
+    }
     return true;
   });
 }
@@ -217,9 +256,15 @@ export async function scrapeCardUrl(url: string, slug: string): Promise<ScrapeRe
       } catch {}
     });
 
+    const waitUntil = (process.env.SCRAPER_WAIT_UNTIL || "domcontentloaded") as
+      | "domcontentloaded"
+      | "load"
+      | "networkidle";
+    const navTimeout = Number(process.env.SCRAPER_NAV_TIMEOUT_MS || 45_000);
+
     console.log(`🌐 Navigating to ${url}...`);
     try {
-      await page.goto(url, { waitUntil: "networkidle", timeout: 90_000 });
+      await page.goto(url, { waitUntil, timeout: navTimeout });
     } catch (e) {
       console.warn("⚠️ goto() warning (continuing):", (e as Error).message);
     }
@@ -304,8 +349,11 @@ export async function scrapeCardUrl(url: string, slug: string): Promise<ScrapeRe
       name: partial.name || slug,
       issuer: partial.issuer ?? guessIssuerFromUrl(url),
       annualFee: typeof partial.annualFee === "number" ? partial.annualFee : null,
+      apr: partial.apr ?? null,
       rewardsByCategory: partial.rewardsByCategory || {},
-      perks: partial.perks || [],
+      perks: Array.from(
+        new Set([...(partial.perks || []), ...(enrichment?.perks || [])].map((p) => String(p || "").trim()).filter(Boolean))
+      ),
       signupOffer: partial.signupOffer ?? enrichment?.signupOffer ?? null,
       sourceUrl: partial.sourceUrl || enrichment?.sourceUrl || url,
       confidence:
@@ -328,8 +376,10 @@ export async function scrapeCardUrl(url: string, slug: string): Promise<ScrapeRe
       result.name = override.name ?? result.name;
       result.issuer = override.issuer ?? result.issuer;
       result.annualFee = override.annualFee ?? result.annualFee;
+      result.apr = override.apr ?? result.apr;
       result.rewardsByCategory = override.rewardsByCategory ?? result.rewardsByCategory;
       result.perks = override.perks ?? result.perks;
+      result.signupOffer = override.signupOffer ?? result.signupOffer;
       result.merchantCredits = sanitizeCredits(override.merchantCredits ?? result.merchantCredits);
       result.recurringCredits = sanitizeCredits(override.recurringCredits ?? result.recurringCredits);
       if (override.benefitsDetail) result.benefitsDetail = override.benefitsDetail;
@@ -366,7 +416,21 @@ export async function runScrapers(issuers?: string[]) {
 if (require.main === module) {
   (async () => {
     const url = process.argv[2];
-    const slug = process.argv[3] || "unknown-card";
+    const inferSlugFromUrl = (rawUrl: string): string => {
+      try {
+        const u = new URL(rawUrl);
+        const parts = u.pathname.split("/").filter(Boolean);
+        const last = parts[parts.length - 1] || "unknown-card";
+        return last
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "");
+      } catch {
+        return "unknown-card";
+      }
+    };
+
+    const slug = process.argv[3] || inferSlugFromUrl(url || "");
     if (!url) {
       console.error('Usage: ts-node src/scrapers/scrapeCard.ts "<url>" "<slug>"');
       process.exit(1);
@@ -395,6 +459,7 @@ if (require.main === module) {
         (res as any).recurringCredits?.length ? (res as any).recurringCredits : existing?.recurringCredits || [],
       perks: res?.perks && res.perks.length ? res.perks : existing?.perks || [],
       signupOffer: res?.signupOffer ?? existing?.signupOffer ?? null,
+      apr: res?.apr ?? existing?.apr ?? null,
       issuer: res?.issuer ?? existing?.issuer ?? null,
       benefitsDetail: res?.benefitsDetail ?? existing?.benefitsDetail,
       lastScraped: res?.lastScraped ?? existing?.lastScraped ?? new Date().toISOString(),

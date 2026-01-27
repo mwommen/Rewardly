@@ -4,18 +4,21 @@
   font-family: "Space Grotesk", "Segoe UI", sans-serif;
   line-height: 1.5;
   font-weight: 400;
-  color: #1c1a18;
-  background-color: #f4efe7;
+  color: #12181b;
+  background-color: #f6f1e9;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  --tone-strong: #1b2b2b;
-  --tone-muted: #4d5e5a;
-  --tone-faint: #7d8c88;
-  --accent: #f6c45d;
-  --panel: rgba(255, 255, 255, 0.8);
-  --shadow: 0 18px 40px rgba(17, 40, 38, 0.1);
+  --tone-strong: #101b1e;
+  --tone-muted: #3f4d53;
+  --tone-faint: #7a8a92;
+  --accent: #f2b05e;
+  --accent-strong: #e57c4f;
+  --accent-cool: #76c2b5;
+  --panel: rgba(255, 255, 255, 0.86);
+  --shadow: 0 20px 50px rgba(18, 32, 38, 0.14);
+  --shadow-soft: 0 10px 30px rgba(18, 32, 38, 0.08);
 }
 
 * {
@@ -26,17 +29,17 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: radial-gradient(circle at top left, #fef6e9 0%, #f6efe3 40%, #edf4f2 100%);
+  background: radial-gradient(circle at 20% 10%, #fff1de 0%, #f6efe3 38%, #e7f2f0 100%);
 }
 
 a {
   font-weight: 600;
-  color: #27695f;
+  color: #23635b;
   text-decoration: none;
 }
 
 a:hover {
-  color: #1a5048;
+  color: #194943;
 }
 
 button {
@@ -46,7 +49,7 @@ button {
   font-size: 1em;
   font-weight: 600;
   font-family: inherit;
-  background-color: #1c1a18;
+  background-color: #172227;
   color: #fff;
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
@@ -54,12 +57,12 @@ button {
 
 button:hover {
   transform: translateY(-1px);
-  box-shadow: 0 12px 26px rgba(27, 43, 43, 0.18);
+  box-shadow: 0 14px 28px rgba(23, 34, 39, 0.18);
 }
 
 button:focus,
 button:focus-visible {
-  outline: 3px solid rgba(39, 105, 95, 0.3);
+  outline: 3px solid rgba(118, 194, 181, 0.3);
   outline-offset: 2px;
 }
 

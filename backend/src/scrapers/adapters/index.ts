@@ -9,6 +9,8 @@ import { chaseAdapter } from "./chase";
 import { citiAdapter } from "./citi";
 import { discoverAdapter } from "./discover";
 import { capitalOneAdapter } from "./capitalone";
+import { boaAdapter } from "./boa";
+import { usbankAdapter } from "./usbank";
 
 export const allAdapters: ScrapeAdapter[] = [
   // Preferred API/fast adapters first
@@ -23,6 +25,8 @@ export const allAdapters: ScrapeAdapter[] = [
   citiAdapter,
   discoverAdapter,
   capitalOneAdapter,
+  boaAdapter,
+  usbankAdapter,
 ];
 
 export function getAdapterForUrl(url: string): ScrapeAdapter | null {

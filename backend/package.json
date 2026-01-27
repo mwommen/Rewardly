@@ -10,7 +10,8 @@
     "start": "node dist/src/server.js",
     "test": "jest --passWithNoTests",
     "seed": "ts-node ./src/seed.ts",
-    "scrape:card": "ts-node ./src/scrapers/scrapeCard.ts"
+    "scrape:card": "ts-node ./src/scrapers/scrapeCard.ts",
+    "validate:scrape": "ts-node ./src/validateScrape.ts"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
