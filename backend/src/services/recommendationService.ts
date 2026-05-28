@@ -1,6 +1,10 @@
 import { getDb } from "../db";
 import { inferCategories } from "../utils/category";
 import { toCashEquivalent } from "../utils/valuation";
+import { collectCreditMatches } from "../utils/merchantMatching";
+import { isLikelyJunkBenefitText } from "../scrapers/benefitsQuality";
+
+type MatchTier = "exact_benefit" | "category_match" | "base_rate";
 
 // ---------- Perk cleaning (strong version) ----------
 // ---------- Perk cleaning (strong version) ----------
@@ -65,6 +69,7 @@ function scoreLine(s: string): number {
 
   // De-marketing patterns
   if (/\b(popular|learn more|see details)\b/i.test(s)) score -= 2;
+  if (isLikelyJunkBenefitText(s)) return -5;
 
   // Strong keep signals
   if (REWARD_NUMBER.test(s)) score += 2;        // "5%", "3x"
@@ -129,22 +134,28 @@ function cleanPerks(input: string[] | undefined, maxLen = 140, maxItems = 8): st
   return candidates.slice(0, maxItems).map(c => c.text);
 }
 
+function collectPerkMatches(perks: string[] | undefined, merchant: string): string[] {
+  const term = String(merchant || "").trim().toLowerCase();
+  if (!term || !Array.isArray(perks)) return [];
+  return perks
+    .map((p) => String(p || "").trim())
+    .filter(Boolean)
+    .filter((p) => p.toLowerCase().includes(term))
+    .slice(0, 3);
+}
+
 function formatPeriodLabel(period: string | undefined): string {
   if (!period) return "";
   if (period === "semi-annual") return "every 6 months";
   return `per ${period}`;
 }
 
-function collectCreditPerks(card: any): string[] {
-  const rawMerchant = normalizeArray<any>(card?.benefitsDetail?.merchantCredits ?? card?.merchantCredits);
-  const rawRecurring = normalizeArray<any>(card?.benefitsDetail?.recurringCredits ?? card?.recurringCredits);
-  const combined = rawMerchant.concat(rawRecurring);
-  if (!combined.length) return [];
-
+function formatCreditPerks(credits: any[]): string[] {
+  if (!credits.length) return [];
   const out: string[] = [];
   const seen = new Set<string>();
 
-  for (const c of combined) {
+  for (const c of credits) {
     const labelBase = String(c?.label || "").replace(/\s+/g, " ").trim();
     const amount = Number.isFinite(c?.amountUSD) ? Number(c.amountUSD) : null;
     const period = formatPeriodLabel(c?.period);
@@ -188,10 +199,40 @@ const CAT_SYNONYMS: Record<string, string[]> = {
   rideshare: ["rideshare", "uber", "lyft", "taxi", "ride share"],
   travel: ["travel", "airfare", "airlines", "hotels", "hotel", "car rental", "rental car"],
   entertainment: ["entertainment", "movies", "theaters", "concerts", "events"],
+  streaming: ["streaming", "digital entertainment"],
   drugstores: ["drugstores", "pharmacy", "pharmacies"],
-  online: ["online", "ecommerce", "e-commerce"],
+  apparel: ["apparel", "clothing", "departmentstores", "department stores"],
+  departmentstores: ["departmentstores", "department stores", "apparel", "clothing"],
+  online: ["online", "online_shopping", "ecommerce", "e-commerce"],
+  online_shopping: ["online_shopping", "online", "ecommerce", "e-commerce"],
   other: ["other", "everything", "all", "base"],
 };
+
+const BROAD_CATEGORY_TERMS = new Set([
+  "dining",
+  "restaurants",
+  "restaurant",
+  "groceries",
+  "grocery",
+  "gas",
+  "fuel",
+  "travel",
+  "streaming",
+  "entertainment",
+  "drugstores",
+  "drugstore",
+  "apparel",
+  "clothing",
+  "departmentstores",
+  "department stores",
+  "online",
+  "online shopping",
+]);
+
+function isBroadCategoryQuery(merchant: string): boolean {
+  const normalized = String(merchant || "").trim().toLowerCase().replace(/\s+/g, " ");
+  return BROAD_CATEGORY_TERMS.has(normalized);
+}
 
 function expandCategories(cats: string[]): string[] {
   const out = new Set<string>();
@@ -239,7 +280,7 @@ function parseRateUnknown(
   if (s.endsWith("%")) {
     const n = parseFloat(s.replace("%", ""));
     if (isNaN(n)) return 0;
-    const p = asPercent(n);
+    const p = n / 100;
     if (isPointsContext) {
       const px = toPoints(n);
       return Math.max(p, px);
@@ -291,6 +332,7 @@ export async function recommendAllBenefits(opts: {
   const baseCats = normalizeArray<string>(inferCategories(merchant, mcc)).map((c) => String(c).toLowerCase());
   const cats = expandCategories(baseCats.length ? baseCats : ["other"]);
   const now = new Date();
+  const broadCategoryQuery = isBroadCategoryQuery(merchant);
 
   const results = cards.map((c: any) => {
     let bestRate = 0;
@@ -382,19 +424,58 @@ export async function recommendAllBenefits(opts: {
 
     if (!bestRate || bestRate < 0) bestRate = 0;
 
+    const creditMatches = broadCategoryQuery ? [] : collectCreditMatches(c, merchant);
+    const creditMatchCount = creditMatches.length;
+    const creditPerks = cleanPerks(formatCreditPerks(creditMatches), 140, 6);
+    const cleanedCardPerks = cleanPerks(normalizeArray<string>(c.perks), 140, 6);
+    const displayPerks = Array.from(new Set([...creditPerks, ...cleanedCardPerks])).slice(0, 8);
+    const perkMatches = broadCategoryQuery ? [] : collectPerkMatches(c.perks, merchant);
+    const creditValueUSD = creditMatches.reduce((sum, credit: any) => {
+      const val = Number.isFinite(credit?.amountUSD) ? Number(credit.amountUSD) : 0;
+      return sum + val;
+    }, 0);
+    if (creditPerks.length) {
+      const preview = creditPerks.slice(0, 2).join("; ");
+      notes = notes.length ? [...notes, `credit match: ${preview}`] : [`credit match: ${preview}`];
+    }
+
     const round = (n: number, d = 4) => Math.round(n * 10 ** d) / 10 ** d;
+    const hasCategoryRate = src.startsWith("category:") || src.startsWith("rotating:");
+    const hasExactBenefit = creditMatchCount > 0 || perkMatches.length > 0;
+    const matchTier: MatchTier = hasExactBenefit ? "exact_benefit" : hasCategoryRate ? "category_match" : "base_rate";
+    const confidenceLabel =
+      matchTier === "exact_benefit"
+        ? "Exact benefit match"
+        : matchTier === "category_match"
+        ? "Category match"
+        : "Base earn only";
+    const primaryBenefit = creditPerks[0] || perkMatches[0] || null;
+    const lastVerified = c?.benefitsDetail?.lastScraped || c?.lastScraped || null;
+
+    const why: string[] = [];
+    if (primaryBenefit) why.push(`Benefit: ${primaryBenefit}`);
+    if (bestRate > 0) why.push(`Rewards rate: ${(bestRate * 100).toFixed(2)}% effective`);
+    why.push(`Annual fee: $${typeof c.annualFee === "number" ? c.annualFee : 0}`);
+    if (lastVerified) why.push(`Last verified: ${lastVerified}`);
 
     return {
       slug: c.slug,
       name: c.name,
       issuer: c.issuer,
       effectiveRate: round(bestRate, 4),
-      estValueUSD: round(amount * bestRate, 2),
+      estValueUSD: round(amount * bestRate + creditValueUSD, 2),
       confidence: conf,
       reason: `${src}; ${notes.join(", ") || "baseline"}`,
       matchingCategories: [...seenMatches],
       annualFee: typeof c.annualFee === "number" ? c.annualFee : 0,
-      perks: cleanPerks(normalizeArray<string>(c.perks).concat(collectCreditPerks(c))),
+      hasCreditMatch: creditMatchCount > 0,
+      creditMatchCount,
+      perks: displayPerks,
+      matchedBenefit: primaryBenefit,
+      confidenceLabel,
+      matchTier,
+      why,
+      lastVerified,
       signupOffer: c.signupOffer ?? null,
       sourceUrl: c.sourceUrl ?? null,
     };
@@ -406,6 +487,8 @@ export async function recommendAllBenefits(opts: {
   );
 
   filtered.sort((a, b) => {
+    const tierWeight = (t: MatchTier) => (t === "exact_benefit" ? 3 : t === "category_match" ? 2 : 1);
+    if (tierWeight(b.matchTier) !== tierWeight(a.matchTier)) return tierWeight(b.matchTier) - tierWeight(a.matchTier);
     if (b.estValueUSD !== a.estValueUSD) return b.estValueUSD - a.estValueUSD;
     if (b.effectiveRate !== a.effectiveRate) return b.effectiveRate - a.effectiveRate;
     if ((b.confidence ?? 0) !== (a.confidence ?? 0)) return (b.confidence ?? 0) - (a.confidence ?? 0);
@@ -437,14 +520,16 @@ export async function recommendBestCards(opts: {
     minRate: -1,
   });
 
-  const top = [...offers]
-    .sort((a, b) => {
-      if ((b.estValueUSD ?? 0) !== (a.estValueUSD ?? 0)) return (b.estValueUSD ?? 0) - (a.estValueUSD ?? 0);
-      if ((b.effectiveRate ?? 0) !== (a.effectiveRate ?? 0)) return (b.effectiveRate ?? 0) - (a.effectiveRate ?? 0);
-      if ((b.confidence ?? 0) !== (a.confidence ?? 0)) return (b.confidence ?? 0) - (a.confidence ?? 0);
-      return (a.annualFee ?? 0) - (b.annualFee ?? 0);
-    })
-    .slice(0, 5)
+  const sorted = [...offers].sort((a, b) => {
+    const tierWeight = (t: MatchTier) => (t === "exact_benefit" ? 3 : t === "category_match" ? 2 : 1);
+    if (tierWeight(b.matchTier) !== tierWeight(a.matchTier)) return tierWeight(b.matchTier) - tierWeight(a.matchTier);
+    if ((b.estValueUSD ?? 0) !== (a.estValueUSD ?? 0)) return (b.estValueUSD ?? 0) - (a.estValueUSD ?? 0);
+    if ((b.effectiveRate ?? 0) !== (a.effectiveRate ?? 0)) return (b.effectiveRate ?? 0) - (a.effectiveRate ?? 0);
+    if ((b.confidence ?? 0) !== (a.confidence ?? 0)) return (b.confidence ?? 0) - (a.confidence ?? 0);
+    return (a.annualFee ?? 0) - (b.annualFee ?? 0);
+  });
+
+  const top = sorted.slice(0, 8)
     .map((o) => ({
       slug: o.slug,
       name: o.name,
@@ -452,6 +537,11 @@ export async function recommendBestCards(opts: {
       effectiveRate: o.effectiveRate,
       estValueUSD: o.estValueUSD,
       confidence: o.confidence,
+      confidenceLabel: o.confidenceLabel,
+      matchTier: o.matchTier,
+      matchedBenefit: o.matchedBenefit,
+      why: o.why,
+      lastVerified: o.lastVerified,
       reason: o.reason,
       annualFee: o.annualFee,
       sourceUrl: o.sourceUrl,

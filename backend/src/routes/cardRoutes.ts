@@ -1,6 +1,7 @@
 // backend/src/routes/cardRoutes.ts
 import express, { Request, Response } from "express";
 import { getCardsCollection, getLinkedAccountsCollection } from "../db";
+import { CARD_OVERRIDES } from "../scrapers/overrides/cards";
 import { collectCreditMatches } from "../utils/merchantMatching";
 
 const router = express.Router();
@@ -13,7 +14,24 @@ router.get("/", async (_req, res) => {
   try {
     const col = await getCardsCollection();
     const cards = await col.find({}).toArray();
-    res.json({ cards: dedupeCards(cards) });
+    const merged = cards.map((card: any) => {
+      const override = card?.slug ? CARD_OVERRIDES[card.slug] : undefined;
+      if (!override) return card;
+      return {
+        ...card,
+        name: override.name ?? card.name,
+        issuer: override.issuer ?? card.issuer,
+        annualFee: override.annualFee ?? card.annualFee,
+        apr: override.apr ?? card.apr,
+        rewardsByCategory: override.rewardsByCategory ?? card.rewardsByCategory,
+        perks: override.perks ?? card.perks,
+        signupOffer: override.signupOffer ?? card.signupOffer,
+        merchantCredits: override.merchantCredits ?? card.merchantCredits,
+        recurringCredits: override.recurringCredits ?? card.recurringCredits,
+        benefitsDetail: override.benefitsDetail ?? card.benefitsDetail,
+      };
+    });
+    res.json({ cards: dedupeCards(merged) });
   } catch (e: any) {
     res.status(500).json({ error: e?.message || "Failed to fetch cards" });
   }
@@ -94,11 +112,11 @@ router.get("/:slug/history", async (req: Request, res: Response) => {
 /**
  * POST /api/cards/best-card-for-merchant
  * Determines the best card among the user's Plaid-linked accounts.
- * Body: { merchant: string, userId?: string, restrictToLinked?: boolean }
+ * Body: { merchant: string, userId?: string, restrictToLinked?: boolean, manualCardSlugs?: string[] }
  */
 router.post("/best-card-for-merchant", async (req: Request, res: Response) => {
   try {
-    const { merchant, userId = "devUser", restrictToLinked = false } = req.body || {};
+    const { merchant, userId = "devUser", restrictToLinked = false, manualCardSlugs = [] } = req.body || {};
     if (!merchant || typeof merchant !== "string") {
       return res.status(400).json({ error: "merchant required" });
     }
@@ -116,6 +134,12 @@ router.post("/best-card-for-merchant", async (req: Request, res: Response) => {
     for (const doc of linkedDocs) {
       for (const a of doc.accounts || []) {
         if (a?.mappedCardSlug) allowed.add(a.mappedCardSlug);
+      }
+    }
+    if (Array.isArray(manualCardSlugs)) {
+      for (const slug of manualCardSlugs) {
+        const normalized = String(slug || "").trim();
+        if (normalized) allowed.add(normalized);
       }
     }
     const hasLinkedCards = allowed.size > 0;
@@ -278,7 +302,7 @@ function buildReason(
   const credits: Array<{ label: string; requiresEnrollment?: boolean; sourceUrl?: string; partner?: string }> = [];
   const rate = getCategoryRate(getRewardsByCategory(card), category);
   if (rate > 0) {
-    reasons.push(`${rate}x on ${category}`);
+    reasons.push(`${formatWalletRate(rate)} on ${category}`);
   }
 
   const matchedCredits = isCategoryQuery ? [] : collectCreditMatches(card, merchant);
@@ -308,6 +332,15 @@ function sanitizeLabel(label: string): string {
     .replace(/&nbsp;|&#160;|\u00a0/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function formatWalletRate(rate: number): string {
+  if (!Number.isFinite(rate) || rate <= 0) return "0%";
+  if (rate < 1) {
+    const percent = rate * 100;
+    return `${Number.isInteger(percent) ? percent.toFixed(0) : percent.toFixed(2)}%`;
+  }
+  return `${Number.isInteger(rate) ? rate.toFixed(0) : rate.toFixed(2)}x`;
 }
 
 function getBenefits(card: any) {

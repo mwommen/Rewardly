@@ -9,9 +9,15 @@
     "build": "tsc",
     "start": "node dist/src/server.js",
     "test": "jest --passWithNoTests",
-    "seed": "ts-node ./src/seed.ts",
+    "seed": "ts-node ./seedCards.ts",
     "scrape:card": "ts-node ./src/scrapers/scrapeCard.ts",
-    "validate:scrape": "ts-node ./src/validateScrape.ts"
+    "scrape:weekly": "ts-node ./src/scrapers/weeklyRescrape.ts",
+    "pipeline:weekly": "npm run scrape:weekly && npm run cleanup:benefits -- --apply && npm run validate:benefits && ts-node ./src/benefitsAudit.ts",
+    "cleanup:benefits": "ts-node ./src/cleanupBenefits.ts",
+    "cleanup:cards": "ts-node ./src/cleanupCards.ts",
+    "validate:scrape": "ts-node ./src/validateScrape.ts",
+    "validate:benefits": "ts-node ./src/validateBenefitsQuality.ts",
+    "validate:benefits:accuracy": "ts-node ./src/validateBenefitsAccuracy.ts"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",

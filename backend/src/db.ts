@@ -5,6 +5,8 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const uri = process.env.MONGO_URI || "mongodb://localhost:27017";
+const mongoServerSelectionTimeoutMS = Number(process.env.MONGO_SERVER_SELECTION_TIMEOUT_MS || 5000);
+const mongoConnectTimeoutMS = Number(process.env.MONGO_CONNECT_TIMEOUT_MS || 5000);
 let client: MongoClient | null = null;
 let cachedDb: Db | null = null;
 
@@ -14,7 +16,10 @@ let cachedDb: Db | null = null;
 export async function connectDB(): Promise<Db> {
   if (cachedDb) return cachedDb;
   if (!client) {
-    client = new MongoClient(uri);
+    client = new MongoClient(uri, {
+      serverSelectionTimeoutMS: mongoServerSelectionTimeoutMS,
+      connectTimeoutMS: mongoConnectTimeoutMS,
+    });
     await client.connect();
     console.log("✅ Connected to MongoDB at URI:", uri);
   }
@@ -42,6 +47,11 @@ export async function getCardsCollection(): Promise<Collection<Card>> {
 export async function getLinkedAccountsCollection(): Promise<Collection<LinkedAccount>> {
   const db = await connectDB();
   return db.collection<LinkedAccount>("linkedAccounts");
+}
+
+export async function getUserBenefitStatesCollection(): Promise<Collection<UserBenefitState>> {
+  const db = await connectDB();
+  return db.collection<UserBenefitState>("userBenefitStates");
 }
 
 /**
@@ -75,5 +85,21 @@ export interface LinkedAccount {
     mappedCardSlug?: string;
   }[];
   createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export interface UserBenefitState {
+  userId: string;
+  benefitKey: string;
+  cardSlug?: string;
+  cardName?: string;
+  label?: string;
+  period?: string;
+  amountUSD?: number;
+  requiresEnrollment?: boolean;
+  enrolled?: boolean;
+  enrolledAt?: Date | null;
+  usedAt?: Date | null;
+  remindEnabled?: boolean;
   updatedAt?: Date;
 }

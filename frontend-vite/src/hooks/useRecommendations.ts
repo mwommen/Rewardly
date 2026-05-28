@@ -1,10 +1,17 @@
 import { useEffect, useRef, useState } from "react";
+import { API_BASE } from "../lib/api";
 
 type BestCard = {
   card: { slug: string; name: string };
   effectiveRate?: number;
   explainer?: string;
   confidence?: number;
+  why?: string[];
+  confidenceLabel?: string;
+  matchTier?: "exact_benefit" | "category_match" | "base_rate";
+  matchedBenefit?: string | null;
+  lastVerified?: string | null;
+  annualFee?: number;
 };
 
 type Offer = {
@@ -22,7 +29,6 @@ export type QueryInputs = {
 };
 
 export function useRecommendations(inputs: QueryInputs) {
-  const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5001";
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [topPick, setTopPick] = useState<BestCard | null>(null);
@@ -52,6 +58,12 @@ export function useRecommendations(inputs: QueryInputs) {
     effectiveRate: typeof raw?.effectiveRate === "number" ? raw.effectiveRate : undefined,
     explainer: raw?.reason || raw?.explainer,
     confidence: typeof raw?.confidence === "number" ? raw.confidence : undefined,
+    why: Array.isArray(raw?.why) ? raw.why : [],
+    confidenceLabel: typeof raw?.confidenceLabel === "string" ? raw.confidenceLabel : undefined,
+    matchTier: raw?.matchTier,
+    matchedBenefit: typeof raw?.matchedBenefit === "string" ? raw.matchedBenefit : null,
+    lastVerified: typeof raw?.lastVerified === "string" ? raw.lastVerified : null,
+    annualFee: typeof raw?.annualFee === "number" ? raw.annualFee : undefined,
   });
 
   const toOffer = (raw: any): Offer => ({
@@ -82,7 +94,19 @@ export function useRecommendations(inputs: QueryInputs) {
       const { domain, amount, mcc, limit = 5 } = inputs;
 
       // ---- /best ----
-      const bestFields = ["slug", "name", "effectiveRate", "confidence", "reason"].join(",");
+      const bestFields = [
+        "slug",
+        "name",
+        "effectiveRate",
+        "confidence",
+        "confidenceLabel",
+        "matchTier",
+        "matchedBenefit",
+        "why",
+        "lastVerified",
+        "annualFee",
+        "reason",
+      ].join(",");
       const bestParams = buildParams({ merchant: trimmedMerchant, domain, amount, mcc, limit, fields: bestFields });
       const bestUrl = `${API_BASE}/api/recommendations/best?${bestParams.toString()}`;
 

@@ -12,7 +12,7 @@ export type CardWithCredits = {
   sourceUrl?: string;
 };
 
-const MIN_MERCHANT_CREDIT_CONFIDENCE = 0.8;
+const MIN_MERCHANT_CREDIT_CONFIDENCE = 0.6;
 
 function safeHost(url?: string): string {
   if (!url) return "";

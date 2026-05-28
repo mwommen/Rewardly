@@ -151,10 +151,14 @@ router.post("/accounts", async (req: Request, res: Response) => {
 
 // Return linked accounts from Mongo
 router.get("/linked-accounts", async (req: Request, res: Response) => {
-  const userId = (req.query.userId as string) || "devUser";
-  const linkedCol = await getLinkedAccountsCollection();
-  const docs = await linkedCol.find({ userId }).toArray();
-  res.json({ linked: docs });
+  try {
+    const userId = (req.query.userId as string) || "devUser";
+    const linkedCol = await getLinkedAccountsCollection();
+    const docs = await linkedCol.find({ userId }).toArray();
+    res.json({ linked: docs });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || "Failed to load linked accounts" });
+  }
 });
 
 // Clear linked accounts for a user (dev only)
@@ -175,14 +179,15 @@ router.delete("/linked-accounts", async (req: Request, res: Response) => {
 router.post("/map-account", async (req: Request, res: Response) => {
   try {
     const { userId = "devUser", accountId, mappedCardSlug } = req.body || {};
-    if (!accountId || !mappedCardSlug) {
-      return res.status(400).json({ error: "accountId and mappedCardSlug are required" });
+    if (!accountId) {
+      return res.status(400).json({ error: "accountId is required" });
     }
 
     const col = await getLinkedAccountsCollection();
+    const nextSlug = typeof mappedCardSlug === "string" ? mappedCardSlug.trim() : "";
     const result = await col.updateOne(
       { userId, "accounts.accountId": accountId },
-      { $set: { "accounts.$.mappedCardSlug": mappedCardSlug, updatedAt: new Date() } }
+      { $set: { "accounts.$.mappedCardSlug": nextSlug, updatedAt: new Date() } }
     );
 
     if (result.matchedCount === 0) {

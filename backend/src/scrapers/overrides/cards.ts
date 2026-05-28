@@ -27,6 +27,52 @@ export const CARD_OVERRIDES: Record<string, CardOverride> = {
     issuer: "American Express",
     annualFee: 895,
   },
+  "amex-green-card": {
+    slug: "amex-green-card",
+    name: "American Express Green Card",
+    issuer: "American Express",
+    annualFee: 150,
+    rewardsByCategory: {
+      travel: 3,
+      dining: 3,
+      other: 1,
+    },
+    perks: [
+      "3x points on travel",
+      "3x points on dining",
+      "1x points on all other purchases",
+    ],
+  },
+  "amex-everyday-preferred": {
+    slug: "amex-everyday-preferred",
+    name: "Amex EveryDay® Preferred Credit Card",
+    issuer: "American Express",
+    annualFee: 95,
+    rewardsByCategory: {
+      groceries: 3,
+      gas: 2,
+      other: 1,
+    },
+    perks: [
+      "3x points at U.S. supermarkets (up to $6,000 per year)",
+      "2x points at U.S. gas stations",
+      "1x points on other purchases",
+    ],
+  },
+  "amex-everyday": {
+    slug: "amex-everyday",
+    name: "Amex EveryDay® Credit Card",
+    issuer: "American Express",
+    annualFee: 0,
+    rewardsByCategory: {
+      groceries: 2,
+      other: 1,
+    },
+    perks: [
+      "2x points at U.S. supermarkets (up to $6,000 per year)",
+      "1x points on other purchases",
+    ],
+  },
   "chase-sapphire-preferred": {
     slug: "chase-sapphire-preferred",
     name: "Chase Sapphire Preferred®",
@@ -132,7 +178,7 @@ export const CARD_OVERRIDES: Record<string, CardOverride> = {
     slug: "capital-one-savorone",
     name: "Capital One SavorOne",
     issuer: "Capital One",
-    annualFee: 39,
+    annualFee: 0,
     apr: "28.99% variable",
     signupOffer: null,
     rewardsByCategory: {
@@ -223,7 +269,7 @@ export const CARD_OVERRIDES: Record<string, CardOverride> = {
     slug: "capital-one-savor",
     name: "Capital One Savor Rewards",
     issuer: "Capital One",
-    annualFee: 0,
+    annualFee: 95,
     apr: "0% intro APR for 12 months; 18.49%–28.49% variable after",
     signupOffer: "$200 cash bonus",
     rewardsByCategory: {

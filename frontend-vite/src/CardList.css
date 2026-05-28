@@ -9,11 +9,11 @@
   flex: 1 1 100%;
   display: grid;
   gap: 0.9rem;
-  border: 1px solid rgba(10, 14, 22, 0.12);
-  border-radius: 20px;
-  padding: 1rem;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(247, 249, 251, 0.95));
-  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+  border: none;
+  border-radius: 28px;
+  padding: 1.2rem;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.92), rgba(246, 243, 237, 0.86));
+  box-shadow: 0 20px 36px rgba(15, 23, 42, 0.08);
 }
 
 .card-group-header {
@@ -47,9 +47,9 @@
 }
 
 .card-group-select select {
-  border-radius: 12px;
-  padding: 0.6rem 0.7rem;
-  border: 1px solid rgba(22, 34, 51, 0.2);
+  border-radius: 16px;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(22, 34, 51, 0.14);
   background: #fff;
   font-size: 0.9rem;
 }
@@ -67,18 +67,18 @@
 
 .card-item {
   flex: 1 1 280px;
-  background: rgba(255, 255, 255, 0.92);
-  border-radius: 20px;
-  box-shadow: var(--shadow);
-  padding: 1.6rem;
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.95), rgba(245, 242, 235, 0.9));
+  border-radius: 32px;
+  box-shadow: 0 26px 52px rgba(15, 23, 42, 0.12);
+  padding: 1.8rem;
   position: relative;
-  border: 1px solid rgba(15, 79, 76, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.7);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .card-item:hover {
   transform: translateY(-4px);
-  box-shadow: 0 20px 40px rgba(15, 79, 76, 0.12);
+  box-shadow: 0 30px 60px rgba(15, 79, 76, 0.16);
 }
 
 .card-header {
@@ -133,6 +133,35 @@
   font-size: 0.95rem;
 }
 
+.compare-toggle {
+  margin-top: 0.75rem;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 79, 76, 0.18);
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--tone-strong);
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.45rem 0.9rem;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.compare-toggle:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(118, 194, 181, 0.5);
+  box-shadow: 0 10px 20px rgba(18, 32, 38, 0.12);
+}
+
+.compare-toggle.selected {
+  background: rgba(118, 194, 181, 0.2);
+  border-color: rgba(118, 194, 181, 0.45);
+}
+
+.compare-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .benefits, .perks, .credits {
   margin-bottom: 1rem;
 }
@@ -172,8 +201,8 @@
   justify-content: center;
   padding: 0.5rem 1rem;
   border-radius: 999px;
-  border: 1px solid rgba(15, 79, 76, 0.2);
-  background: #fff;
+  border: 1px solid rgba(15, 79, 76, 0.14);
+  background: rgba(255, 255, 255, 0.9);
   color: var(--tone-strong);
   font-size: 0.85rem;
   font-weight: 600;
@@ -181,7 +210,7 @@
 }
 
 .card-toggle:hover {
-  border-color: rgba(15, 79, 76, 0.35);
+  border-color: rgba(15, 79, 76, 0.28);
 }
 
 .benefits h3,

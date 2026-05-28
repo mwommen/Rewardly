@@ -6,13 +6,27 @@ interface PlaidLinkButtonProps {
   onAccessToken: (token: string) => void;
   userId: string;
   apiBase: string;
+  className?: string;
+  label?: string;
+  onSuccess?: () => void;
+  onError?: (message: string) => void;
 }
 
-const PlaidLinkButton: React.FC<PlaidLinkButtonProps> = ({ onAccessToken, userId, apiBase }) => {
+const PlaidLinkButton: React.FC<PlaidLinkButtonProps> = ({
+  onAccessToken,
+  userId,
+  apiBase,
+  className,
+  label,
+  onSuccess,
+  onError,
+}) => {
   const [linkToken, setLinkToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   // Fetch a link token from the backend
   useEffect(() => {
+    setLoading(true);
     fetch(`${apiBase}/api/plaid/create-link-token`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -21,8 +35,13 @@ const PlaidLinkButton: React.FC<PlaidLinkButtonProps> = ({ onAccessToken, userId
       .then((res) => res.json())
       .then((data) => {
         setLinkToken(data.link_token);
+        setLoading(false);
       })
-      .catch((err) => console.error("Failed to get link token:", err));
+      .catch((err) => {
+        console.error("Failed to get link token:", err);
+        onError?.("Unable to start Plaid. Please try again.");
+        setLoading(false);
+      });
   }, [apiBase, userId]);
 
   const { open, ready } = usePlaidLink({
@@ -37,12 +56,24 @@ const PlaidLinkButton: React.FC<PlaidLinkButtonProps> = ({ onAccessToken, userId
         });
         const data = await res.json();
         console.log("[Plaid] exchange response", data);
-        if (data.access_token) {
-          localStorage.setItem("plaid_access_token", data.access_token);
-          onAccessToken(data.access_token);
+        if (res.ok && (data?.ok || data?.linked || data?.access_token)) {
+          const callbackValue =
+            typeof data?.access_token === "string"
+              ? data.access_token
+              : typeof data?.linked?.itemId === "string"
+              ? data.linked.itemId
+              : "linked";
+          if (typeof data?.access_token === "string") {
+            localStorage.setItem("plaid_access_token", data.access_token);
+          }
+          onAccessToken(callbackValue);
+          onSuccess?.();
+        } else {
+          onError?.(data?.error || "Link failed. Please try again.");
         }
       } catch (err) {
         console.error("Failed to exchange public token:", err);
+        onError?.("Link failed. Please try again.");
       }
     },
     onEvent: (eventName, metadata) => {
@@ -55,20 +86,8 @@ const PlaidLinkButton: React.FC<PlaidLinkButtonProps> = ({ onAccessToken, userId
   });
 
   return (
-    <button
-      onClick={() => open()}
-      disabled={!ready || !linkToken}
-      style={{
-        padding: "10px 20px",
-        backgroundColor: "#1976D2",
-        color: "white",
-        border: "none",
-        borderRadius: "4px",
-        cursor: "pointer",
-        fontWeight: "bold",
-      }}
-    >
-      Link Credit Cards
+    <button onClick={() => open()} disabled={!ready || !linkToken || loading} className={className}>
+      {loading ? "Preparing…" : label || "Link Credit Cards"}
     </button>
   );
 };

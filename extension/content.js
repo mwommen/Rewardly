@@ -95,7 +95,17 @@ function detectAndRender() {
         const noLinkedCards = typeof rec.data?.note === "string" && rec.data.note.includes("No linked cards");
 
         if (hasAnyBenefit) {
-          banner({ result: top, merchant: merchantName, matches: benefitMatches });
+          const list = benefitMatches.length ? benefitMatches : topMatches.map((m) => ({
+            card: top?.card,
+            reason: top?.reason || null,
+            matches: [m],
+            credits: top?.credits || [],
+          }));
+          banner({
+            result: benefitMatches.length ? null : top,
+            merchant: merchantName,
+            matches: list,
+          });
           lastHadBenefit = true;
           inFlight = false;
           return;
@@ -130,7 +140,17 @@ function detectAndRender() {
               inFlight = false;
               return;
             }
-            banner({ result: fbTop, merchant: merchantName, matches: fbMatches });
+            const list = fbMatches.length ? fbMatches : fbTopMatches.map((m) => ({
+              card: fbTop?.card,
+              reason: fbTop?.reason || null,
+              matches: [m],
+              credits: fbTop?.credits || [],
+            }));
+            banner({
+              result: fbMatches.length ? null : fbTop,
+              merchant: merchantName,
+              matches: list,
+            });
             lastHadBenefit = true;
             inFlight = false;
           }
@@ -179,33 +199,35 @@ function banner({ loading, error, result, merchant, note, matches }) {
 
   if (loading) body.textContent = note || "Analyzing…";
   else if (error) body.textContent = `CCO: ${error}`;
-  else if (result) {
-    const matches = Array.isArray(result?.matches) ? result.matches : [];
-    const primaryBenefit = matches[0] || (result?.reason ? String(result.reason) : "Best available rate");
-    primaryCredit = pickEnrollCredit(result?.credits || [], primaryBenefit);
-    sourceUrl = primaryCredit?.sourceUrl || result?.card?.sourceUrl || null;
-    verifiedAt = result?.card?.lastScraped || null;
-
+  else if (result || (Array.isArray(matches) && matches.length)) {
     const title = document.createElement("div");
     title.className = "cco-title";
-    title.textContent = "Best card here";
+    title.textContent = matches?.length ? "Benefit detected" : "Best card here";
     body.appendChild(title);
 
-    const row = document.createElement("div");
-    row.className = "cco-cardline";
+    if (result && (!matches || matches.length === 0)) {
+      const resMatches = Array.isArray(result?.matches) ? result.matches : [];
+      const primaryBenefit = resMatches[0] || (result?.reason ? String(result.reason) : "Best available rate");
+      primaryCredit = pickEnrollCredit(result?.credits || [], primaryBenefit);
+      sourceUrl = primaryCredit?.sourceUrl || result?.card?.sourceUrl || null;
+      verifiedAt = result?.card?.lastScraped || null;
 
-    const icon = cardIcon(result?.card);
-    icon.classList.add("cco-icon");
-    const text = document.createElement("div");
-    text.className = "cco-text";
-    const cardName = result?.card?.name ? sanitize(result.card.name) : "Card";
-    text.innerHTML = `<div class="cco-card-name">${cardName}</div><div class="cco-benefit">${sanitize(primaryBenefit)}</div>`;
+      const row = document.createElement("div");
+      row.className = "cco-cardline";
 
-    row.appendChild(icon);
-    row.appendChild(text);
-    const enrollBtn = enrollButton(primaryCredit, result?.card);
-    if (enrollBtn) row.appendChild(enrollBtn);
-    body.appendChild(row);
+      const icon = cardIcon(result?.card);
+      icon.classList.add("cco-icon");
+      const text = document.createElement("div");
+      text.className = "cco-text";
+      const cardName = result?.card?.name ? sanitize(result.card.name) : "Card";
+      text.innerHTML = `<div class="cco-card-name">${cardName}</div><div class="cco-benefit">${sanitize(primaryBenefit)}</div>`;
+
+      row.appendChild(icon);
+      row.appendChild(text);
+      const enrollBtn = enrollButton(primaryCredit, result?.card);
+      if (enrollBtn) row.appendChild(enrollBtn);
+      body.appendChild(row);
+    }
   } else {
     body.textContent = "No result";
   }
@@ -250,13 +272,20 @@ function banner({ loading, error, result, merchant, note, matches }) {
   if (Array.isArray(matches) && matches.length) {
     const sectionTitle = document.createElement("div");
     sectionTitle.className = "cco-section-title";
-    sectionTitle.textContent = "Other cards with this benefit";
+    sectionTitle.textContent = "Cards with this benefit";
     card.appendChild(sectionTitle);
 
     const list = document.createElement("div");
     list.className = "cco-list";
 
-    matches.slice(0, 3).forEach((m) => {
+    const cleanMatches = matches.filter((m) => {
+      const name = String(m?.card?.name || "");
+      return name && !/unknown/i.test(name);
+    });
+    const maxVisible = 3;
+    const visibleMatches = cleanMatches.slice(0, maxVisible);
+
+    visibleMatches.forEach((m) => {
       const benefit = (m?.matches && m.matches[0]) || m?.reason || "Benefit available";
       const matchCredit = pickEnrollCredit(m?.credits || [], benefit);
       const row = document.createElement("div");
@@ -276,6 +305,60 @@ function banner({ loading, error, result, merchant, note, matches }) {
       list.appendChild(row);
     });
     card.appendChild(list);
+
+    if (cleanMatches.length > maxVisible) {
+      const toggle = document.createElement("button");
+      toggle.className = "cco-btn cco-btn-ghost cco-toggle";
+      toggle.textContent = `Show all (${cleanMatches.length})`;
+      toggle.onclick = () => {
+        const expanded = list.classList.toggle("expanded");
+        toggle.textContent = expanded ? "Show fewer" : `Show all (${cleanMatches.length})`;
+        if (expanded) {
+          list.innerHTML = "";
+          cleanMatches.forEach((m) => {
+            const benefit = (m?.matches && m.matches[0]) || m?.reason || "Benefit available";
+            const matchCredit = pickEnrollCredit(m?.credits || [], benefit);
+            const row = document.createElement("div");
+            row.className = "cco-cardline cco-cardline-compact";
+
+            const icon = cardIcon(m?.card);
+            icon.classList.add("cco-icon");
+            const text = document.createElement("div");
+            text.className = "cco-text";
+            const cardName = m?.card?.name ? sanitize(m.card.name) : "Card";
+            text.innerHTML = `<div class="cco-card-name">${cardName}</div><div class="cco-benefit">${sanitize(benefit)}</div>`;
+
+            row.appendChild(icon);
+            row.appendChild(text);
+            const enrollBtn = enrollButton(matchCredit, m?.card);
+            if (enrollBtn) row.appendChild(enrollBtn);
+            list.appendChild(row);
+          });
+        } else {
+          list.innerHTML = "";
+          visibleMatches.forEach((m) => {
+            const benefit = (m?.matches && m.matches[0]) || m?.reason || "Benefit available";
+            const matchCredit = pickEnrollCredit(m?.credits || [], benefit);
+            const row = document.createElement("div");
+            row.className = "cco-cardline cco-cardline-compact";
+
+            const icon = cardIcon(m?.card);
+            icon.classList.add("cco-icon");
+            const text = document.createElement("div");
+            text.className = "cco-text";
+            const cardName = m?.card?.name ? sanitize(m.card.name) : "Card";
+            text.innerHTML = `<div class="cco-card-name">${cardName}</div><div class="cco-benefit">${sanitize(benefit)}</div>`;
+
+            row.appendChild(icon);
+            row.appendChild(text);
+            const enrollBtn = enrollButton(matchCredit, m?.card);
+            if (enrollBtn) row.appendChild(enrollBtn);
+            list.appendChild(row);
+          });
+        }
+      };
+      card.appendChild(toggle);
+    }
   }
   const snoozeBtn = document.createElement("button");
   snoozeBtn.textContent = "Hide on this site";
@@ -305,8 +388,8 @@ function ensureStyles() {
       color-scheme: light;
     }
     #cco-banner .cco-card {
-      width: 360px;
-      max-width: min(360px, 92vw);
+      width: 320px;
+      max-width: min(320px, 92vw);
       color: #f8fafc;
       border-radius: 20px;
       background: linear-gradient(160deg, #0b1220 0%, #0b1022 40%, #0f172a 100%);
@@ -316,6 +399,7 @@ function ensureStyles() {
       position: relative;
       overflow: hidden;
       animation: cco-pop-in 240ms ease-out;
+      max-height: min(70vh, 520px);
     }
     #cco-banner .cco-card:before {
       content: "";
@@ -431,6 +515,17 @@ function ensureStyles() {
     #cco-banner .cco-list {
       display: grid;
       gap: 8px;
+      margin-top: 6px;
+      max-height: 220px;
+      overflow-y: auto;
+      padding-right: 2px;
+    }
+    #cco-banner .cco-list.expanded {
+      max-height: 320px;
+      overflow-y: auto;
+    }
+    #cco-banner .cco-toggle {
+      align-self: flex-start;
       margin-top: 6px;
     }
     #cco-banner .cco-actions {

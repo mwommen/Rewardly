@@ -6,9 +6,11 @@ import CardItem from "./CardItem";
 interface Props {
   cards: Card[];
   bestCardId?: string;
+  compareIds?: string[];
+  onToggleCompare?: (card: Card) => void;
 }
 
-const CardList = ({ cards, bestCardId }: Props) => {
+const CardList = ({ cards, bestCardId, compareIds = [], onToggleCompare }: Props) => {
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
   const chaseBusinessCards = cards.filter((card) => (card.slug || "").startsWith("chase-ink-"));
   const visibleCards = cards.filter((card) => !(card.slug || "").startsWith("chase-ink-"));
@@ -54,12 +56,16 @@ const CardList = ({ cards, bestCardId }: Props) => {
           </div>
           {(() => {
             const key = `chase-ink-group-${selectedChaseBusiness.slug}`;
+            const compareKey = getCompareKey(selectedChaseBusiness);
             return (
               <CardItem
                 key={key}
                 card={selectedChaseBusiness}
                 highlight={selectedChaseBusiness._id === bestCardId}
                 expanded={expandedKeys.has(key)}
+                isCompared={compareIds.includes(compareKey)}
+                compareDisabled={!compareIds.includes(compareKey) && compareIds.length >= 3}
+                onToggleCompare={() => onToggleCompare?.(selectedChaseBusiness)}
                 onToggle={() =>
                   setExpandedKeys((prev) => {
                     const next = new Set(prev);
@@ -76,12 +82,16 @@ const CardList = ({ cards, bestCardId }: Props) => {
 
       {visibleCards.map((card, index) => {
         const key = `${card._id || card.slug || card.name || "card"}-${index}`;
+        const compareKey = getCompareKey(card);
         return (
           <CardItem
             key={key}
             card={card}
             highlight={card._id === bestCardId}
             expanded={expandedKeys.has(key)}
+            isCompared={compareIds.includes(compareKey)}
+            compareDisabled={!compareIds.includes(compareKey) && compareIds.length >= 3}
+            onToggleCompare={() => onToggleCompare?.(card)}
             onToggle={() =>
               setExpandedKeys((prev) => {
                 const next = new Set(prev);
@@ -98,3 +108,7 @@ const CardList = ({ cards, bestCardId }: Props) => {
 };
 
 export default CardList;
+
+function getCompareKey(card: Card) {
+  return card._id || card.slug || card.name;
+}

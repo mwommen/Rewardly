@@ -1,6 +1,7 @@
 // frontend/src/CardItem.tsx
 import type { Card } from "./cardModules";
 import { getCardLogo } from "./lib/cardLogos";
+import { getEnrollmentLink } from "./lib/enrollmentLinks";
 import "./CardList.css";
 
 interface Props {
@@ -8,9 +9,20 @@ interface Props {
   highlight?: boolean;
   expanded?: boolean;
   onToggle?: () => void;
+  isCompared?: boolean;
+  compareDisabled?: boolean;
+  onToggleCompare?: () => void;
 }
 
-const CardItem = ({ card, highlight = false, expanded = false, onToggle }: Props) => {
+const CardItem = ({
+  card,
+  highlight = false,
+  expanded = false,
+  onToggle,
+  isCompared = false,
+  compareDisabled = false,
+  onToggleCompare,
+}: Props) => {
   const benefitSource = Object.keys(card.benefits || {}).length
     ? card.benefits
     : (card.rewardsByCategory || {});
@@ -21,7 +33,6 @@ const CardItem = ({ card, highlight = false, expanded = false, onToggle }: Props
   const creditsTotal = sumCreditsAnnual(merchantCredits) + sumCreditsAnnual(recurringCredits);
   const annualFee = Number.isFinite(card.annualFee) ? `$${card.annualFee}` : "—";
   const apr = card.apr ? `${card.apr}` : "—";
-  const updated = card.lastScraped || card.lastUpdated;
   const creditCount = merchantCredits.length + recurringCredits.length;
 
   const logo = getCardLogo(card);
@@ -49,6 +60,14 @@ const CardItem = ({ card, highlight = false, expanded = false, onToggle }: Props
           <span>APR</span>
           <strong>{apr}</strong>
         </div>
+        <button
+          type="button"
+          className={`compare-toggle ${isCompared ? "selected" : ""}`}
+          onClick={onToggleCompare}
+          disabled={compareDisabled && !isCompared}
+        >
+          {isCompared ? "Selected" : "Compare"}
+        </button>
       </div>
 
       <div className="card-summary">
@@ -239,29 +258,22 @@ const filterPerks = (perks: string[]) => {
   return keepers.slice(0, 8);
 };
 
-const formatDate = (value: string) => {
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-};
-
-const OPT_IN_URLS: Record<string, string> = {
-  "american express": "https://www.americanexpress.com/en-us/benefits/",
-  chase: "https://creditcards.chase.com/",
-  citi: "https://www.citi.com/credit-cards",
-  "capital one": "https://www.capitalone.com/credit-cards/",
-};
-
 const renderOptIn = (
-  card: { issuer?: string; sourceUrl?: string },
-  credit: { sourceUrl?: string }
+  card: { issuer?: string; sourceUrl?: string; name?: string },
+  credit: { sourceUrl?: string; label?: string; partner?: string }
 ) => {
-  const issuerKey = (card.issuer || "").toLowerCase();
-  const url = credit.sourceUrl || card.sourceUrl || OPT_IN_URLS[issuerKey];
-  if (!url) return <em>Enrollment required</em>;
+  const link = getEnrollmentLink({
+    cardName: card.name,
+    issuer: card.issuer,
+    label: credit.label,
+    partner: credit.partner,
+    creditSourceUrl: credit.sourceUrl,
+    cardSourceUrl: card.sourceUrl,
+  });
+  if (!link) return <em>Enrollment required</em>;
   return (
-    <a className="optin-btn" href={url} target="_blank" rel="noreferrer">
-      Opt in
+    <a className="optin-btn" href={link.url} target="_blank" rel="noreferrer">
+      {link.ctaLabel}
     </a>
   );
 };

@@ -1,0 +1,15 @@
+# Root workspace ignore
+.DS_Store
+Thumbs.db
+node_modules/
+*.log
+.env
+.env.*
+backend/node_modules/
+backend/dist/
+frontend-vite/node_modules/
+frontend-vite/dist/
+frontend-vite/build/
+frontend-vite/.vite/
+frontend-vite/.cache/
+frontend-vite/coverage/

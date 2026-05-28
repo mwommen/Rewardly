@@ -11,6 +11,11 @@ import fetch from "node-fetch";
 import crypto from "node:crypto";
 import { pickParser } from "./parsers";
 import { CARD_OVERRIDES } from "./overrides/cards";
+import {
+  cleanPerksForStorage,
+  evaluateBenefitsQuality,
+  isLikelyJunkBenefitText,
+} from "./benefitsQuality";
 import type {
   BenefitsPayload,
   MerchantCredit,
@@ -36,6 +41,15 @@ type ScrapeResult = PartialCard & {
   recurringCredits?: RecurringCredit[];
   access?: { id: string; label: string; details?: string; sourceUrl?: string }[];
   insurances?: { id: string; label: string; details?: string; sourceUrl?: string }[];
+  scrapeQa?: {
+    needsReview: boolean;
+    total: number;
+    junkCount: number;
+    junkRatio: number;
+    sample: string[];
+    checkedAt: string;
+  };
+  reviewStatus?: "ok" | "needs_review";
 };
 
 type StoredCard = {
@@ -56,6 +70,15 @@ type StoredCard = {
   sourceUrl?: string;
   confidence?: number;
   lastScraped?: string;
+  scrapeQa?: {
+    needsReview: boolean;
+    total: number;
+    junkCount: number;
+    junkRatio: number;
+    sample: string[];
+    checkedAt: string;
+  };
+  reviewStatus?: "ok" | "needs_review";
 };
 
 type BenefitsHistoryEntry = {
@@ -73,6 +96,8 @@ function sanitizeCredits<T extends { label: string; amountUSD: number; period: s
   const seen = new Set<string>();
   const normalizedSeen = new Set<string>();
   return credits.filter((credit) => {
+    const raw = String(credit.label || "");
+    if (isLikelyJunkBenefitText(raw)) return false;
     const cleaned = (credit.label || "")
       .replace(/<[^>]+>/g, " ")
       .replace(/&nbsp;|&#160;|\u00a0/gi, " ")
@@ -90,6 +115,7 @@ function sanitizeCredits<T extends { label: string; amountUSD: number; period: s
       (credit as any).label = label;
     }
     if (!label || label.length > 160) return false;
+    if (isLikelyJunkBenefitText(label)) return false;
     if (/[<>]/.test(label) || /https?:\/\//i.test(label)) return false;
     if (
       /(credit\s*cards?|creditcards|\/credit-cards|icell=|jp_ltg=|utm_|hamnav|footer|header|nav)/i.test(label)
@@ -144,7 +170,7 @@ function stableSort(value: unknown): unknown {
   return value;
 }
 
-function hashBenefits(benefits: BenefitsPayload): string {
+export function hashBenefits(benefits: BenefitsPayload): string {
   const normalized = stableSort(benefits);
   return crypto.createHash("sha256").update(JSON.stringify(normalized)).digest("hex");
 }
@@ -344,6 +370,15 @@ export async function scrapeCardUrl(url: string, slug: string): Promise<ScrapeRe
       ? { ...enrichment, lastScraped: new Date().toISOString() }
       : undefined;
 
+    const cleanedPerks = cleanPerksForStorage(
+      Array.from(
+        new Set([...(partial.perks || []), ...(enrichment?.perks || [])].map((p) => String(p || "").trim()).filter(Boolean))
+      )
+    );
+
+    const cleanedMerchantCredits = sanitizeCredits(enrichment?.merchantCredits);
+    const cleanedRecurringCredits = sanitizeCredits(enrichment?.recurringCredits);
+
     const result: ScrapeResult = {
       slug,
       name: partial.name || slug,
@@ -351,9 +386,7 @@ export async function scrapeCardUrl(url: string, slug: string): Promise<ScrapeRe
       annualFee: typeof partial.annualFee === "number" ? partial.annualFee : null,
       apr: partial.apr ?? null,
       rewardsByCategory: partial.rewardsByCategory || {},
-      perks: Array.from(
-        new Set([...(partial.perks || []), ...(enrichment?.perks || [])].map((p) => String(p || "").trim()).filter(Boolean))
-      ),
+      perks: cleanedPerks,
       signupOffer: partial.signupOffer ?? enrichment?.signupOffer ?? null,
       sourceUrl: partial.sourceUrl || enrichment?.sourceUrl || url,
       confidence:
@@ -365,8 +398,8 @@ export async function scrapeCardUrl(url: string, slug: string): Promise<ScrapeRe
       lastScraped: new Date().toISOString(),
       benefitsDetail,
       rewardsRotating: enrichment?.rewardsRotating,
-      merchantCredits: sanitizeCredits(enrichment?.merchantCredits),
-      recurringCredits: sanitizeCredits(enrichment?.recurringCredits),
+      merchantCredits: cleanedMerchantCredits,
+      recurringCredits: cleanedRecurringCredits,
       access: enrichment?.access,
       insurances: enrichment?.insurances,
     };
@@ -385,6 +418,12 @@ export async function scrapeCardUrl(url: string, slug: string): Promise<ScrapeRe
       if (override.benefitsDetail) result.benefitsDetail = override.benefitsDetail;
     }
 
+    const scrapeQa = evaluateBenefitsQuality({
+      perks: result.perks,
+      merchantCredits: result.merchantCredits?.map((c) => ({ label: c.label })),
+      recurringCredits: result.recurringCredits?.map((c) => ({ label: c.label })),
+    });
+
     console.log("✅ Extracted (adapter + enrichment)", {
       name: result.name,
       annualFee: result.annualFee,
@@ -393,9 +432,14 @@ export async function scrapeCardUrl(url: string, slug: string): Promise<ScrapeRe
       recurringCredits: result.recurringCredits?.length || 0,
       perksSample: (result.perks || []).slice(0, 3),
       confidence: result.confidence,
+      reviewStatus: scrapeQa.needsReview ? "needs_review" : "ok",
     });
 
-    return result;
+    return {
+      ...result,
+      scrapeQa,
+      reviewStatus: scrapeQa.needsReview ? "needs_review" : "ok",
+    };
   } catch (err) {
     console.error("❌ Scrape error for", url, err);
     return null;
@@ -457,11 +501,13 @@ if (require.main === module) {
         (res as any).merchantCredits?.length ? (res as any).merchantCredits : existing?.merchantCredits || [],
       recurringCredits:
         (res as any).recurringCredits?.length ? (res as any).recurringCredits : existing?.recurringCredits || [],
-      perks: res?.perks && res.perks.length ? res.perks : existing?.perks || [],
+      perks: res?.perks && res.perks.length ? cleanPerksForStorage(res.perks) : existing?.perks || [],
       signupOffer: res?.signupOffer ?? existing?.signupOffer ?? null,
       apr: res?.apr ?? existing?.apr ?? null,
       issuer: res?.issuer ?? existing?.issuer ?? null,
       benefitsDetail: res?.benefitsDetail ?? existing?.benefitsDetail,
+      scrapeQa: res?.scrapeQa ?? existing?.scrapeQa,
+      reviewStatus: res?.reviewStatus ?? existing?.reviewStatus ?? "ok",
       lastScraped: res?.lastScraped ?? existing?.lastScraped ?? new Date().toISOString(),
       confidence:
         typeof res?.confidence === "number"

@@ -2,7 +2,7 @@ export type CategoryKey =
   | "restaurants" | "groceries" | "gas" | "travel" | "airfare" | "hotels"
   | "rideshare" | "transit" | "streaming" | "drugstores" | "wholesale"
   | "homeimprovement" | "online" | "departmentstores" | "gym" | "utilities"
-  | "amazon" | "walmart" | "target" | "entertainment" | "other";
+  | "amazon" | "walmart" | "target" | "entertainment" | "apparel" | "online_shopping" | "other";
 
 const MCC_TO_CATEGORY: Record<string, CategoryKey> = {
   "5411": "groceries",
@@ -21,6 +21,12 @@ const BRAND_TO_CATEGORY: Record<string, CategoryKey> = {
   "amazon": "amazon",
   "walmart": "walmart",
   "target": "target",
+  "lululemon": "apparel",
+  "lulu lemon": "apparel",
+  "nike": "apparel",
+  "adidas": "apparel",
+  "saks": "departmentstores",
+  "saks fifth avenue": "departmentstores",
   "costco": "wholesale",
   "sam's club": "wholesale",
   "home depot": "homeimprovement",
@@ -46,7 +52,13 @@ export function inferCategories(merchant: string, mcc?: string): CategoryKey[] {
 
   if (m.includes("market") || m.includes("grocery")) set.add("groceries");
   if (m.includes("gas") || m.includes("fuel")) set.add("gas");
-  if (m.includes("restaurant") || m.includes("cafe") || m.includes("pizza") || m.includes("coffee")) set.add("restaurants");
+  if (m.includes("dining") || m.includes("restaurant") || m.includes("cafe") || m.includes("pizza") || m.includes("coffee")) {
+    set.add("restaurants");
+  }
+  if (m.includes("streaming")) set.add("streaming");
+  if (m.includes("travel")) set.add("travel");
+  if (m.includes("apparel") || m.includes("clothing")) set.add("apparel");
+  if (m.includes("online shopping")) set.add("online_shopping");
   if (set.size === 0) set.add("other");
 
   return [...set];

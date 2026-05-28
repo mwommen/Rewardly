@@ -10,6 +10,7 @@ import scrapeRoutes from "./routes/scrapeRoutes";
 import recommendationRoutes from "./routes/recommendationRoutes";
 import merchantRoutes from "./routes/merchantRoutes";
 import qaRoutes from "./routes/qaRoutes";
+import userBenefitRoutes from "./routes/userBenefitRoutes";
 
 const app = express();
 
@@ -19,11 +20,19 @@ const PORT = Number(process.env.PORT) || 5001;
 // ---- Middleware
 app.use(
   cors({
-    origin: [
-      process.env.FRONTEND_ORIGIN || "http://localhost:5173",
-      /^chrome-extension:\/\//,
-      "http://localhost:5173",
-    ],
+    origin: (origin, callback) => {
+      const allowedOrigins = [
+        process.env.FRONTEND_ORIGIN || "http://localhost:5173",
+        "http://localhost:5173",
+        "http://localhost:5174",
+      ];
+      const localhostRegex = /^http:\/\/localhost:\d+$/;
+      if (!origin || allowedOrigins.includes(origin) || localhostRegex.test(origin) || /^chrome-extension:\/\//.test(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`CORS origin denied: ${origin}`));
+      }
+    },
     credentials: true,
   })
 );
@@ -86,6 +95,7 @@ app.use("/api/plaid-sandbox", plaidSandboxRoutes); // /api/plaid-sandbox/...
 app.use("/api/scrape", scrapeRoutes);              // /api/scrape/...
 app.use("/api/recommendations", recommendationRoutes); // /api/recommendations/...
 app.use("/api", qaRoutes);                             // /api/qa/...
+app.use("/api", userBenefitRoutes);                    // /api/user-benefits/...
 
 // ---- Start
 (async () => {

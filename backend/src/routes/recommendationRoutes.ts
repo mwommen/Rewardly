@@ -13,6 +13,11 @@ const ALLOWED_FIELDS = new Set([
   "estValueUSD",
   "confidence",
   "reason",
+  "why",
+  "matchTier",
+  "confidenceLabel",
+  "matchedBenefit",
+  "lastVerified",
   "matchingCategories",
   "annualFee",
   "perks",
@@ -129,7 +134,7 @@ router.get("/offers", async (req, res) => {
       minRate,
     });
 
-    let offers = result.offers || [];
+    let offers = (result.offers || []).filter((o: any) => Array.isArray(o?.perks) && o.perks.length);
     if (limit) offers = offers.slice(0, limit);
     const projected = project(offers as any[], fields);
 
