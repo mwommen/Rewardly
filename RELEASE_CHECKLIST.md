@@ -39,11 +39,20 @@
 
 ## Key flows to demo
 
-1. Link cards via Plaid and confirm the `Review linked cards` panel.
-2. Show wallet summary and benefit credit rows in the dashboard.
-3. Demonstrate merchant search with matched recommendations.
-4. Show the wallet health score and next-card suggestion.
-5. Use manual card selection for `Add manually` to show fallback wallet behavior.
+1. Open `http://localhost:5173/demo.html` as the demo launcher.
+2. Confirm Amex Platinum is in the Rewardly extension wallet.
+3. Open the Lululemon checkout page from the launcher.
+4. Show the extension popup with the Platinum Lululemon credit.
+5. Click `Enroll` and show the specific Amex benefit flow.
+
+## 90 second script
+
+1. "I have Amex Platinum in my wallet."
+2. "I am checking out at Lululemon."
+3. "Rewardly detects checkout and checks my wallet for live card benefits."
+4. "It finds the Platinum Lululemon credit before I pay."
+5. "Clicking Enroll takes me to the specific Amex benefit flow."
+6. "Rewardly catches card benefits at the exact moment they matter."
 
 ## Buyer-ready talking points
 

@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rewardly Demo</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #111827;
+        color: #f9fafb;
+      }
+
+      .shell {
+        width: min(1040px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 42px 0 56px;
+      }
+
+      header {
+        display: grid;
+        gap: 12px;
+        margin-bottom: 28px;
+      }
+
+      .eyebrow {
+        margin: 0;
+        color: #38bdf8;
+        font-size: 13px;
+        font-weight: 800;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0;
+        max-width: 780px;
+        font-size: clamp(36px, 6vw, 64px);
+        line-height: 0.98;
+        letter-spacing: 0;
+      }
+
+      .lead {
+        margin: 0;
+        max-width: 680px;
+        color: #cbd5e1;
+        font-size: 18px;
+        line-height: 1.55;
+      }
+
+      main {
+        display: grid;
+        grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+        gap: 22px;
+        align-items: start;
+      }
+
+      section,
+      aside {
+        border: 1px solid rgba(148, 163, 184, 0.22);
+        background: rgba(15, 23, 42, 0.82);
+        border-radius: 18px;
+        padding: 22px;
+        box-shadow: 0 22px 70px rgba(0, 0, 0, 0.28);
+      }
+
+      h2 {
+        margin: 0 0 16px;
+        font-size: 20px;
+      }
+
+      .steps {
+        display: grid;
+        gap: 12px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .steps li {
+        display: grid;
+        grid-template-columns: 34px 1fr;
+        gap: 12px;
+        align-items: start;
+        color: #dbeafe;
+      }
+
+      .num {
+        display: inline-grid;
+        place-items: center;
+        width: 34px;
+        height: 34px;
+        border-radius: 999px;
+        background: #38bdf8;
+        color: #0f172a;
+        font-weight: 900;
+      }
+
+      .steps strong {
+        display: block;
+        color: #f8fafc;
+        margin-bottom: 3px;
+      }
+
+      .steps span {
+        color: #94a3b8;
+        font-size: 14px;
+        line-height: 1.45;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 22px;
+      }
+
+      a.button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 44px;
+        padding: 0 16px;
+        border-radius: 12px;
+        text-decoration: none;
+        font-weight: 800;
+        color: #0f172a;
+        background: #38bdf8;
+      }
+
+      a.button.secondary {
+        color: #f8fafc;
+        background: rgba(148, 163, 184, 0.16);
+        border: 1px solid rgba(148, 163, 184, 0.28);
+      }
+
+      .card {
+        display: grid;
+        gap: 14px;
+      }
+
+      .wallet-card {
+        display: grid;
+        grid-template-columns: 86px 1fr;
+        gap: 14px;
+        align-items: center;
+        padding: 14px;
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(148, 163, 184, 0.16);
+      }
+
+      .plat {
+        height: 54px;
+        border-radius: 10px;
+        background: linear-gradient(135deg, #e5e7eb, #9ca3af);
+        border: 1px solid rgba(255, 255, 255, 0.5);
+      }
+
+      .wallet-card strong {
+        display: block;
+      }
+
+      .wallet-card span,
+      .script p {
+        color: #94a3b8;
+      }
+
+      .script {
+        margin-top: 18px;
+        padding-top: 18px;
+        border-top: 1px solid rgba(148, 163, 184, 0.2);
+      }
+
+      .script p {
+        margin: 0 0 10px;
+        line-height: 1.5;
+      }
+
+      code {
+        color: #bae6fd;
+      }
+
+      @media (max-width: 840px) {
+        main {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <header>
+        <p class="eyebrow">Rewardly demo</p>
+        <h1>Catch the Amex Platinum Lululemon benefit at checkout.</h1>
+        <p class="lead">
+          This launcher is the local demo path for the Chrome extension MVP. Use it to rehearse setup, open the checkout page, and record the core story.
+        </p>
+      </header>
+
+      <main>
+        <section>
+          <h2>Demo Flow</h2>
+          <ol class="steps">
+            <li>
+              <span class="num">1</span>
+              <div>
+                <strong>Confirm backend and frontend are running.</strong>
+                <span>Backend on <code>localhost:5001</code>. Frontend on the current Vite port.</span>
+              </div>
+            </li>
+            <li>
+              <span class="num">2</span>
+              <div>
+                <strong>Reload the unpacked extension.</strong>
+                <span>In <code>chrome://extensions</code>, reload Rewardly after code changes.</span>
+              </div>
+            </li>
+            <li>
+              <span class="num">3</span>
+              <div>
+                <strong>Open the checkout page.</strong>
+                <span>The extension should detect Lululemon and show the Amex Platinum benefit.</span>
+              </div>
+            </li>
+            <li>
+              <span class="num">4</span>
+              <div>
+                <strong>Click Enroll.</strong>
+                <span>Amex should route to the specific logged-in Lululemon benefit flow.</span>
+              </div>
+            </li>
+          </ol>
+
+          <div class="actions">
+            <a class="button" href="/demo-checkout-lululemon.html">Open Lululemon Checkout</a>
+            <a class="button secondary" href="/">Open Rewardly Dashboard</a>
+          </div>
+        </section>
+
+        <aside>
+          <h2>What To Say</h2>
+          <div class="card">
+            <div class="wallet-card">
+              <div class="plat" aria-hidden="true"></div>
+              <div>
+                <strong>Amex Platinum</strong>
+                <span>$75 Lululemon quarterly credit</span>
+              </div>
+            </div>
+
+            <div class="script">
+              <p>"I have Amex Platinum in my wallet."</p>
+              <p>"I am checking out at Lululemon."</p>
+              <p>"Rewardly catches a live card benefit before I pay."</p>
+              <p>"Enroll takes me directly to the specific Amex benefit flow."</p>
+            </div>
+          </div>
+        </aside>
+      </main>
+    </div>
+  </body>
+</html>
