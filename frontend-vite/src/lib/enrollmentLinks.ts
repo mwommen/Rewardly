@@ -3,6 +3,7 @@ type EnrollmentLinkInput = {
   issuer?: string;
   label?: string;
   partner?: string;
+  enrollmentUrl?: string;
   creditSourceUrl?: string;
   cardSourceUrl?: string;
 };
@@ -37,6 +38,8 @@ function resolveAmexBenefitPage(cardName?: string): string | null {
 
 export function getEnrollmentLink(input: EnrollmentLinkInput): EnrollmentLink | null {
   const issuerKey = String(input.issuer || "").toLowerCase().trim();
+
+  if (input.enrollmentUrl) return { url: input.enrollmentUrl, ctaLabel: "Enroll" };
 
   if (issuerKey === "american express") {
     const amexBenefitPage = resolveAmexBenefitPage(input.cardName);

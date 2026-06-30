@@ -25,13 +25,13 @@ export type MerchantCredit = {
   eligibleWhen?: { merchantPatterns?: string[]; mcc?: string[] };
   requiresEnrollment?: boolean;
   expiresAt?: string | null;
-  sourceUrl?: string; confidence?: number;
+  sourceUrl?: string; enrollmentUrl?: string; confidence?: number;
 };
 
 export type RecurringCredit = {
   id: string; label: string; amountUSD: number; period: Period;
   partner?: string; requiresEnrollment?: boolean;
-  sourceUrl?: string; confidence?: number;
+  sourceUrl?: string; enrollmentUrl?: string; confidence?: number;
 };
 
 export type BenefitsPayload = {

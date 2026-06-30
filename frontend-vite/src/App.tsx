@@ -6,9 +6,11 @@ import { getCardLogo } from "./lib/cardLogos";
 import { getApplyUrl } from "./lib/applyLinks";
 import { getEnrollmentLink } from "./lib/enrollmentLinks";
 import { API_BASE } from "./lib/api";
-import MapLinkedAccounts from "./MapLinkedAccounts";
+import { trackEvent } from "./lib/analytics";
+import LinkedAccountsReview from "./LinkedAccountsReview";
 import PlaidLinkButton from "./PlaidLinkButton";
 import { useRecommendations } from "./hooks/useRecommendations";
+import CardSearch from "./components/CardSearch";
 import "./App.css";
 
 type UserBenefitState = {
@@ -47,6 +49,14 @@ type WalletSummaryApi = {
   walletHealthScore: number;
 } | null;
 
+type LinkedAccountApi = {
+  mappedCardSlug?: string | null;
+};
+
+type LinkedDocApi = {
+  accounts?: LinkedAccountApi[];
+};
+
 type CreditItem = {
   benefitKey: string;
   cardSlug?: string | null;
@@ -68,6 +78,10 @@ type CreditItem = {
   benefitState?: UserBenefitState | null;
   usedThisPeriod?: boolean;
 };
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
 
 function App() {
   type QaSummary = {
@@ -124,11 +138,11 @@ function App() {
   const [linkedCardSlugs, setLinkedCardSlugs] = useState<string[]>([]);
   const [manualCardSlugs, setManualCardSlugs] = useState<string[]>([]);
   const [showManualLink, setShowManualLink] = useState(false);
-  const [allCardsSearch, setAllCardsSearch] = useState("");
-  const [allCardsIssuer, setAllCardsIssuer] = useState("all");
+  const [showLinkedReview, setShowLinkedReview] = useState(false);
+  const [hasOpenedLinkedReview, setHasOpenedLinkedReview] = useState(false);
   const [linkedRefresh, setLinkedRefresh] = useState(0);
   const [linkStatus, setLinkStatus] = useState<string | null>(null);
-  const [showAllCards, setShowAllCards] = useState(false);
+  
   const [walletRecommendation, setWalletRecommendation] = useState<{
     bestCard: Card | null;
     reason?: { text?: string; matches?: string[]; credits?: Array<{ label: string; requiresEnrollment?: boolean }> } | null;
@@ -137,6 +151,8 @@ function App() {
   } | null>(null);
   const [walletRecommendationLoading, setWalletRecommendationLoading] = useState(false);
   const [walletRecommendationError, setWalletRecommendationError] = useState<string | null>(null);
+  const [showCardSearch, setShowCardSearch] = useState(false);
+  const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [qaSummary, setQaSummary] = useState<QaSummary | null>(null);
   const [qaLoading, setQaLoading] = useState(false);
   const [qaError, setQaError] = useState<string | null>(null);
@@ -163,9 +179,11 @@ function App() {
         const arr = Array.isArray(data) ? data : (data.cards ?? []);
         setCards(arr);
         setLoading(false);
+        trackEvent("page_view", { page: "dashboard", cardCount: arr.length });
       })
       .catch((err) => {
         setError(err.message || "Failed to load cards");
+        trackEvent("page_error", { page: "dashboard", error: err?.message || "unknown" });
         setLoading(false);
       });
   }, []);
@@ -180,9 +198,15 @@ function App() {
       try {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed)) setManualCardSlugs(parsed.filter(Boolean));
-      } catch {}
+      } catch {
+        // Ignore invalid local storage from older builds.
+      }
     }
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem("cco_manual_cards", JSON.stringify(manualCardSlugs));
+  }, [manualCardSlugs]);
 
   useEffect(() => {
     fetch(`${API_BASE}/api/plaid/linked-accounts?userId=${encodeURIComponent(userId)}`)
@@ -191,12 +215,14 @@ function App() {
         return res.json();
       })
       .then((data) => {
-        const linkedDocs = Array.isArray(data?.linked) ? data.linked : [];
+        const linkedDocs: LinkedDocApi[] = Array.isArray(data?.linked) ? data.linked : [];
         const slugs = linkedDocs
-          .flatMap((doc: any) => doc?.accounts || [])
-          .map((acct: any) => String(acct?.mappedCardSlug || "").trim())
-          .filter(Boolean);
-        setLinkedCardSlugs(Array.from(new Set(slugs)));
+          .flatMap((doc) => doc.accounts || [])
+          .map((acct) => String(acct.mappedCardSlug || "").trim())
+          .filter((slug): slug is string => Boolean(slug));
+        const uniqueSlugs = Array.from(new Set(slugs));
+        setLinkedCardSlugs(uniqueSlugs);
+        trackEvent("linked_accounts_loaded", { count: uniqueSlugs.length, docCount: linkedDocs.length });
       })
       .catch(() => {
         setLinkedCardSlugs([]);
@@ -239,10 +265,16 @@ function App() {
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error || "Failed to load wallet summary");
         setWalletSummaryApi(data);
+        trackEvent("wallet_summary_loaded", {
+          linkedCount: data?.linkedCardSlugs?.length ?? 0,
+          walletHealthScore: data?.walletHealthScore,
+          missingCategories: data?.missingCategories,
+        });
       })
       .catch((err) => {
         if (err?.name === "AbortError") return;
         setWalletSummaryError(err?.message || "Failed to load wallet summary");
+        trackEvent("wallet_summary_error", { message: err?.message || "unknown" });
       })
       .finally(() => {
         setWalletSummaryLoading(false);
@@ -286,29 +318,6 @@ function App() {
       limit: 5,
     };
   }, [merchantSubmitted]);
-
-  const curatedSuggestions = [
-    { label: "lululemon", type: "merchant" },
-    { label: "dunkin", type: "merchant" },
-    { label: "saks", type: "merchant" },
-    { label: "resy", type: "merchant" },
-    { label: "uber", type: "merchant" },
-    { label: "doordash", type: "merchant" },
-    { label: "travel", type: "category" },
-    { label: "dining", type: "category" },
-    { label: "groceries", type: "category" },
-    { label: "gas", type: "category" },
-    { label: "streaming", type: "category" },
-  ];
-  const suggestionChips = useMemo(() => {
-    const seen = new Set<string>();
-    return curatedSuggestions.filter((item) => {
-      const key = item.label.toLowerCase().trim();
-      if (!key || seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-  }, []);
 
   const {
     loading: merchantLoading,
@@ -364,9 +373,10 @@ function App() {
 
     return () => controller.abort();
   }, [manualCardSlugs, combinedLinkedSlugs.length, merchantSubmitted.merchant, userId]);
-  const linkedCards = combinedLinkedSlugs.length
-    ? cards.filter((card) => card.slug && combinedLinkedSlugs.includes(card.slug))
-    : [];
+  const linkedCards = useMemo(
+    () => (combinedLinkedSlugs.length ? cards.filter((card) => card.slug && combinedLinkedSlugs.includes(card.slug)) : []),
+    [cards, combinedLinkedSlugs]
+  );
   const creditItems = collectCredits(linkedCards, benefitStates);
   const upcomingCredits = collectUpcomingCredits(creditItems);
 
@@ -380,6 +390,17 @@ function App() {
     const upcomingCount = upcomingCredits.length;
     return { total, totalValue, usedCount, enrolledCount, reminderCount, availableCount, upcomingCount };
   }, [creditItems, upcomingCredits]);
+
+  const effectiveWalletSummary = walletSummaryApi
+    ? {
+        total: walletSummaryApi.totalCredits,
+        availableCount: walletSummaryApi.unusedCredits,
+        totalValue: walletSummaryApi.openValue,
+        enrolledCount: walletSummaryApi.enrolledCredits,
+        reminderCount: walletSummaryApi.remindersEnabled,
+        upcomingCount: walletSummaryApi.topMissedCredits?.length ?? walletSummary.upcomingCount,
+      }
+    : walletSummary;
 
   const walletHealth = useMemo(() => {
     const unusedItems = creditItems.filter((credit) => !credit.usedThisPeriod);
@@ -411,6 +432,7 @@ function App() {
   }, [cards, scoreRange, feeComfort, travelFocus, monthlyBudget, incomeRange, carryBalance, businessOwner, travelFrequency]);
 
   const effectiveWalletNextCard: WalletRecommendedCard | Card | null = walletSummaryApi?.recommendedNextCard ?? walletNextCard;
+  const effectiveWalletLinkedSlugs = walletSummaryApi?.linkedCardSlugs ?? combinedLinkedSlugs;
   const effectiveWalletGaps = walletSummaryApi?.missingCategories ?? walletHealth.gaps;
   const effectiveWalletScore = walletSummaryApi?.walletHealthScore ?? walletHealth.score;
   const effectiveWalletMissed = walletSummaryApi?.topMissedCredits ?? walletHealth.topMissed;
@@ -488,9 +510,9 @@ function App() {
           ...(data?.state || {}),
         },
       }));
-    } catch (err: any) {
+    } catch (err) {
       setBenefitStates((prev) => ({ ...prev, [credit.benefitKey]: existing }));
-      setBenefitStateError(err?.message || "Could not save benefit state. Restart the backend and try again.");
+      setBenefitStateError(getErrorMessage(err, "Could not save benefit state. Restart the backend and try again."));
     } finally {
       setSavingBenefitKeys((prev) => prev.filter((key) => key !== credit.benefitKey));
     }
@@ -500,12 +522,21 @@ function App() {
     const targets = creditItems.filter((credit) => !credit.benefitState?.remindEnabled);
     for (const credit of targets) {
       // Sequential on purpose to avoid spamming local dev backend.
-      // eslint-disable-next-line no-await-in-loop
       await persistBenefitState(credit, { remindEnabled: true });
     }
   };
+
+  const markAllEnrolled = async () => {
+    const targets = creditItems.filter((credit) => credit.requiresEnrollment && !credit.benefitState?.enrolled);
+    for (const credit of targets) {
+      // Sequential on purpose to avoid spamming local dev backend.
+      await persistBenefitState(credit, { enrolled: true });
+    }
+  };
+
   const unlinkManualCard = (slug: string) => {
     if (!slug) return;
+    trackEvent("manual_card_removed", { slug });
     setManualCardSlugs((prev) => {
       const next = prev.filter((s) => s !== slug);
       localStorage.setItem("cco_manual_cards", JSON.stringify(next));
@@ -533,15 +564,20 @@ function App() {
         return true;
       })
       .reduce((map, card) => {
-        const raw = (card.name || "").trim().toLowerCase();
-        const normalized = raw.replace(/\s+card$/, "").replace(/\s+credit card$/, "").trim();
-        const key = (card.slug || normalized || raw).trim().toLowerCase();
+        const name = (card.name || "").trim();
+        const issuer = (card.issuer || "Other").trim();
+        const normalized = name.toLowerCase().replace(/\s+card$/, "").replace(/\s+credit card$/, "").trim();
+        const key = card.slug?.trim().toLowerCase() || `${normalized}|${issuer.toLowerCase()}`;
         if (!key) return map;
         if (!map.has(key)) {
           map.set(key, card);
           return map;
         }
         const existing = map.get(key)!;
+        if (card.slug && !existing.slug) {
+          map.set(key, card);
+          return map;
+        }
         const hasLogo = Boolean(getCardLogo(card));
         const existingHasLogo = Boolean(getCardLogo(existing));
         if (hasLogo && !existingHasLogo) {
@@ -557,22 +593,7 @@ function App() {
       }, new Map<string, Card>())
       .values()
   );
-  const allCardIssuers = Array.from(
-    new Set(
-      allCardsList
-        .map((card) => card.issuer || "Other")
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b))
-    )
-  );
-  const filteredAllCards = allCardsList.filter((card) => {
-    const name = (card.name || "").toLowerCase();
-    const issuer = (card.issuer || "Other").toLowerCase();
-    const matchesIssuer = allCardsIssuer === "all" || issuer === allCardsIssuer;
-    const matchesSearch = !allCardsSearch || name.includes(allCardsSearch);
-    return matchesIssuer && matchesSearch;
-  });
-  const visibleAllCards = showAllCards ? filteredAllCards : filteredAllCards.slice(0, 10);
+ 
 
   if (loading) return <div className="status">Loading cards...</div>;
   if (error) return <div className="status error">Error: {error}</div>;
@@ -586,6 +607,20 @@ function App() {
   );
   const exactMatchCount = recommendationRows.filter((item) => item.matchTier === "exact_benefit").length;
   const verifiedCount = recommendationRows.filter((item) => Boolean(item.lastVerified)).length;
+  const visibleRecommendationRows = recommendationRows.slice(0, 3);
+  const primaryRecommendation = visibleRecommendationRows[0] || null;
+  const secondaryRecommendations = visibleRecommendationRows.slice(1);
+  const merchantSearchTerm = (merchantSubmitted.merchant || merchantSubmitted.domain || "").trim().toLowerCase();
+  const isCardSearchTerm = merchantSearchTerm.length > 0 && cards.some((card) => {
+    const name = (card.name || "").toLowerCase();
+    const issuer = (card.issuer || "").toLowerCase();
+    return (
+      name === merchantSearchTerm || issuer === merchantSearchTerm ||
+      name.includes(merchantSearchTerm) || issuer.includes(merchantSearchTerm) ||
+      merchantSearchTerm.includes(name) || merchantSearchTerm.includes(issuer)
+    );
+  });
+  const shouldHideMerchantTags = isCardSearchTerm && exactMatchCount === 0;
   const categoryKeys = new Set([
     "travel",
     "dining",
@@ -610,6 +645,45 @@ function App() {
   };
   const selectedTerm = (merchantSubmitted.merchant || "").trim().toLowerCase();
   const isCategoryQuery = categoryKeys.has(selectedTerm);
+  const hasWalletCards = combinedLinkedSlugs.length > 0;
+  const hasReviewedLinkedCards = hasWalletCards && hasOpenedLinkedReview;
+  const hasWalletSummary = Boolean(walletSummaryApi && hasWalletCards && !walletSummaryError);
+  const hasTriedMerchantSearch = Boolean((merchantSubmitted.merchant || "").trim());
+  const onboardingSteps = [
+    {
+      key: "add-cards",
+      label: "Add cards",
+      detail: hasWalletCards ? `${combinedLinkedSlugs.length} cards connected` : "Link or select cards you already carry",
+      complete: hasWalletCards,
+    },
+    {
+      key: "review",
+      label: "Review matches",
+      detail: hasWalletCards ? "Confirm mapped accounts and manual cards" : "Available after cards are added",
+      complete: hasReviewedLinkedCards,
+    },
+    {
+      key: "health",
+      label: "Check wallet health",
+      detail: hasWalletSummary ? `Score ${effectiveWalletScore}` : "Load credit coverage and next-card gaps",
+      complete: hasWalletSummary,
+    },
+    {
+      key: "merchant",
+      label: "Try merchant search",
+      detail: hasTriedMerchantSearch ? merchantSubmitted.merchant : "Run a known example like Uber",
+      complete: hasTriedMerchantSearch,
+    },
+  ];
+  const completedOnboardingSteps = onboardingSteps.filter((step) => step.complete).length;
+  const onboardingComplete = completedOnboardingSteps === onboardingSteps.length;
+  const nextOnboardingStep = onboardingSteps.find((step) => !step.complete);
+  const runDemoMerchant = (merchant: string) => {
+    setActiveMode("use");
+    setMerchantForm((prev) => ({ ...prev, merchant, domain: "", amount: "", mcc: "" }));
+    setMerchantSubmitted({ merchant, domain: "", amount: "", mcc: "" });
+    trackEvent("onboarding_demo_merchant", { merchant });
+  };
 
   return (
     <div className="flow">
@@ -618,11 +692,11 @@ function App() {
           <span className="flow-mark">✦</span>
           <div>
             <p className="flow-label">Rewardly</p>
-            <h1>Capture every benefit now, discover your best next card later.</h1>
+            <h1>Turn every swipe into smarter rewards.</h1>
           </div>
         </div>
         <p className="flow-sub">
-          Search any merchant to surface matching credits, then compare cards by rewards, fees, and fit.
+          Link your wallet or search merchants to uncover the best rewards, save more on credits, and identify your next ideal card.
         </p>
         <div className="mode-cta">
           <button
@@ -630,17 +704,357 @@ function App() {
             className={activeMode === "use" ? "active" : ""}
             onClick={() => setActiveMode("use")}
           >
-            Use a Card Now
+            Search merchant rewards
           </button>
           <button
             type="button"
             className={activeMode === "apply" ? "active" : ""}
             onClick={() => setActiveMode("apply")}
           >
-            Find a Card to Apply For
+            Discover new cards
+          </button>
+          <button
+            type="button"
+            className="browse-cards"
+            onClick={() => setShowCardSearch(true)}
+          >
+            Browse cards
           </button>
         </div>
+        <div className="flow-cta">
+          <PlaidLinkButton
+            userId={userId}
+            apiBase={API_BASE}
+            onAccessToken={() => setLinkedRefresh((v) => v + 1)}
+            className="hero-connect"
+            label="Link your cards"
+          />
+        </div>
+        <div className="hero-wallet-summary">
+          <div className="wallet-score">Wallet score: <strong>{effectiveWalletScore}</strong></div>
+          <div className="wallet-linked">Linked: <strong>{effectiveWalletLinkedSlugs.length}</strong> cards</div>
+          <div className="wallet-next">Next: <em>{effectiveWalletNextCard?.name || "—"}</em></div>
+        </div>
       </header>
+
+      <section className={onboardingComplete ? "setup-panel complete" : "setup-panel"}>
+        <div className="setup-copy">
+          <div className="wallet-visual" aria-hidden="true">
+            <div className="wallet-body">
+              <span className="wallet-card card-one" />
+              <span className="wallet-card card-two" />
+              <span className="wallet-smile" />
+            </div>
+            <span className="wallet-spark spark-one" />
+            <span className="wallet-spark spark-two" />
+          </div>
+          <div className="setup-message">
+            <div>
+              <p className="setup-eyebrow">{onboardingComplete ? "Wallet ready" : "Start here"}</p>
+              <h2>
+                {onboardingComplete
+                  ? "Your wallet is ready to shop smarter."
+                  : nextOnboardingStep
+                  ? `Let's get your wallet useful: ${nextOnboardingStep.label.toLowerCase()}`
+                  : "Set up your wallet"}
+              </h2>
+            </div>
+            <p>
+              {onboardingComplete
+                ? "Search a store and Rewardly will tell you which card earns the most or unlocks a credit."
+                : "Add the cards you carry, confirm the matches, then try a store like Uber to see your best card in plain English."}
+            </p>
+          </div>
+        </div>
+
+        <div className="setup-progress" aria-label="Wallet setup progress">
+          <div className="setup-progress-meter">
+            <span style={{ width: `${(completedOnboardingSteps / onboardingSteps.length) * 100}%` }} />
+          </div>
+          <strong>
+            {completedOnboardingSteps}/{onboardingSteps.length}
+          </strong>
+        </div>
+
+        <div className="setup-steps">
+          {onboardingSteps.map((step, index) => (
+            <div key={step.key} className={step.complete ? "setup-step done" : "setup-step"}>
+              <span className="setup-step-index">{step.complete ? "✓" : index + 1}</span>
+              <div>
+                <strong>{step.label}</strong>
+                <p>{step.detail}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="setup-actions">
+          {!hasWalletCards ? (
+            <>
+              <PlaidLinkButton
+                userId={userId}
+                apiBase={API_BASE}
+                onAccessToken={() => setLinkedRefresh((v) => v + 1)}
+                onSuccess={() => {
+                  setLinkStatus("Linked successfully. Review mapped cards.");
+                  setHasOpenedLinkedReview(true);
+                  setShowLinkedReview(true);
+                  trackEvent("plaid_link_complete", { status: "success", source: "setup_panel" });
+                }}
+                onError={(message) => {
+                  setLinkStatus(message);
+                  trackEvent("plaid_link_complete", { status: "error", source: "setup_panel", message });
+                }}
+                className="setup-action primary"
+                label="Link cards"
+              />
+              <button type="button" className="setup-action" onClick={() => setShowManualLink(true)}>
+                Add manually
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="setup-action primary"
+                onClick={() => {
+                  setHasOpenedLinkedReview(true);
+                  setShowLinkedReview(true);
+                  trackEvent("linked_review_opened", { source: "setup_panel" });
+                }}
+              >
+                Review linked cards
+              </button>
+              <button type="button" className="setup-action" onClick={() => setShowManualLink(true)}>
+                Edit cards
+              </button>
+            </>
+          )}
+          <button type="button" className="setup-action" onClick={() => setLinkedRefresh((v) => v + 1)}>
+            Refresh health
+          </button>
+        </div>
+
+        <div className="setup-demo-row">
+          <span>Try a demo:</span>
+          {["Uber", "Resy", "Dining", "Travel"].map((merchant) => (
+            <button key={merchant} type="button" onClick={() => runDemoMerchant(merchant)}>
+              {merchant}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {selectedCard && (
+        <section className="section selected-card-panel">
+          <div className="selected-card-header">
+            <div className="selected-card-heading">
+              {getCardLogo(selectedCard) ? (
+                <div className="selected-card-logo">
+                  <img src={getCardLogo(selectedCard) || ""} alt={`${selectedCard.name} logo`} />
+                </div>
+              ) : null}
+              <div>
+                <p className="selected-card-label">Selected card</p>
+                <h2>{selectedCard.name}</h2>
+                <p className="muted">{selectedCard.issuer || "Issuer"}</p>
+              </div>
+            </div>
+            <div className="selected-card-actions">
+              <button type="button" className="secondary" onClick={() => setSelectedCard(null)}>
+                Clear selection
+              </button>
+            </div>
+          </div>
+          <div className="selected-card-grid">
+            <div className="selected-card-summary">
+              <div className="selected-card-meta">
+                {selectedCard.type ? <span>{selectedCard.type}</span> : null}
+                {selectedCard.annualFee !== undefined ? (
+                  <span>{selectedCard.annualFee === 0 ? "No annual fee" : `$${selectedCard.annualFee} annual fee`}</span>
+                ) : null}
+                {selectedCard.apr ? <span>{selectedCard.apr} APR</span> : null}
+              </div>
+              {selectedCard.signupOffer ? (
+                <p className="selected-card-offer">
+                  <strong>Signup bonus:</strong> {selectedCard.signupOffer}
+                </p>
+              ) : null}
+              <div className="selected-card-metric">
+                <strong>Top perks</strong>
+                <ul>
+                  {getApplyPerks(selectedCard).length > 0 ? (
+                    getApplyPerks(selectedCard).map((perk) => <li key={perk}>{perk}</li>)
+                  ) : (
+                    <li>No perks available</li>
+                  )}
+                </ul>
+              </div>
+              {(selectedCard.merchantCredits?.length || selectedCard.recurringCredits?.length) ? (
+                <div className="selected-card-credits">
+                  <strong>Available credits</strong>
+                  <p className="selected-card-credit-summary">
+                    {((selectedCard.merchantCredits?.length || 0) + (selectedCard.recurringCredits?.length || 0))} credit{((selectedCard.merchantCredits?.length || 0) + (selectedCard.recurringCredits?.length || 0)) === 1 ? "" : "s"} found
+                  </p>
+                  <ul>
+                    {[...((selectedCard.merchantCredits || [])), ...((selectedCard.recurringCredits || []))]
+                      .slice(0, 4)
+                      .map((credit) => (
+                        <li key={credit.id || credit.label}>
+                          <span>{credit.label}</span>
+                          <span>{credit.amountUSD ? `$${credit.amountUSD}` : ""}</span>
+                          <span>{credit.period}</span>
+                        </li>
+                      ))}
+                  </ul>
+                </div>
+              ) : null}
+              <a className="apply-link" href={getApplyUrl(selectedCard) || "#"} target="_blank" rel="noreferrer">
+                Apply / Learn more
+              </a>
+            </div>
+            <div className="selected-card-compare">
+              <h3>Compare to wallet</h3>
+              {walletSummaryApi?.recommendedNextCard ? (
+                <div>
+                  <strong>{walletSummaryApi.recommendedNextCard.name}</strong>
+                  <p className="muted">Recommended next card from linked wallet</p>
+                  <p>{walletSummaryApi.linkedCardSlugs.length} linked card{walletSummaryApi.linkedCardSlugs.length === 1 ? "" : "s"}</p>
+                  <p className="muted">Wallet score: {walletSummaryApi.walletHealthScore ?? "n/a"}</p>
+                </div>
+              ) : (
+                <p className="muted">Link cards to compare this selection against your wallet.</p>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
+      <section className="wallet-coach-overview">
+        <div className="wallet-coach-head">
+          <div className="wallet-coach-title">
+            <div className="wallet-visual small" aria-hidden="true">
+              <div className="wallet-body">
+                <span className="wallet-card card-one" />
+                <span className="wallet-card card-two" />
+                <span className="wallet-smile" />
+              </div>
+            </div>
+            <div>
+              <strong>Your wallet</strong>
+              <p>See what your cards can do today: credits to use, categories you are missing, and the next card that would round things out.</p>
+            </div>
+          </div>
+          <div className="wallet-coach-actions">
+            <button
+              type="button"
+              className="wallet-coach-action secondary"
+              onClick={() => setLinkedRefresh((v) => v + 1)}
+            >
+              Refresh wallet
+            </button>
+            <button
+              type="button"
+              className="wallet-coach-action secondary"
+              onClick={() => setShowManualLink(true)}
+            >
+              Edit linked cards
+            </button>
+          </div>
+        </div>
+
+        <div className="wallet-summary-header">
+          <div className="wallet-score">
+            <strong>Wallet score</strong>
+            <div className="wallet-score-value">{walletSummaryApi?.walletHealthScore ?? "—"}</div>
+          </div>
+          <div className="wallet-linked-count">
+            <strong>Linked cards</strong>
+            <div className="wallet-linked-value">{combinedLinkedSlugs.length}</div>
+          </div>
+          {walletSummaryApi?.recommendedNextCard ? (
+            <div className="wallet-recommendation">
+              <strong>Recommended next</strong>
+              <div className="wallet-recommendation-card">
+                <div className="rec-name">{walletSummaryApi.recommendedNextCard.name}</div>
+                <div className="muted">{walletSummaryApi.recommendedNextCard.issuer}</div>
+              </div>
+            </div>
+          ) : null}
+          </div>
+
+        {combinedLinkedSlugs.length > 0 && !walletSummaryLoading && !walletSummaryError && (
+          <div className="wallet-benefit-summary">
+            <div className="wallet-summary-card">
+              <strong>{effectiveWalletSummary.availableCount}</strong>
+              <span>Unused credits</span>
+            </div>
+            <div className="wallet-summary-card">
+              <strong>${Math.round(effectiveWalletSummary.totalValue || 0).toLocaleString()}</strong>
+              <span>Open-value rewards</span>
+            </div>
+            <div className="wallet-summary-card">
+              <strong>{effectiveWalletSummary.enrolledCount}</strong>
+              <span>Enrolled credits</span>
+            </div>
+            <div className="wallet-summary-card">
+              <strong>{effectiveWalletSummary.upcomingCount}</strong>
+              <span>Upcoming credits</span>
+            </div>
+          </div>
+        )}
+
+        {walletSummaryLoading ? (
+          <p className="result-note">Refreshing wallet summary…</p>
+        ) : walletSummaryError ? (
+          <p className="result-note">Wallet summary error: {walletSummaryError}</p>
+        ) : combinedLinkedSlugs.length === 0 ? (
+          <div className="wallet-coach-empty">
+            <p>You haven’t linked any cards yet. Add your wallet to surface reward credits, reminders, and the best next card to apply for.</p>
+            <div className="wallet-coach-empty-actions">
+              <PlaidLinkButton
+                userId={userId}
+                apiBase={API_BASE}
+                onAccessToken={() => setLinkedRefresh((v) => v + 1)}
+                className="wallet-coach-action"
+                label="Link cards with Plaid"
+              />
+              <button
+                type="button"
+                className="wallet-coach-action"
+                onClick={() => setShowManualLink(true)}
+              >
+                Add manually
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="wallet-coach-note">
+              {effectiveWalletGaps.length > 0 ? (
+                <p>
+                  <strong>Wallet gaps:</strong> {effectiveWalletGaps.join(", ")}. Add cards or benefits to improve coverage.
+                </p>
+              ) : (
+                <p>
+                  <strong>Wallet coverage looks good.</strong>
+                </p>
+              )}
+            </div>
+          </>
+        )}
+      </section>
+
+      {showCardSearch && (
+        <CardSearch
+          cards={cards}
+          onClose={() => setShowCardSearch(false)}
+          onSelect={(card) => {
+            setSelectedCard(card);
+            setShowCardSearch(false);
+          }}
+        />
+      )}
 
       {activeMode === "use" && (
         <section className="section">
@@ -662,26 +1076,31 @@ function App() {
                 />
               </label>
             </div>
-            <p className="merchant-hint">Try a merchant credit or category to surface matching benefits.</p>
-            {suggestionChips.length > 0 && (
-              <div className="merchant-suggestions">
-                <span className="merchant-suggestions-label">Popular matches</span>
-                {suggestionChips.map((item) => (
-                  <button
-                    key={`${item.type}-${item.label}`}
-                    type="button"
-                    className={`merchant-chip ${item.type === "category" ? "category" : ""}`}
-                    onClick={() => {
-                      const value = item.label;
-                      setMerchantForm((s) => ({ ...s, merchant: value }));
-                      setMerchantSubmitted((s) => ({ ...s, merchant: value }));
-                    }}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            )}
+            <div className="merchant-suggestions">
+              <div className="merchant-suggestions-label">Quick search</div>
+              {[
+                "Amazon",
+                "Starbucks",
+                "Netflix",
+                "Groceries",
+                "Travel",
+                "Gas",
+              ].map((term) => (
+                <button
+                  type="button"
+                  key={term}
+                  className="merchant-chip"
+                  onClick={() => {
+                    const next = { merchant: term, domain: "", amount: "", mcc: "" };
+                    setMerchantForm(next);
+                    setMerchantSubmitted(next);
+                  }}
+                >
+                  {term}
+                </button>
+              ))}
+            </div>
+            <p className="merchant-hint">Search a merchant or category to surface matching credits and card benefits.</p>
             <button type="submit" disabled={!merchantForm.merchant.trim()}>
               Find best card
             </button>
@@ -702,10 +1121,10 @@ function App() {
               <p className="merchant-trust-note">
                 {exactMatchCount > 0
                   ? `${exactMatchCount} exact benefit match${exactMatchCount > 1 ? "es" : ""} found.`
-                  : "No exact merchant benefit found, showing best available rewards matches."}{" "}
+                  : "Showing the best available reward matches for this search."}
                 {verifiedCount > 0
-                  ? `${verifiedCount} card${verifiedCount > 1 ? "s" : ""} include a recent verification date.`
-                  : "Verification date unavailable for these cards."}
+                  ? ` ${verifiedCount} card${verifiedCount > 1 ? "s" : ""} include a recent verification date.`
+                  : ""}
               </p>
               {combinedLinkedSlugs.length > 0 && (
                 <div className="wallet-recommendation">
@@ -746,14 +1165,15 @@ function App() {
                 </div>
               )}
               <div className="candidate-list">
-                {recommendationRows.map((item) => {
+                {primaryRecommendation ? (() => {
+                  const item = primaryRecommendation;
                   const fullCard = cards.find((card) => card.slug === item.card.slug);
                   const applyUrl = getApplyUrl(fullCard || item.card);
-                  const offerMatch = filteredOffers.find((offer) => offer.card.slug === item.card.slug);
-                  const offerPerks = offerMatch?.perks?.slice(0, 2) || [];
                   const categoryBenefit = isCategoryQuery
                     ? buildCategoryBenefit(fullCard, selectedTerm, categoryLabels)
                     : null;
+                  const offerMatch = filteredOffers.find((offer) => offer.card.slug === item.card.slug);
+                  const offerPerks = offerMatch?.perks?.slice(0, 2) || [];
                   const perksToShow = item.matchedBenefit
                     ? [item.matchedBenefit]
                     : offerPerks.length
@@ -770,58 +1190,106 @@ function App() {
                     ? "Recommended from category rewards and card data."
                     : "Recommended from baseline earn rate and available card data.";
                   return (
-                    <div key={item.card.slug} className="merchant-card-row">
-                      {getCardLogo(fullCard) && (
-                        <img
-                          className="merchant-logo"
-                          src={getCardLogo(fullCard) || ""}
-                          alt={`${item.card.name} card`}
-                          onError={(e) => {
-                            (e.currentTarget as HTMLImageElement).style.display = "none";
-                          }}
-                        />
-                      )}
-                      <div className="merchant-meta">
-                        <strong>
-                          {item.card.name}
-                          {fullCard?.issuer ? ` · ${fullCard.issuer}` : ""}
-                        </strong>
-                        <div className="merchant-tags">
-                          <span className={`merchant-tag ${matchTone}`}>{matchLabel}</span>
-                          <span>{item.confidenceLabel || "Match"}</span>
-                          {typeof item.effectiveRate === "number" && <span>{(item.effectiveRate * 100).toFixed(2)}% effective</span>}
-                          {typeof item.annualFee === "number" && <span>${item.annualFee} annual fee</span>}
-                          {verificationLabel && <span>{verificationLabel}</span>}
+                    <div className="merchant-top-card">
+                      <div className="merchant-card-row">
+                        {getCardLogo(fullCard) && (
+                          <img
+                            className="merchant-logo"
+                            src={getCardLogo(fullCard) || ""}
+                            alt={`${item.card.name} card`}
+                            onError={(e) => {
+                              (e.currentTarget as HTMLImageElement).style.display = "none";
+                            }}
+                          />
+                        )}
+                        <div className="merchant-meta">
+                          <h4>Best match</h4>
+                          <strong>
+                            {item.card.name}
+                            {fullCard?.issuer ? ` · ${fullCard.issuer}` : ""}
+                          </strong>
+                          {!shouldHideMerchantTags ? (
+                            <div className="merchant-tags">
+                              <span className={`merchant-tag ${matchTone}`}>{matchLabel}</span>
+                              <span>{item.confidenceLabel || "Match"}</span>
+                              {verificationLabel && <span>{verificationLabel}</span>}
+                            </div>
+                          ) : null}
+                          <p className="merchant-reason">{trustSummary}</p>
+                          {perksToShow.length > 0 && (
+                            <ul className="merchant-perks">
+                              {perksToShow.map((perk) => (
+                                <li key={perk}>{perk}</li>
+                              ))}
+                            </ul>
+                          )}
+                          {applyUrl && (
+                            <a className="apply-link merchant-apply-link" href={applyUrl} target="_blank" rel="noreferrer">
+                              Apply
+                            </a>
+                          )}
                         </div>
-                        <p className="merchant-reason">{trustSummary}</p>
-                        {perksToShow.length > 0 && (
-                          <ul className="merchant-perks">
-                            {perksToShow.map((perk) => (
-                              <li key={perk}>{perk}</li>
-                            ))}
-                          </ul>
-                        )}
-                        {Array.isArray(item.why) && item.why.length > 0 && (
-                          <ul className="merchant-perks">
-                            {item.why.slice(0, 2).map((line) => (
-                              <li key={line}>{line}</li>
-                            ))}
-                          </ul>
-                        )}
-                        {applyUrl && (
-                          <a className="apply-link merchant-apply-link" href={applyUrl} target="_blank" rel="noreferrer">
-                            Apply
-                          </a>
-                        )}
                       </div>
                     </div>
                   );
-                })}
+                })() : null}
+
+                {secondaryRecommendations.length > 0 && (
+                  <div className="merchant-secondary-list">
+                    <h4>Other strong matches</h4>
+                    <div className="merchant-secondary-items">
+                      {secondaryRecommendations.map((item) => {
+                        const fullCard = cards.find((card) => card.slug === item.card.slug);
+                        const applyUrl = getApplyUrl(fullCard || item.card);
+                        const categoryBenefit = isCategoryQuery
+                          ? buildCategoryBenefit(fullCard, selectedTerm, categoryLabels)
+                          : null;
+                        const offerMatch = filteredOffers.find((offer) => offer.card.slug === item.card.slug);
+                        const offerPerks = offerMatch?.perks?.slice(0, 1) || [];
+                        const perksToShow = item.matchedBenefit
+                          ? [item.matchedBenefit]
+                          : offerPerks.length
+                          ? offerPerks
+                          : categoryBenefit
+                          ? [categoryBenefit]
+                          : [];
+                        return (
+                          <div key={item.card.slug} className="merchant-secondary-item">
+                            {getCardLogo(fullCard) && (
+                              <img
+                                className="merchant-logo"
+                                src={getCardLogo(fullCard) || ""}
+                                alt={`${item.card.name} card`}
+                                onError={(e) => {
+                                  (e.currentTarget as HTMLImageElement).style.display = "none";
+                                }}
+                              />
+                            )}
+                            <div className="merchant-meta">
+                              <strong>
+                                {item.card.name}
+                                {fullCard?.issuer ? ` · ${fullCard.issuer}` : ""}
+                              </strong>
+                              {perksToShow.length > 0 && (
+                                <p className="merchant-reason">{perksToShow[0]}</p>
+                              )}
+                              {applyUrl && (
+                                <a className="apply-link merchant-secondary-link" href={applyUrl} target="_blank" rel="noreferrer">
+                                  Apply
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
 
-          {/** Offers list removed to avoid duplicate benefit listings. */}
+
         </section>
       )}
 
@@ -914,68 +1382,116 @@ function App() {
             <div className="apply-results airy">
               {!applyRequested ? (
                 <p className="empty-copy">Pick your criteria and hit search to see matches.</p>
+              ) : applyResults.length === 0 ? (
+                <p className="result-note">No apply matches found for this profile yet.</p>
               ) : (
-                applyResults.map((entry, index) => (
-                  <div key={entry.card.slug || entry.card.name} className="apply-card">
-                    <div className="apply-rank">{index + 1}</div>
-                    {getCardLogo(entry.card) && (
-                      <img
-                        src={getCardLogo(entry.card) || ""}
-                        alt={`${entry.card.name} card`}
-                        onError={(e) => {
-                          (e.currentTarget as HTMLImageElement).style.display = "none";
-                        }}
-                      />
-                    )}
-                    <div className="apply-info">
-                      <strong>{entry.card.name}</strong>
-                      <span>{entry.card.issuer || "Issuer"}</span>
-                      <p>{entry.reason}</p>
-                    </div>
-                    <div className="apply-details">
-                      <div className="apply-benefits">
-                        {(() => {
-                          const perks = getApplyPerks(entry.card);
-                          if (!perks.length) return null;
-                          return (
-                            <>
-                              <span className="apply-benefits-title">Top benefits</span>
-                              <ul className="apply-perks">
-                                {perks.map((perk) => (
-                                  <li key={perk}>{perk}</li>
-                                ))}
-                              </ul>
-                            </>
-                          );
-                        })()}
+                <>
+                  {applyResults[0] && (
+                    <div className="apply-card apply-card-top">
+                      <div className="apply-rank">1</div>
+                      {getCardLogo(applyResults[0].card) && (
+                        <img
+                          src={getCardLogo(applyResults[0].card) || ""}
+                          alt={`${applyResults[0].card.name} card`}
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).style.display = "none";
+                          }}
+                        />
+                      )}
+                      <div className="apply-info">
+                        <strong>{applyResults[0].card.name}</strong>
+                        <span>{applyResults[0].card.issuer || "Best fit"}</span>
+                        <p>{applyResults[0].reason}</p>
                       </div>
-                      <div className="apply-why">
-                        <span className="apply-benefits-title">Why it matches</span>
-                        <ul className="apply-perks">
-                          {buildWhyMatches(entry.card, scoreRange, feeComfort, travelFocus, travelFrequency, businessOwner, entry.signals)
-                            .slice(0, 3)
-                            .map((reason) => (
-                              <li key={reason}>{reason}</li>
-                            ))}
-                        </ul>
+                      <div className="apply-details apply-details-top">
+                        {getApplyPerks(applyResults[0].card).length > 0 && (
+                          <div className="apply-benefits">
+                            <span className="apply-benefits-title">Top benefits</span>
+                            <ul className="apply-perks">
+                              {getApplyPerks(applyResults[0].card).slice(0, 3).map((perk) => (
+                                <li key={perk}>{perk}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        <div className="apply-why">
+                          <span className="apply-benefits-title">Why it matches</span>
+                          <ul className="apply-perks">
+                            {buildWhyMatches(applyResults[0].card, scoreRange, feeComfort, travelFocus, travelFrequency, businessOwner, applyResults[0].signals)
+                              .slice(0, 3)
+                              .map((reason) => (
+                                <li key={reason}>{reason}</li>
+                              ))}
+                          </ul>
+                        </div>
+                      </div>
+                      <div className="apply-meta apply-meta-top">
+                        <span>Annual fee</span>
+                        <strong>{Number.isFinite(applyResults[0].card.annualFee) ? `$${applyResults[0].card.annualFee}` : "—"}</strong>
+                        {getApplyUrl(applyResults[0].card) ? (
+                          <a
+                            className="apply-link"
+                            href={getApplyUrl(applyResults[0].card) || ""}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Apply
+                          </a>
+                        ) : null}
                       </div>
                     </div>
-                    <div className="apply-meta">
-                      <span>Annual fee</span>
-                      <strong>{Number.isFinite(entry.card.annualFee) ? `$${entry.card.annualFee}` : "—"}</strong>
-                      {getApplyUrl(entry.card) ? (
-                        <a
-                          className="apply-link"
-                          href={getApplyUrl(entry.card) || ""}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Apply
-                        </a>
-                      ) : null}
+                  )}
+                  {applyResults.slice(1, 4).length > 0 && (
+                    <div className="apply-secondary-results">
+                      <h4>Other good matches</h4>
+                      <div className="apply-secondary-list">
+                        {applyResults.slice(1, 4).map((entry, index) => (
+                          <div key={entry.card.slug || entry.card.name} className="apply-card apply-card-secondary">
+                            <div className="apply-rank">{index + 2}</div>
+                            {getCardLogo(entry.card) && (
+                              <img
+                                src={getCardLogo(entry.card) || ""}
+                                alt={`${entry.card.name} card`}
+                                onError={(e) => {
+                                  (e.currentTarget as HTMLImageElement).style.display = "none";
+                                }}
+                              />
+                            )}
+                            <div className="apply-info">
+                              <strong>{entry.card.name}</strong>
+                              <span>{entry.card.issuer || "Issuer"}</span>
+                              <p>{entry.reason}</p>
+                            </div>
+                            <div className="apply-details">
+                              <div className="apply-benefits">
+                                <span className="apply-benefits-title">Top benefit</span>
+                                <ul className="apply-perks">
+                                  {getApplyPerks(entry.card).slice(0, 2).map((perk) => (
+                                    <li key={perk}>{perk}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            </div>
+                            <div className="apply-meta">
+                              <span>Annual fee</span>
+                              <strong>{Number.isFinite(entry.card.annualFee) ? `$${entry.card.annualFee}` : "—"}</strong>
+                              {getApplyUrl(entry.card) ? (
+                                <a
+                                  className="apply-link"
+                                  href={getApplyUrl(entry.card) || ""}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  Apply
+                                </a>
+                              ) : null}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -1099,22 +1615,45 @@ function App() {
         )}
         {combinedLinkedSlugs.length > 0 && (
           <>
+            <div className="wallet-coach-bar">
+              <div>
+                <strong>Wallet coach</strong>
+                <span>
+                  {effectiveWalletSummary.availableCount > 0
+                    ? `${effectiveWalletSummary.availableCount} open credit${effectiveWalletSummary.availableCount === 1 ? "" : "s"}.`
+                    : "No open credits. Great job!"}
+                </span>
+              </div>
+              <div className="wallet-coach-actions">
+                <button type="button" className="wallet-coach-action" onClick={enableAllReminders}>
+                  Enable reminders for all
+                </button>
+                <button
+                  type="button"
+                  className="wallet-coach-action secondary"
+                  onClick={markAllEnrolled}
+                  disabled={walletSummary.enrolledCount >= walletSummary.total}
+                >
+                  Mark all enrolled
+                </button>
+              </div>
+            </div>
             <div className="wallet-benefit-summary">
               <div className="wallet-summary-card">
-                <strong>{walletSummary.total}</strong>
-                <span>Total wallet credits</span>
-              </div>
-              <div className="wallet-summary-card">
-                <strong>{walletSummary.availableCount}</strong>
+                <strong>{effectiveWalletSummary.availableCount}</strong>
                 <span>Unused credits</span>
               </div>
               <div className="wallet-summary-card">
-                <strong>{walletSummary.totalValue ? `$${walletSummary.totalValue.toFixed(0)}` : "$0"}</strong>
-                <span>Estimated reward value</span>
+                <strong>{effectiveWalletSummary.totalValue ? `$${Math.round(effectiveWalletSummary.totalValue).toLocaleString()}` : "$0"}</strong>
+                <span>Open reward value</span>
               </div>
               <div className="wallet-summary-card">
-                <strong>{walletSummary.upcomingCount}</strong>
-                <span>Upcoming deadlines</span>
+                <strong>{combinedLinkedSlugs.length}</strong>
+                <span>Linked cards</span>
+              </div>
+              <div className="wallet-summary-card">
+                <strong>{effectiveWalletMissed.length}</strong>
+                <span>Top missed credits</span>
               </div>
             </div>
             <div className="wallet-health-panel">
@@ -1124,20 +1663,20 @@ function App() {
                   <span>Wallet health</span>
                 </div>
                 <p>
-                  {effectiveWalletMissed.length} credit{effectiveWalletMissed.length === 1 ? "" : "s"} open
-                  and {effectiveWalletMissed.length} top suggestions.
+                  {effectiveWalletMissed.length > 0
+                    ? `You have ${effectiveWalletMissed.length} key credit${effectiveWalletMissed.length === 1 ? "" : "s"} open.`
+                    : "Your wallet coverage looks strong."}
                 </p>
               </div>
               <div className="wallet-health-card">
-                <strong>Suggested next card</strong>
-                <span>{effectiveWalletNextCard ? effectiveWalletNextCard.name : "No wallet suggestion yet"}</span>
-                {effectiveWalletNextCard && effectiveWalletNextCard.issuer && <em>{effectiveWalletNextCard.issuer}</em>}
-                {effectiveWalletNextCard && "reason" in effectiveWalletNextCard && effectiveWalletNextCard.reason ? (
-                  <p>{effectiveWalletNextCard.reason}</p>
-                ) : null}
+                <div>
+                  <strong>{effectiveWalletNextCard ? effectiveWalletNextCard.name : "No suggestion yet"}</strong>
+                  <span>Suggested next card</span>
+                </div>
+                {effectiveWalletNextCard?.issuer ? <em>{effectiveWalletNextCard.issuer}</em> : null}
               </div>
               <div className="wallet-health-card">
-                <strong>{effectiveWalletGaps.length ? effectiveWalletGaps.join(", ") : "Coverage good"}</strong>
+                <strong>{effectiveWalletGaps.length ? effectiveWalletGaps.join(" · ") : "Coverage good"}</strong>
                 <span>Reward gaps</span>
               </div>
             </div>
@@ -1197,20 +1736,42 @@ function App() {
                 userId={userId}
                 apiBase={API_BASE}
                 onAccessToken={() => setLinkedRefresh((v) => v + 1)}
-                onSuccess={() => setLinkStatus("Linked successfully. Refreshing cards…")}
-                onError={(message) => setLinkStatus(message)}
+                onSuccess={() => {
+                  setLinkStatus("Linked successfully. Review mapped cards.");
+                  trackEvent("plaid_link_complete", { status: "success" });
+                  setShowLinkedReview(true);
+                }}
+                onError={(message) => {
+                  trackEvent("plaid_link_complete", { status: "error", message });
+                  setLinkStatus(message);
+                }}
                 className="apply-search"
                 label="Link with Plaid"
               />
               <button
                 type="button"
                 className="apply-search secondary"
-                onClick={() => setShowManualLink((v) => !v)}
+                onClick={() => {
+                  trackEvent("manual_link_toggled", { open: !showManualLink });
+                  setShowManualLink((v) => !v);
+                }}
               >
                 Add manually
               </button>
             </div>
             {linkStatus && <p className="result-note">{linkStatus}</p>}
+            <div className="link-review-actions">
+              <button
+                type="button"
+                className="apply-search ghost"
+                onClick={() => {
+                  trackEvent("linked_review_opened", { source: "empty_view" });
+                  setShowLinkedReview(true);
+                }}
+              >
+                Review linked cards
+              </button>
+            </div>
             {showManualLink && (
               <div className="manual-link">
                 <div className="manual-head">
@@ -1226,30 +1787,39 @@ function App() {
                 <div className="manual-list">
                   {allCardsList
                     .filter((card) => !!card.slug)
-                    .map((card) => (
-                    <label key={card.slug || card.name} className="manual-item">
-                      <input
-                        type="checkbox"
-                        checked={manualCardSlugs.includes(card.slug || "")}
-                        onChange={() => {
-                          const slug = card.slug || "";
-                          if (!slug) return;
-                          setManualCardSlugs((prev) => {
-                            const next = prev.includes(slug)
-                              ? prev.filter((s) => s !== slug)
-                              : [...prev, slug];
-                            localStorage.setItem("cco_manual_cards", JSON.stringify(next));
-                            return next;
-                          });
-                        }}
-                      />
-                      <span>{card.name}</span>
-                    </label>
-                  ))}
+                    .map((card) => {
+                      const logo = getCardLogo(card);
+                      return (
+                        <label key={card.slug || card.name} className="manual-item">
+                          <input
+                            type="checkbox"
+                            checked={manualCardSlugs.includes(card.slug || "")}
+                            onChange={() => {
+                              const slug = card.slug || "";
+                              if (!slug) return;
+                              setManualCardSlugs((prev) => {
+                                const next = prev.includes(slug)
+                                  ? prev.filter((s) => s !== slug)
+                                  : [...prev, slug];
+                                localStorage.setItem("cco_manual_cards", JSON.stringify(next));
+                                return next;
+                              });
+                            }}
+                          />
+                          {logo && (
+                            <img
+                              className="manual-card-logo"
+                              src={logo}
+                              alt={`${card.name} logo`}
+                            />
+                          )}
+                          <span>{card.name}</span>
+                        </label>
+                      );
+                    })}
                 </div>
               </div>
             )}
-            <MapLinkedAccounts userId={userId} onChanged={() => setLinkedRefresh((v) => v + 1)} />
           </div>
         ) : creditItems.length === 0 ? (
           <div className="empty-copy">
@@ -1257,21 +1827,31 @@ function App() {
             <div className="linked-section">
               <span className="linked-title">Linked cards</span>
               <div className="linked-badges">
-                {linkedCards.map((card) => (
-                  <span key={card.slug || card.name} className="linked-badge">
-                    {card.name}
-                    {card.slug && manualCardSlugs.includes(card.slug) && (
-                      <button
-                        type="button"
-                        className="linked-remove"
-                        onClick={() => unlinkManualCard(card.slug || "")}
-                        aria-label={`Remove ${card.name}`}
-                      >
-                        ×
-                      </button>
-                    )}
-                  </span>
-                ))}
+                {linkedCards.map((card) => {
+                  const logo = getCardLogo(card);
+                  return (
+                    <span key={card.slug || card.name} className="linked-badge">
+                      {logo && (
+                        <img
+                          className="linked-badge-logo"
+                          src={logo}
+                          alt={`${card.name} logo`}
+                        />
+                      )}
+                      {card.name}
+                      {card.slug && manualCardSlugs.includes(card.slug) && (
+                        <button
+                          type="button"
+                          className="linked-remove"
+                          onClick={() => unlinkManualCard(card.slug || "")}
+                          aria-label={`Remove ${card.name}`}
+                        >
+                          ×
+                        </button>
+                      )}
+                    </span>
+                  );
+                })}
               </div>
               <div className="linked-actions">
                 <button
@@ -1280,6 +1860,13 @@ function App() {
                   onClick={() => setShowManualLink((v) => !v)}
                 >
                   Edit linked cards
+                </button>
+                <button
+                  type="button"
+                  className="apply-search ghost"
+                  onClick={() => setShowLinkedReview(true)}
+                >
+                  Review mapped accounts
                 </button>
                 {manualCardSlugs.length > 0 && (
                   <button
@@ -1333,7 +1920,6 @@ function App() {
                 </div>
               </div>
             )}
-            <MapLinkedAccounts userId={userId} onChanged={() => setLinkedRefresh((v) => v + 1)} />
           </div>
         ) : (
           <>
@@ -1462,21 +2048,31 @@ function App() {
               <div className="linked-section compact">
                 <span className="linked-title">Linked cards</span>
                 <div className="linked-badges">
-                  {linkedCards.map((card) => (
-                    <span key={card.slug || card.name} className="linked-badge">
-                      {card.name}
-                      {card.slug && manualCardSlugs.includes(card.slug) && (
-                        <button
-                          type="button"
-                          className="linked-remove"
-                          onClick={() => unlinkManualCard(card.slug || "")}
-                          aria-label={`Remove ${card.name}`}
-                        >
-                          ×
-                        </button>
-                      )}
-                    </span>
-                  ))}
+                  {linkedCards.map((card) => {
+                    const logo = getCardLogo(card);
+                    return (
+                      <span key={card.slug || card.name} className="linked-badge">
+                        {logo && (
+                          <img
+                            className="linked-badge-logo"
+                            src={logo}
+                            alt={`${card.name} logo`}
+                          />
+                        )}
+                        {card.name}
+                        {card.slug && manualCardSlugs.includes(card.slug) && (
+                          <button
+                            type="button"
+                            className="linked-remove"
+                            onClick={() => unlinkManualCard(card.slug || "")}
+                            aria-label={`Remove ${card.name}`}
+                          >
+                            ×
+                          </button>
+                        )}
+                      </span>
+                    );
+                  })}
                 </div>
                 <div className="linked-actions">
                   <button
@@ -1485,6 +2081,13 @@ function App() {
                     onClick={() => setShowManualLink((v) => !v)}
                   >
                     Edit linked cards
+                  </button>
+                  <button
+                    type="button"
+                    className="apply-search ghost"
+                    onClick={() => setShowLinkedReview(true)}
+                  >
+                    Review mapped accounts
                   </button>
                   <button
                     type="button"
@@ -1537,84 +2140,17 @@ function App() {
                 </div>
               </div>
             )}
-            <MapLinkedAccounts userId={userId} onChanged={() => setLinkedRefresh((v) => v + 1)} />
           </>
         )}
       </section>
 
-      <section className="section all-cards">
-        <div className="section-head">
-          <div>
-            <h2>All cards</h2>
-            <p>
-              {showAllCards ? "Every card we currently track." : `Top ${Math.min(10, filteredAllCards.length)} cards we track.`}
-            </p>
-          </div>
-          <div className="all-cards-controls">
-            <input
-              type="text"
-              placeholder="Search cards..."
-              value={allCardsSearch}
-              onChange={(e) => setAllCardsSearch(e.target.value.toLowerCase())}
-            />
-            {filteredAllCards.length > 10 && (
-              <button
-                type="button"
-                className="all-cards-toggle"
-                onClick={() => setShowAllCards((prev) => !prev)}
-              >
-                {showAllCards ? "Show fewer" : "See all"}
-              </button>
-            )}
-          </div>
-        </div>
-        <div className="issuer-filters">
-          <button
-            type="button"
-            className={allCardsIssuer === "all" ? "active" : ""}
-            onClick={() => setAllCardsIssuer("all")}
-          >
-            All issuers
-          </button>
-          {allCardIssuers.map((issuer) => (
-            <button
-              key={issuer}
-              type="button"
-              className={allCardsIssuer === issuer.toLowerCase() ? "active" : ""}
-              onClick={() => setAllCardsIssuer(issuer.toLowerCase())}
-            >
-              {issuer}
-            </button>
-          ))}
-        </div>
-        <div className="all-cards-grid">
-          {visibleAllCards.map((card) => (
-            <div key={card.slug || card.name} className="all-card">
-              {getCardLogo(card) && (
-                <img
-                  src={getCardLogo(card) || ""}
-                  alt={`${card.name} card`}
-                  onError={(e) => {
-                    (e.currentTarget as HTMLImageElement).style.display = "none";
-                  }}
-                />
-              )}
-              <div>
-                <strong>{card.name}</strong>
-                <span>{card.issuer || "Issuer"}</span>
-                {getCardSummaryLine(card) && (
-                  <em>{getCardSummaryLine(card)}</em>
-                )}
-                {getApplyUrl(card) && (
-                  <a className="apply-link all-card-apply" href={getApplyUrl(card) || ""} target="_blank" rel="noreferrer">
-                    Apply
-                  </a>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
+      {showLinkedReview && (
+        <LinkedAccountsReview
+          userId={userId}
+          onClose={() => setShowLinkedReview(false)}
+          onChanged={() => setLinkedRefresh((v) => v + 1)}
+        />
+      )}
     </div>
   );
 }
@@ -1631,6 +2167,7 @@ function collectCredits(cards: Card[], benefitStates: Record<string, UserBenefit
       period?: string;
       requiresEnrollment?: boolean;
       sourceUrl?: string;
+      enrollmentUrl?: string;
       partner?: string;
       expiresAt?: string | null;
     }>;
@@ -1642,6 +2179,7 @@ function collectCredits(cards: Card[], benefitStates: Record<string, UserBenefit
       period?: string;
       requiresEnrollment?: boolean;
       sourceUrl?: string;
+      enrollmentUrl?: string;
       partner?: string;
       expiresAt?: string | null;
     }>;
@@ -1672,6 +2210,7 @@ function collectCredits(cards: Card[], benefitStates: Record<string, UserBenefit
               issuer: card.issuer,
               label: credit.label || credit.name || "",
               partner: credit.partner,
+              enrollmentUrl: credit.enrollmentUrl,
               creditSourceUrl: credit.sourceUrl,
               cardSourceUrl: card.sourceUrl,
             })
@@ -1708,6 +2247,7 @@ function collectCredits(cards: Card[], benefitStates: Record<string, UserBenefit
               issuer: card.issuer,
               label: credit.label || credit.name || "",
               partner: credit.partner,
+              enrollmentUrl: credit.enrollmentUrl,
               creditSourceUrl: credit.sourceUrl,
               cardSourceUrl: card.sourceUrl,
             })
@@ -1872,13 +2412,6 @@ function getApplyPerks(card: Card) {
   }
 
   return perks.slice(0, 4);
-}
-
-function getCardSummaryLine(card: Card) {
-  const perks = getApplyPerks(card);
-  if (perks.length) return perks[0];
-  if (card.signupOffer) return `Signup: ${card.signupOffer}`;
-  return "";
 }
 
 function formatCategoryLabel(value: string) {

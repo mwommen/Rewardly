@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { API_BASE } from "./lib/api";
 
 type CardSlug = { slug: string; name: string };
@@ -16,6 +16,10 @@ type LinkedDoc = {
   accounts?: LinkedAccount[];
 };
 
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
 export default function MapLinkedAccounts({
   userId,
   onChanged,
@@ -28,8 +32,9 @@ export default function MapLinkedAccounts({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [accountFilter, setAccountFilter] = useState<"all" | "needs_review">("all");
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -43,16 +48,18 @@ export default function MapLinkedAccounts({
       ]);
       setSlugs(Array.isArray(s?.slugs) ? s.slugs : []);
       setLinked(Array.isArray(l?.linked) ? l.linked : []);
-    } catch (e: any) {
-      setError(e?.message || "Failed to load linked accounts");
+    } catch (e) {
+      setError(getErrorMessage(e, "Failed to load linked accounts"));
     } finally {
       setLoading(false);
     }
-  }
+  }, [userId]);
 
   useEffect(() => {
     load();
-  }, [userId]);
+  }, [load]);
+
+  const cardMap = useMemo(() => new Map(slugs.map((s) => [s.slug, s.name])), [slugs]);
 
   const accounts = useMemo(() => {
     const arr: LinkedAccount[] = [];
@@ -72,6 +79,21 @@ export default function MapLinkedAccounts({
     return arr;
   }, [linked]);
 
+  const reviewAccounts = useMemo(() => {
+    if (accountFilter === "needs_review") {
+      return accounts.filter((acc) => {
+        const mappedSlug = String(acc.mappedCardSlug || "").trim();
+        return !mappedSlug || mappedSlug === "unknown" || mappedSlug === "generic-credit";
+      });
+    }
+    return accounts;
+  }, [accounts, accountFilter]);
+
+  const reviewCount = accounts.filter((acc) => {
+    const mappedSlug = String(acc.mappedCardSlug || "").trim();
+    return !mappedSlug || mappedSlug === "unknown" || mappedSlug === "generic-credit";
+  }).length;
+
   async function mapAccount(accountId: string, mappedCardSlug: string) {
     setSaving(accountId);
     setError(null);
@@ -85,8 +107,28 @@ export default function MapLinkedAccounts({
       if (!res.ok || !json.ok) throw new Error(json?.error || "Failed to save mapping");
       setLinked(Array.isArray(json?.linked) ? json.linked : []);
       onChanged?.();
-    } catch (e: any) {
-      setError(e?.message || "Failed to save mapping");
+    } catch (e) {
+      setError(getErrorMessage(e, "Failed to save mapping"));
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function refreshMappings() {
+    setSaving("refresh");
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/plaid/remap-accounts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json?.error || "Failed to refresh mappings");
+      setLinked(Array.isArray(json?.linked) ? json.linked : []);
+      onChanged?.();
+    } catch (e) {
+      setError(getErrorMessage(e, "Failed to refresh mappings"));
     } finally {
       setSaving(null);
     }
@@ -104,8 +146,8 @@ export default function MapLinkedAccounts({
       if (!res.ok || !json.ok) throw new Error(json?.error || "Failed to clear linked accounts");
       await load();
       onChanged?.();
-    } catch (e: any) {
-      setError(e?.message || "Failed to clear linked accounts");
+    } catch (e) {
+      setError(getErrorMessage(e, "Failed to clear linked accounts"));
     } finally {
       setSaving(null);
     }
@@ -119,13 +161,47 @@ export default function MapLinkedAccounts({
         <h3>Linked accounts</h3>
         <p>Review auto-matches and correct any card that looks wrong.</p>
       </div>
+      <div className="linked-summary">
+        <div className="linked-stat">
+          <strong>{accounts.length}</strong>
+          <span>Credit accounts</span>
+        </div>
+        <div className="linked-stat">
+          <strong>{accounts.length - reviewCount}</strong>
+          <span>Auto-mapped</span>
+        </div>
+        <div className="linked-stat">
+          <strong>{reviewCount}</strong>
+          <span>Needs review</span>
+        </div>
+      </div>
+      <div className="linked-filter-bar">
+        <button
+          type="button"
+          className={accountFilter === "all" ? "linked-filter-button active" : "linked-filter-button"}
+          onClick={() => setAccountFilter("all")}
+        >
+          All
+        </button>
+        <button
+          type="button"
+          className={accountFilter === "needs_review" ? "linked-filter-button active" : "linked-filter-button"}
+          onClick={() => setAccountFilter("needs_review")}
+        >
+          Needs review ({reviewCount})
+        </button>
+      </div>
+      <p className="linked-help">If a card name looks wrong, choose the best matching card from the dropdown.</p>
       {error && <div className="linked-error">{error}</div>}
       {accounts.length === 0 ? (
         <div className="linked-empty">No credit card accounts found yet.</div>
       ) : (
         <div className="linked-list">
-          {accounts.map((acc) => {
+          {reviewAccounts.map((acc) => {
             const mappedSlug = String(acc.mappedCardSlug || "").trim();
+            const mappedName = mappedSlug
+              ? cardMap.get(mappedSlug) || (mappedSlug === "generic-credit" ? "Generic credit card" : mappedSlug)
+              : "";
             const isUnknown = !mappedSlug || mappedSlug === "unknown" || mappedSlug === "generic-credit";
             return (
               <div key={acc.accountId} className="linked-row">
@@ -134,6 +210,9 @@ export default function MapLinkedAccounts({
                   <div className="linked-sub">
                     {acc.type}/{acc.subtype} · •{acc.mask || "••••"}
                   </div>
+                  {mappedName && !isUnknown ? (
+                    <div className="linked-mapped">Mapped to {mappedName}</div>
+                  ) : null}
                 </div>
                 <div className="linked-map-control">
                   <select
@@ -161,8 +240,15 @@ export default function MapLinkedAccounts({
         </div>
       )}
       <div className="linked-actions">
-        <button onClick={load} className="linked-btn">
-          Refresh
+        <button onClick={load} className="linked-btn" disabled={!!saving}>
+          Reload
+        </button>
+        <button
+          onClick={refreshMappings}
+          disabled={!!saving}
+          className="linked-btn"
+        >
+          {saving === "refresh" ? "Matching…" : "Auto-match cards"}
         </button>
         <button
           onClick={clearLinked}

@@ -201,30 +201,100 @@ router.post("/map-account", async (req: Request, res: Response) => {
   }
 });
 
-function mapAccountToCardSlug(a: AccountBase): string {
+router.post("/remap-accounts", async (req: Request, res: Response) => {
+  try {
+    const { userId = "devUser" } = req.body || {};
+    const col = await getLinkedAccountsCollection();
+    const docs = await col.find({ userId }).toArray();
+
+    await Promise.all(
+      docs.map(async (doc) => {
+        const accounts = (doc.accounts || []).map((account) => ({
+          ...account,
+          mappedCardSlug: mapAccountToCardSlug(account),
+        }));
+        await col.updateOne(
+          { _id: doc._id },
+          { $set: { accounts, updatedAt: new Date() } }
+        );
+      })
+    );
+
+    const updatedDocs = await col.find({ userId }).toArray();
+    res.json({ ok: true, linked: updatedDocs });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || "Failed to remap accounts" });
+  }
+});
+
+const CARD_SLUG_PATTERNS: Array<{ slug: string; patterns: string[] }> = [
+  { slug: "chase-sapphire-reserve", patterns: ["sapphire reserve"] },
+  { slug: "chase-sapphire-preferred", patterns: ["sapphire preferred"] },
+  { slug: "chase-freedom-unlimited", patterns: ["freedom unlimited"] },
+  { slug: "chase-freedom-flex", patterns: ["freedom flex"] },
+  { slug: "chase-ink-cash", patterns: ["ink cash", "ink business cash"] },
+  { slug: "chase-ink-unlimited", patterns: ["ink unlimited", "ink business unlimited"] },
+  { slug: "chase-ink-preferred", patterns: ["ink preferred", "ink business preferred"] },
+  { slug: "capital-one-venture-x", patterns: ["venture x"] },
+  { slug: "capital-one-venture", patterns: ["venture"] },
+  { slug: "capital-one-savorone", patterns: ["savorone", "savor one", "savor"] },
+  { slug: "amex-platinum", patterns: ["platinum", "amex platinum", "american express platinum"] },
+  { slug: "amex-gold", patterns: ["gold", "amex gold", "american express gold"] },
+  { slug: "citi-custom-cash", patterns: ["custom cash"] },
+  { slug: "citi-double-cash", patterns: ["double cash"] },
+  { slug: "citi-premier", patterns: ["premier"] },
+  { slug: "discover-it-cash-back", patterns: ["discover it cash back"] },
+  { slug: "discover-it-student", patterns: ["discover it student"] },
+];
+
+type AccountTextRecord = {
+  name?: string | null;
+  official_name?: string | null;
+  type?: string | null;
+  subtype?: string | null;
+};
+
+export function mapAccountToCardSlug(a: AccountTextRecord): string {
   const text = `${a?.official_name || ""} ${a?.name || ""}`.toLowerCase();
   const type = (a?.type || "").toLowerCase();
   const subtype = (a?.subtype || "").toLowerCase();
-  const isCredit = type.includes("credit") || subtype.includes("credit");
+  const combined = `${text} ${type} ${subtype}`.replace(/[\s]+/g, " ").trim();
+  const isCredit = combined.includes("credit") || combined.includes("charge") || combined.includes("card");
+
   if (!isCredit) return "";
-  if (text.includes("sapphire preferred")) return "chase-sapphire-preferred";
-  if (text.includes("sapphire reserve")) return "chase-sapphire-reserve";
-  if (text.includes("freedom unlimited")) return "chase-freedom-unlimited";
-  if (text.includes("freedom flex")) return "chase-freedom-flex";
-  if (text.includes("chase") && text.includes("sapphire")) return "chase-sapphire-preferred";
-  if (text.includes("chase") && text.includes("freedom")) return "chase-freedom-unlimited";
-  if (text.includes("platinum") && (text.includes("amex") || text.includes("american express")))
-    return "amex-platinum";
-  if (text.includes("gold") && (text.includes("amex") || text.includes("american express")))
-    return "amex-gold";
-  if (text.includes("american express")) return "amex-gold";
-  if (text.includes("custom cash")) return "citi-custom-cash";
-  if (text.includes("citi")) return "citi-custom-cash";
-  if (text.includes("savorone")) return "capital-one-savorone";
-  if (text.includes("venture x")) return "capital-one-venture-x";
-  if (text.includes("capital one")) return "capital-one-savorone";
-  if ((a?.subtype || "").toLowerCase().includes("credit")) return "generic-credit";
-  return "unknown";
+
+  // Tokenize combined text for soft matching
+  const tokens = combined.split(/[^a-z0-9]+/).filter(Boolean);
+
+  let best: { slug: string; score: number } | null = null;
+
+  for (const entry of CARD_SLUG_PATTERNS) {
+    let score = 0;
+    for (const pattern of entry.patterns) {
+      const p = pattern.toLowerCase();
+      if (combined.includes(p)) {
+        // exact substring match is strong
+        score += 100;
+      } else {
+        // word overlap scoring
+        const pTokens = p.split(/[^a-z0-9]+/).filter(Boolean);
+        let overlap = 0;
+        for (const t of pTokens) {
+          if (tokens.includes(t)) overlap += 1;
+        }
+        score += overlap * 12; // each matching word adds moderate score
+      }
+    }
+    if (score > 0 && (!best || score > best.score)) {
+      best = { slug: entry.slug, score };
+    }
+  }
+
+  // If confident match, return it. Threshold tuned conservatively.
+  if (best && best.score >= 20) return best.slug;
+
+  // Conservative fallback: return generic-credit if it's clearly a credit account
+  return "generic-credit";
 }
 
 export default router;

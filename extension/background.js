@@ -38,7 +38,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       try {
         const apiBase = (await getSetting("API_BASE")) || DEFAULT_API_BASE;
         const settingsUserId = (await getSetting("USER_ID")) || "devUser";
-        const { merchant, mcc, userId = settingsUserId, restrictToLinked } = msg.payload || {};
+        const storedManualCardSlugs = (await getSetting("MANUAL_CARD_SLUGS")) || [];
+        const { merchant, mcc, userId = settingsUserId, restrictToLinked, manualCardSlugs } = msg.payload || {};
         if (!merchant) throw new Error("merchant required");
 
         const path = "/api/cards/best-card-for-merchant";
@@ -55,6 +56,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
               mcc,
               userId,
               ...(typeof restrictToLinked === "boolean" ? { restrictToLinked } : {}),
+              manualCardSlugs: Array.isArray(manualCardSlugs) ? manualCardSlugs : storedManualCardSlugs,
             }),
             credentials: "include",
           }
@@ -85,6 +87,61 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       }
     })();
     return true; // keep channel open for async
+  }
+
+  if (msg?.type === "CCO_GET_USER_BENEFIT_STATES") {
+    (async () => {
+      try {
+        const apiBase = (await getSetting("API_BASE")) || DEFAULT_API_BASE;
+        const settingsUserId = (await getSetting("USER_ID")) || "devUser";
+        const userId = msg.payload?.userId || settingsUserId;
+        const path = `/api/user-benefits?userId=${encodeURIComponent(userId)}`;
+        const data = await fetchJsonWithFallback(apiBase, path, { method: "GET" });
+        sendResponse({ ok: true, data });
+      } catch (e) {
+        console.error("[CCO] benefit states error:", e);
+        sendResponse({ ok: false, error: String(e?.message || e) });
+      }
+    })();
+    return true;
+  }
+
+  if (msg?.type === "CCO_GET_USER_BENEFIT_SUMMARY") {
+    (async () => {
+      try {
+        const apiBase = (await getSetting("API_BASE")) || DEFAULT_API_BASE;
+        const settingsUserId = (await getSetting("USER_ID")) || "devUser";
+        const userId = msg.payload?.userId || settingsUserId;
+        const path = `/api/user-benefits/summary?userId=${encodeURIComponent(userId)}`;
+        const data = await fetchJsonWithFallback(apiBase, path, { method: "GET" });
+        sendResponse({ ok: true, data });
+      } catch (e) {
+        console.error("[CCO] benefit summary error:", e);
+        sendResponse({ ok: false, error: String(e?.message || e) });
+      }
+    })();
+    return true;
+  }
+
+  if (msg?.type === "CCO_SAVE_BENEFIT_STATE") {
+    (async () => {
+      try {
+        const apiBase = (await getSetting("API_BASE")) || DEFAULT_API_BASE;
+        const settingsUserId = (await getSetting("USER_ID")) || "devUser";
+        const { userId = settingsUserId, benefitKey, ...state } = msg.payload || {};
+        if (!benefitKey) throw new Error("benefitKey required");
+        const data = await fetchJsonWithFallback(apiBase, "/api/user-benefits/state", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId, benefitKey, ...state }),
+        });
+        sendResponse({ ok: true, data });
+      } catch (e) {
+        console.error("[CCO] save benefit state error:", e);
+        sendResponse({ ok: false, error: String(e?.message || e) });
+      }
+    })();
+    return true;
   }
 
   if (msg?.type === "CCO_SAVE_SETTINGS") {

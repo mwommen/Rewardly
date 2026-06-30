@@ -6,6 +6,7 @@ type CardOverride = {
   issuer?: string;
   annualFee?: number | null;
   apr?: string | null;
+  sourceUrl?: string;
   rewardsByCategory?: Record<string, number>;
   perks?: string[];
   signupOffer?: string | null;
@@ -26,6 +27,33 @@ export const CARD_OVERRIDES: Record<string, CardOverride> = {
     name: "The Platinum Card® from American Express",
     issuer: "American Express",
     annualFee: 895,
+    sourceUrl: "https://www.americanexpress.com/us/credit-cards/card/platinum/",
+    merchantCredits: [
+      {
+        id: "amex-platinum-lululemon-credit",
+        label: "$75 statement credit at lululemon each quarter (up to $300/yr)",
+        amountUSD: 75,
+        period: "quarter",
+        capPerPeriodUSD: 75,
+        eligibleWhen: { merchantPatterns: ["lululemon", "lulu lemon", "lululemon.com"] },
+        requiresEnrollment: true,
+        sourceUrl: "https://www.americanexpress.com/en-us/benefits/the-platinum-card/",
+        enrollmentUrl: "https://global.americanexpress.com/card-benefits/detail/lululemon/platinum",
+        confidence: 0.95,
+      },
+      {
+        id: "amex-platinum-saks-credit",
+        label: "$50 statement credit at Saks semi-annually (up to $100/yr)",
+        amountUSD: 50,
+        period: "semi-annual",
+        capPerPeriodUSD: 50,
+        eligibleWhen: { merchantPatterns: ["saks", "saks fifth avenue", "saks.com"] },
+        requiresEnrollment: true,
+        sourceUrl: "https://www.americanexpress.com/en-us/benefits/the-platinum-card/",
+        enrollmentUrl: "https://global.americanexpress.com/card-benefits/detail/shopsakswithplatinum/platinum",
+        confidence: 0.95,
+      },
+    ],
   },
   "amex-green-card": {
     slug: "amex-green-card",

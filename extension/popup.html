@@ -3,25 +3,100 @@
   <head>
     <meta charset="utf-8" />
     <style>
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 14px; width: 300px; }
-      label { display:block; font-size:12px; opacity:.75; }
-      input { width:100%; padding:6px 8px; border-radius:8px; border:1px solid #ddd; margin:6px 0 10px; }
-      button { padding:6px 10px; border-radius:8px; border:1px solid #ddd; background:#111827; color:#fff; cursor:pointer; }
-      .muted { font-size:12px; opacity:.8; }
-      .row { display:flex; gap:8px; align-items:center; }
+      * { box-sizing: border-box; }
+      body {
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+        margin: 0;
+        width: 360px;
+        background: #0f172a;
+        color: #f8fafc;
+      }
+      .shell { padding: 16px; display: grid; gap: 14px; }
+      .brand { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+      h1 { font-size: 20px; margin: 0; }
+      h2 { font-size: 13px; margin: 0 0 8px; color: #cbd5e1; text-transform: uppercase; letter-spacing: .08em; }
+      p { margin: 4px 0 0; color: #cbd5e1; font-size: 13px; line-height: 1.4; }
+      label { display:block; font-size:12px; color:#cbd5e1; margin-bottom: 5px; }
+      input {
+        width:100%;
+        padding:8px 10px;
+        border-radius:10px;
+        border:1px solid rgba(203,213,225,.24);
+        margin:0 0 10px;
+        background: rgba(255,255,255,.08);
+        color: #f8fafc;
+      }
+      button {
+        padding:8px 11px;
+        border-radius:10px;
+        border:1px solid rgba(125,211,252,.28);
+        background:#38bdf8;
+        color:#0f172a;
+        font-weight: 700;
+        cursor:pointer;
+      }
+      button.secondary { background: rgba(255,255,255,.08); color: #f8fafc; border-color: rgba(203,213,225,.2); }
+      .card { border: 1px solid rgba(203,213,225,.16); background: rgba(255,255,255,.06); border-radius: 16px; padding: 12px; }
+      .muted { font-size:12px; color:#94a3b8; }
+      .row { display:flex; gap:8px; align-items:center; flex-wrap: wrap; }
+      .status { padding: 8px 10px; border-radius: 12px; background: rgba(34,197,94,.14); color: #bbf7d0; font-size: 12px; }
+      .wallet-count { font-size: 12px; color: #7dd3fc; font-weight: 800; }
+      .card-list { display: grid; gap: 6px; max-height: 220px; overflow: auto; padding-right: 2px; }
+      .card-option {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 9px;
+        align-items: center;
+        padding: 8px;
+        border: 1px solid rgba(203,213,225,.12);
+        border-radius: 12px;
+        background: rgba(15,23,42,.44);
+        color: #f8fafc;
+      }
+      .card-option input { width: auto; margin: 0; }
+      .card-option span { font-size: 13px; line-height: 1.25; }
+      .quick-picks { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+      .quick-picks button { font-size: 11px; padding: 6px 8px; }
     </style>
   </head>
   <body>
-    <h3 style="margin:0 0 8px;">CCO Settings</h3>
-    <label>API Base</label>
-    <input id="apiBase" placeholder="http://localhost:5001" />
-    <label>User ID</label>
-    <input id="userId" placeholder="devUser" />
-    <div class="row">
-      <button id="saveBtn">Save</button>
-      <span id="saved" class="muted" style="display:none;">Saved ✓</span>
+    <div class="shell">
+      <div class="brand">
+        <div>
+          <h1>Rewardly</h1>
+          <p>Choose the cards you carry. Rewardly will only alert at checkout when one of these cards has a matching benefit.</p>
+        </div>
+        <span id="walletCount" class="wallet-count">0 cards</span>
+      </div>
+
+      <div id="saved" class="status" style="display:none;">Saved. Open the Lululemon demo checkout to see the Platinum benefit alert.</div>
+
+      <div class="card">
+        <h2>Demo wallet</h2>
+        <div class="quick-picks">
+          <button type="button" class="secondary" id="demoAmexGold">Amex Gold</button>
+          <button type="button" class="secondary" id="demoPlatinum">Amex Platinum</button>
+          <button type="button" class="secondary" id="demoVentureX">Venture X</button>
+        </div>
+        <input id="cardSearch" placeholder="Search cards to add" />
+        <div id="cardList" class="card-list">
+          <p class="muted">Loading card catalog…</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Local setup</h2>
+        <label>API Base</label>
+        <input id="apiBase" placeholder="http://localhost:5001" />
+        <label>User ID</label>
+        <input id="userId" placeholder="devUser" />
+        <div class="row">
+          <button id="saveBtn">Save wallet</button>
+          <button id="clearBtn" class="secondary" type="button">Clear cards</button>
+        </div>
+        <p class="muted">For the MVP, add Amex Platinum here or run the demo seed to map it to devUser.</p>
+      </div>
     </div>
-    <p class="muted" style="margin-top:10px;">Automatically suggests a card on supported sites.</p>
     <script src="popup.js"></script>
   </body>
 </html>

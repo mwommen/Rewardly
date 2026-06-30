@@ -14,23 +14,7 @@ router.get("/", async (_req, res) => {
   try {
     const col = await getCardsCollection();
     const cards = await col.find({}).toArray();
-    const merged = cards.map((card: any) => {
-      const override = card?.slug ? CARD_OVERRIDES[card.slug] : undefined;
-      if (!override) return card;
-      return {
-        ...card,
-        name: override.name ?? card.name,
-        issuer: override.issuer ?? card.issuer,
-        annualFee: override.annualFee ?? card.annualFee,
-        apr: override.apr ?? card.apr,
-        rewardsByCategory: override.rewardsByCategory ?? card.rewardsByCategory,
-        perks: override.perks ?? card.perks,
-        signupOffer: override.signupOffer ?? card.signupOffer,
-        merchantCredits: override.merchantCredits ?? card.merchantCredits,
-        recurringCredits: override.recurringCredits ?? card.recurringCredits,
-        benefitsDetail: override.benefitsDetail ?? card.benefitsDetail,
-      };
-    });
+    const merged = cards.map(applyCardOverride);
     res.json({ cards: dedupeCards(merged) });
   } catch (e: any) {
     res.status(500).json({ error: e?.message || "Failed to fetch cards" });
@@ -123,7 +107,7 @@ router.post("/best-card-for-merchant", async (req: Request, res: Response) => {
 
     // 1) Fetch catalog
     const cardsCol = await getCardsCollection();
-    const allCards = await cardsCol.find({}).toArray();
+    const allCards = (await cardsCol.find({}).toArray()).map(applyCardOverride);
 
     // 2) Fetch user's linked accounts (from Plaid exchange)
     const linkedCol = await getLinkedAccountsCollection();
@@ -296,10 +280,28 @@ function buildReason(
   merchant: string,
   category: string,
   isCategoryQuery = false
-): { text: string; matches: string[]; credits: Array<{ label: string; requiresEnrollment?: boolean; sourceUrl?: string; partner?: string }> } {
+): {
+  text: string;
+  matches: string[];
+  credits: Array<{
+    label: string;
+    requiresEnrollment?: boolean;
+    sourceUrl?: string;
+    enrollmentUrl?: string;
+    partner?: string;
+    benefitKey?: string;
+  }>;
+} {
   const reasons: string[] = [];
   const matches: string[] = [];
-  const credits: Array<{ label: string; requiresEnrollment?: boolean; sourceUrl?: string; partner?: string }> = [];
+  const credits: Array<{
+    label: string;
+    requiresEnrollment?: boolean;
+    sourceUrl?: string;
+    enrollmentUrl?: string;
+    partner?: string;
+    benefitKey?: string;
+  }> = [];
   const rate = getCategoryRate(getRewardsByCategory(card), category);
   if (rate > 0) {
     reasons.push(`${formatWalletRate(rate)} on ${category}`);
@@ -316,7 +318,9 @@ function buildReason(
         label: sanitizeLabel(c.label || "credit"),
         requiresEnrollment: !!c.requiresEnrollment,
         sourceUrl: c.sourceUrl,
+        enrollmentUrl: c.enrollmentUrl || getEnrollmentUrl(card, c),
         partner: c.partner,
+        benefitKey: createBenefitKey(card, sanitizeLabel(c.label || "credit")),
       }))
     );
     reasons.push(`credit match: ${labels.join(", ")}`);
@@ -332,6 +336,38 @@ function sanitizeLabel(label: string): string {
     .replace(/&nbsp;|&#160;|\u00a0/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function createBenefitKey(card: any, label: string): string {
+  const slug = String(card?.slug || card?.name || "").trim().toLowerCase().replace(/\s+/g, "-");
+  const normalizedLabel = String(label || "").trim().toLowerCase().replace(/\s+/g, " ");
+  return `${slug}::${normalizedLabel}`;
+}
+
+function getEnrollmentUrl(card: any, credit: any): string | undefined {
+  const slug = String(card?.slug || "").toLowerCase();
+  const label = String(credit?.label || credit?.name || credit?.partner || "").toLowerCase();
+  if (slug === "amex-platinum") {
+    if (label.includes("lululemon")) {
+      return "https://global.americanexpress.com/card-benefits/detail/lululemon/platinum";
+    }
+    if (label.includes("saks")) {
+      return "https://global.americanexpress.com/card-benefits/detail/shopsakswithplatinum/platinum";
+    }
+    if (label.includes("uber")) {
+      return "https://global.americanexpress.com/card-benefits/detail/uber-cash/platinum";
+    }
+    if (label.includes("digital entertainment")) {
+      return "https://global.americanexpress.com/card-benefits/detail/digital-entertainment/platinum";
+    }
+    if (label.includes("clear")) {
+      return "https://global.americanexpress.com/card-benefits/detail/clear/platinum";
+    }
+    if (label.includes("walmart")) {
+      return "https://global.americanexpress.com/card-benefits/detail/walmart-plus/platinum";
+    }
+  }
+  return undefined;
 }
 
 function formatWalletRate(rate: number): string {
@@ -356,6 +392,25 @@ function getCardCredits(card: any) {
   return {
     merchantCredits: benefits.merchantCredits || card?.merchantCredits || [],
     recurringCredits: benefits.recurringCredits || card?.recurringCredits || [],
+  };
+}
+
+function applyCardOverride(card: any) {
+  const override = card?.slug ? CARD_OVERRIDES[card.slug] : undefined;
+  if (!override) return card;
+  return {
+    ...card,
+    name: override.name ?? card.name,
+    issuer: override.issuer ?? card.issuer,
+    annualFee: override.annualFee ?? card.annualFee,
+    apr: override.apr ?? card.apr,
+    sourceUrl: override.sourceUrl ?? card.sourceUrl,
+    rewardsByCategory: override.rewardsByCategory ?? card.rewardsByCategory,
+    perks: override.perks ?? card.perks,
+    signupOffer: override.signupOffer ?? card.signupOffer,
+    merchantCredits: override.merchantCredits ?? card.merchantCredits,
+    recurringCredits: override.recurringCredits ?? card.recurringCredits,
+    benefitsDetail: override.benefitsDetail ?? card.benefitsDetail,
   };
 }
 
@@ -404,11 +459,11 @@ function dedupeCards(cards: any[]) {
 }
 
 function cardKey(card: any): string | null {
+  const slug = String(card?.slug || "").trim().toLowerCase();
+  if (slug) return `slug:${slug}`;
   const name = String(card?.name || "").trim().toLowerCase();
   const issuer = String(card?.issuer || "").trim().toLowerCase();
   if (name) return `name:${name}|issuer:${issuer}`;
-  const slug = String(card?.slug || "").trim().toLowerCase();
-  if (slug) return `slug:${slug}`;
   return null;
 }
 

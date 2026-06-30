@@ -2,7 +2,7 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
-import { getDb, connectDB } from "./db";
+import { getAnalyticsCollection, getDb, connectDB } from "./db";
 import cardRoutes from "./routes/cardRoutes";
 import plaidRoutes from "./routes/plaidRoutes";
 import plaidSandboxRoutes from "./routes/plaidSandbox";
@@ -11,6 +11,7 @@ import recommendationRoutes from "./routes/recommendationRoutes";
 import merchantRoutes from "./routes/merchantRoutes";
 import qaRoutes from "./routes/qaRoutes";
 import userBenefitRoutes from "./routes/userBenefitRoutes";
+import analyticsRoutes from "./routes/analyticsRoutes";
 
 const app = express();
 
@@ -37,6 +38,28 @@ app.use(
   })
 );
 app.use(express.json());
+
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on("finish", async () => {
+    try {
+      if (req.path.startsWith("/api/analytics")) return;
+      const collection = await getAnalyticsCollection();
+      await collection.insertOne({
+        userId: String((req.body as any)?.userId || req.query?.userId || "devUser"),
+        path: req.path,
+        originalUrl: req.originalUrl,
+        method: req.method,
+        statusCode: res.statusCode,
+        durationMs: Date.now() - start,
+        timestamp: new Date(),
+      });
+    } catch (err) {
+      console.error("Analytics request log failed:", err);
+    }
+  });
+  next();
+});
 
 // ---- Health & diagnostics
 let dbReady = false;
@@ -94,6 +117,7 @@ app.use("/api/plaid", plaidRoutes);                // /api/plaid/...
 app.use("/api/plaid-sandbox", plaidSandboxRoutes); // /api/plaid-sandbox/...
 app.use("/api/scrape", scrapeRoutes);              // /api/scrape/...
 app.use("/api/recommendations", recommendationRoutes); // /api/recommendations/...
+app.use("/api/analytics", analyticsRoutes);        // /api/analytics/...
 app.use("/api", qaRoutes);                             // /api/qa/...
 app.use("/api", userBenefitRoutes);                    // /api/user-benefits/...
 

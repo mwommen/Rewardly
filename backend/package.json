@@ -10,6 +10,8 @@
     "start": "node dist/src/server.js",
     "test": "jest --passWithNoTests",
     "seed": "ts-node ./seedCards.ts",
+    "seed:demo": "ts-node ./demo/seedDemo.ts",
+    "demo:reset": "ts-node ./demo/resetDemo.ts",
     "scrape:card": "ts-node ./src/scrapers/scrapeCard.ts",
     "scrape:weekly": "ts-node ./src/scrapers/weeklyRescrape.ts",
     "pipeline:weekly": "npm run scrape:weekly && npm run cleanup:benefits -- --apply && npm run validate:benefits && ts-node ./src/benefitsAudit.ts",

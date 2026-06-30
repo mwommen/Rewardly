@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta property="og:site_name" content="Lululemon" />
+    <title>Lululemon Checkout</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #f6f7f4;
+        color: #171717;
+      }
+
+      .page {
+        width: min(1080px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 32px 0 56px;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding-bottom: 28px;
+      }
+
+      .brand {
+        font-weight: 800;
+        letter-spacing: 0.02em;
+        font-size: 24px;
+      }
+
+      .secure {
+        color: #4b5563;
+        font-size: 14px;
+      }
+
+      main {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 360px;
+        gap: 24px;
+        align-items: start;
+      }
+
+      section,
+      aside {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 14px;
+        padding: 22px;
+        box-shadow: 0 14px 40px rgba(15, 23, 42, 0.08);
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 30px;
+      }
+
+      h2 {
+        margin: 0 0 18px;
+        font-size: 18px;
+      }
+
+      label {
+        display: grid;
+        gap: 7px;
+        margin-bottom: 16px;
+        color: #374151;
+        font-size: 14px;
+      }
+
+      input {
+        width: 100%;
+        border: 1px solid #d1d5db;
+        border-radius: 10px;
+        padding: 12px 14px;
+        font-size: 15px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+
+      .item {
+        display: grid;
+        grid-template-columns: 72px 1fr;
+        gap: 14px;
+        align-items: center;
+        padding-bottom: 18px;
+        border-bottom: 1px solid #e5e7eb;
+        margin-bottom: 18px;
+      }
+
+      .item-image {
+        height: 72px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #111827, #9ca3af);
+      }
+
+      .item strong,
+      .total strong {
+        display: block;
+      }
+
+      .item span,
+      .line {
+        color: #6b7280;
+        font-size: 14px;
+      }
+
+      .line,
+      .total {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        margin: 12px 0;
+      }
+
+      .total {
+        padding-top: 14px;
+        border-top: 1px solid #e5e7eb;
+        font-size: 18px;
+      }
+
+      .pay {
+        width: 100%;
+        margin-top: 18px;
+        border: 0;
+        border-radius: 999px;
+        background: #cf0a2c;
+        color: #fff;
+        padding: 14px 18px;
+        font-weight: 800;
+        font-size: 15px;
+      }
+
+      .note {
+        margin-top: 14px;
+        color: #6b7280;
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      @media (max-width: 820px) {
+        main {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <header>
+        <div class="brand">lululemon</div>
+        <div class="secure">Secure checkout</div>
+      </header>
+      <main>
+        <section>
+          <h1>Checkout</h1>
+          <p class="note">This local demo page lets the Rewardly extension detect a Lululemon checkout moment.</p>
+          <h2>Payment method</h2>
+          <label>
+            Card number
+            <input value="•••• •••• •••• 1007" aria-label="Card number" />
+          </label>
+          <div class="grid">
+            <label>
+              Expiration
+              <input value="12/29" aria-label="Expiration" />
+            </label>
+            <label>
+              Security code
+              <input value="123" aria-label="Security code" />
+            </label>
+          </div>
+          <button class="pay" type="button">Place order</button>
+        </section>
+        <aside>
+          <h2>Order summary</h2>
+          <div class="item">
+            <div class="item-image" aria-hidden="true"></div>
+            <div>
+              <strong>Everywhere Belt Bag</strong>
+              <span>Lululemon</span>
+            </div>
+          </div>
+          <div class="line"><span>Subtotal</span><strong>$78.00</strong></div>
+          <div class="line"><span>Shipping</span><strong>Free</strong></div>
+          <div class="line"><span>Estimated tax</span><strong>$6.24</strong></div>
+          <div class="total"><span>Total</span><strong>$84.24</strong></div>
+        </aside>
+      </main>
+    </div>
+  </body>
+</html>

@@ -57,7 +57,7 @@ const NAME_FALLBACKS: Array<[RegExp, string]> = [
 ];
 
 export function getCardLogo(card?: CardMeta): string | null {
-  const slug = card?.slug || "";
+  const slug = String(card?.slug || "").trim().toLowerCase();
   if (slug && CARD_LOGOS[slug]) return CARD_LOGOS[slug];
   const name = card?.name || "";
   for (const [pattern, key] of NAME_FALLBACKS) {
@@ -68,5 +68,5 @@ export function getCardLogo(card?: CardMeta): string | null {
 
 export function getCardLogoBySlug(slug?: string): string | null {
   if (!slug) return null;
-  return CARD_LOGOS[slug] || null;
+  return CARD_LOGOS[String(slug).trim().toLowerCase()] || null;
 }

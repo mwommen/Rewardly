@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Credit Card Optimizer",
+  "name": "Rewardly",
   "version": "1.0",
-  "description": "Automatically suggests the best credit card for your purchase based on rewards and benefits.",
+  "description": "Shows the credit card benefit or best card to use when you reach checkout.",
   "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": [
     "http://localhost:5001/*",
@@ -22,7 +22,7 @@
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Credit Card Optimizer"
+    "default_title": "Rewardly"
   },
   "web_accessible_resources": [
     {

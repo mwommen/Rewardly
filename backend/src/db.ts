@@ -1,5 +1,5 @@
 // backend/src/db.ts
-import { MongoClient, Collection, Db } from "mongodb";
+import { MongoClient, Collection, Db, Document } from "mongodb";
 import type { BenefitsPayload } from "./models/benefits";
 import dotenv from "dotenv";
 dotenv.config();
@@ -52,6 +52,11 @@ export async function getLinkedAccountsCollection(): Promise<Collection<LinkedAc
 export async function getUserBenefitStatesCollection(): Promise<Collection<UserBenefitState>> {
   const db = await connectDB();
   return db.collection<UserBenefitState>("userBenefitStates");
+}
+
+export async function getAnalyticsCollection(): Promise<Collection<Document>> {
+  const db = await connectDB();
+  return db.collection<Document>("analyticsEvents");
 }
 
 /**
