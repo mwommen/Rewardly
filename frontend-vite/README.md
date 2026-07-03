@@ -1,79 +1,89 @@
-Credit Card Optimizer
+# Rewardly
 
-Credit Card Optimizer is a web application that helps users identify which of their current credit cards will provide the most benefits for a specific purchase in real-time. For example, if a user is shopping on Nike.com, the app will recommend which of their credit cards will earn the most points, cashback, or rewards based on current offers and partnerships.
+Rewardly is a wallet assistant that helps users decide which card to use before they pay. Instead of asking for merchant domain, MCC, and amount upfront, the app starts with one question: "What are you buying or trying to use?"
 
+The frontend keeps the recommendation engine behind the scenes and presents the result as:
 
-Project Structure
+- Best card to use
+- Why
+- Benefits you would unlock
+- Confidence
+
+Developer/debug fields are still available when testing exact domains, amounts, and MCC mappings.
+
+## Project Structure
+
+```text
 root/
 ├─ backend/          # Node/TypeScript backend API
 ├─ frontend-vite/    # React + Vite frontend
-├─ package.json      # Root monorepo package file (optional)
+├─ package.json      # Root monorepo package file
 ├─ README.md         # Project documentation
+```
 
-Features
+## Features
 
-Real-time credit card recommendations based on purchase category.
+- Natural-language wallet assistant search.
+- Best-card recommendation with plain-English reasoning.
+- Benefit search across relevant card perks and offers.
+- Hidden developer mode for merchant/domain/amount/MCC testing.
+- Modular backend and frontend apps that run independently.
 
-Backend API for storing and retrieving card details.
+## Getting Started
 
-Frontend interface to display card suggestions and benefits.
-
-Modular architecture: backend and frontend run independently.
-
-Getting Started
 1. Clone the repository
+
+```bash
 git clone https://github.com/mwommen/credit-card-optimizer.git
 cd credit-card-optimizer
+```
 
-2. Backend Setup
+2. Backend setup
+
+```bash
 cd backend
 npm install
 npm run dev
+```
 
+Runs the backend server on `http://localhost:5000` or the configured port in `.env`.
 
-Runs the backend server on http://localhost:5000 (or configured port in .env).
+3. Frontend setup
 
-API endpoints available under /api/cards for managing credit card data.
-
-3. Frontend Setup
+```bash
 cd frontend-vite
 npm install
 npm run dev
+```
 
+Runs the frontend on `http://localhost:5173`.
 
-Runs the frontend on http://localhost:5173 (default Vite port).
+4. Environment variables
 
-Connects to backend API to fetch credit card data and display recommendations.
+Backend `.env`:
 
-4. Environment Variables
-
-Create a .env file in the backend/ folder with the following:
-
+```bash
 PORT=5000
 DB_URL=<your_database_connection_string>
 API_KEY=<optional_external_api_keys>
+```
 
+Frontend `.env`:
 
-Frontend can also have a .env for API base URL if needed:
-
+```bash
 VITE_API_BASE_URL=http://localhost:5000
+```
 
-Technologies Used
+## Technologies Used
 
-Backend: Node.js, TypeScript, Express
+- Backend: Node.js, TypeScript, Express
+- Frontend: React, TypeScript, Vite
+- Database: MongoDB
+- Version control: Git, GitHub
 
-Frontend: React, TypeScript, Vite
+## Future Improvements
 
-Database: MongoDB / any preferred database
-
-Version Control: Git, GitHub
-
-Future Improvements
-
-Integrate real-time merchant offers and partnerships.
-
-Add user authentication and saved card preferences.
-
-Improve recommendation algorithm for maximum reward optimization.
-
-Mobile-friendly responsive frontend.
+- Integrate real-time merchant offers and partnerships.
+- Add user authentication and saved card preferences.
+- Improve recommendation coverage across issuers.
+- Add first-time wallet onboarding.

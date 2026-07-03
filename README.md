@@ -1,9 +1,9 @@
-# Credit Card Optimizer
+# Rewardly
 
 This workspace contains two main apps:
 
 - `backend`: Express + TypeScript backend with card recommendation, Plaid linking, and benefit tracking.
-- `frontend-vite`: Vite + React frontend for merchant recommendations and wallet benefits.
+- `frontend-vite`: Vite + React frontend for a wallet assistant that answers what card to use.
 
 ## MVP setup
 
@@ -20,7 +20,20 @@ This workspace contains two main apps:
 4. Run the frontend app:
    - `cd frontend-vite && npm run dev`
 
-5. Open the frontend in the browser and use the merchant search MVP.
+5. Open the frontend in the browser and ask Rewardly what card to use for a purchase.
+
+## Product direction
+
+Rewardly should feel like ChatGPT for your wallet, not a credit-card testing dashboard. The backend recommendation engine stays intact, but the primary UI is now a single natural-language search box: "What are you buying or trying to use?"
+
+The app translates that intent into the existing recommendation API and shows:
+
+- Best card to use
+- Why
+- Benefits you would unlock
+- Confidence
+
+Technical fields like domain, amount, and MCC are still available in a hidden developer/debug panel for testing the engine.
 
 ## Extension checkout demo
 

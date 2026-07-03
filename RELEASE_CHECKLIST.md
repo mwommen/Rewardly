@@ -1,8 +1,8 @@
-# Release Checklist — Credit Card Optimizer MVP
+# Release Checklist — Rewardly MVP
 
 ## What this MVP includes
 
-- Merchant recommendation search and best-card lookup.
+- Wallet-assistant search and best-card lookup.
 - Plaid-based card linking flow with auto-mapping and manual review.
 - Wallet health and benefit summary for linked cards.
 - Demo mode with seed data and resetable demo accounts.
@@ -63,6 +63,6 @@
 ## Known next priorities
 
 - Add a polished onboarding flow for first-time users.
-- Improve responsive layout and glassmorphism visual polish.
+- Expand the natural-language intent parser.
 - Expand card catalog coverage and issuer support.
 - Add a lightweight admin view for analytics and demo verification.
