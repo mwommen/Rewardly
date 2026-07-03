@@ -1,5 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { Card as WalletCard } from "./cardModules";
+import { Badge, Button, Card, EmptyState, LoadingState, SearchInput, SectionHeader } from "./design-system/components";
 import { useRecommendations } from "./hooks/useRecommendations";
+import { API_BASE } from "./lib/api";
 import { getBenefitLogo } from "./lib/benefitLogos";
 import { getCardLogo } from "./lib/cardLogos";
 import "./App.css";
@@ -48,6 +51,8 @@ const NO_RESULT_SUGGESTIONS = [
   "Best Buy",
   "cell phone protection",
 ];
+
+const WALLET_FALLBACKS = ["amex-platinum", "amex-gold", "chase-sapphire-preferred", "capital-one-venture-x"];
 
 function parseIntent(input: string) {
   const cleaned = input.trim();
@@ -114,6 +119,42 @@ function formatFee(fee?: number) {
   return fee === 0 ? "No annual fee" : `$${fee.toLocaleString()} annual fee`;
 }
 
+function formatRewards(rate?: number) {
+  if (typeof rate !== "number" || !Number.isFinite(rate)) return "Best available rewards";
+  if (rate >= 10) return `About ${rate.toFixed(0)}x value`;
+  return Number.isInteger(rate) ? `${rate}x rewards` : `${rate.toFixed(1)}x rewards`;
+}
+
+function formatCategory(value: string) {
+  return value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function topRewards(card: WalletCard) {
+  const rewards = card.rewardsByCategory || card.benefits || {};
+  return Object.entries(rewards)
+    .filter(([, value]) => typeof value === "number" && Number.isFinite(value))
+    .sort((a, b) => Number(b[1]) - Number(a[1]))
+    .slice(0, 3)
+    .map(([category, value]) => `${value}x ${formatCategory(category)}`);
+}
+
+function walletSections(card: WalletCard) {
+  const credits = [...(card.merchantCredits || []), ...(card.recurringCredits || [])];
+  const perks = card.perks || [];
+  const rewards = topRewards(card);
+  const protections = perks.filter((perk) => /protection|insurance|warranty|coverage/i.test(perk)).slice(0, 3);
+  const travel = perks.filter((perk) => /travel|lounge|hotel|flight|rental|trip/i.test(perk)).slice(0, 3);
+
+  return [
+    { title: "Rewards", items: rewards },
+    { title: "Benefits", items: perks.filter((perk) => !protections.includes(perk) && !travel.includes(perk)).slice(0, 3) },
+    { title: "Protections", items: protections },
+    { title: "Credits", items: credits.slice(0, 3).map((credit) => `$${credit.amountUSD} ${credit.label}`) },
+    { title: "Offers", items: card.signupOffer ? [card.signupOffer] : [] },
+    { title: "Travel perks", items: travel },
+  ].filter((section) => section.items.length);
+}
+
 function LogoMark({ src, label }: { src: string | null; label: string }) {
   if (src) {
     return <img src={src} alt="" aria-hidden="true" />;
@@ -134,6 +175,8 @@ export default function App() {
   const [submittedIntent, setSubmittedIntent] = useState("");
   const [debugOpen, setDebugOpen] = useState(false);
   const [debug, setDebug] = useState<DebugState>({ domain: "", amount: "", mcc: "" });
+  const [walletCards, setWalletCards] = useState<WalletCard[]>([]);
+  const [selectedWalletSlug, setSelectedWalletSlug] = useState<string>("");
 
   const merchant = useMemo(() => parseIntent(submittedIntent), [submittedIntent]);
   const query = useMemo(() => {
@@ -149,6 +192,32 @@ export default function App() {
 
   const { loading, error, topPick, otherBest, offers, refetch } = useRecommendations(query);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_BASE}/api/cards`)
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to load wallet cards");
+        return res.json();
+      })
+      .then((data) => {
+        if (cancelled) return;
+        const cards = Array.isArray(data) ? data : data.cards || [];
+        const prioritized = [...cards].sort((a: WalletCard, b: WalletCard) => {
+          const aIndex = WALLET_FALLBACKS.indexOf(a.slug || "");
+          const bIndex = WALLET_FALLBACKS.indexOf(b.slug || "");
+          return (aIndex === -1 ? 99 : aIndex) - (bIndex === -1 ? 99 : bIndex);
+        });
+        setWalletCards(prioritized.slice(0, 6));
+        setSelectedWalletSlug((current) => current || prioritized[0]?.slug || prioritized[0]?.name || "");
+      })
+      .catch(() => {
+        if (!cancelled) setWalletCards([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const unlockedBenefits = useMemo(() => {
     const lines = new Map<string, string | null>();
     if (topPick?.matchedBenefit) lines.set(topPick.matchedBenefit, getBenefitLogo(topPick.matchedBenefit));
@@ -161,6 +230,7 @@ export default function App() {
   }, [offers, topPick]);
 
   const topCardLogo = getCardLogo(topPick?.card);
+  const selectedWalletCard = walletCards.find((card) => (card.slug || card.name) === selectedWalletSlug) || walletCards[0];
 
   const onSubmit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -188,31 +258,30 @@ export default function App() {
           </p>
         </div>
 
-        <form className="intent-panel" onSubmit={onSubmit}>
-          <label htmlFor="intent">What are you buying or trying to use?</label>
-          <div className="search-row">
-            <input
+        <Card className="intent-panel" variant="default">
+          <form onSubmit={onSubmit}>
+            <SearchInput
               id="intent"
+              label="What are you buying or trying to use?"
               value={intent}
               onChange={(event) => setIntent(event.target.value)}
               placeholder="Try: Lululemon, DoorDash, booking a flight, cell phone insurance"
               autoComplete="off"
+              action={<Button type="submit" variant="primary">Find best card</Button>}
+              note="Rewardly only uses your card benefits to make recommendations. You stay in control."
             />
-            <button type="submit">Find best card</button>
-          </div>
-          <p className="privacy-note">
-            Rewardly only uses your card benefits to make recommendations. You stay in control.
-          </p>
+          </form>
           <div className="example-row" aria-label="Example searches">
             {EXAMPLES.map((example) => (
-              <button
+              <Button
                 key={example}
                 type="button"
+                variant="secondary"
                 onClick={() => useExample(example)}
                 aria-label={`Search ${example}`}
               >
                 {example}
-              </button>
+              </Button>
             ))}
           </div>
 
@@ -247,59 +316,49 @@ export default function App() {
               </label>
             </div>
           </details>
-        </form>
+        </Card>
 
-        <section className="smart-moves" aria-labelledby="smart-moves-heading">
-          <h2 id="smart-moves-heading">Today's smart moves</h2>
+        <section className="smart-moves" aria-label="Today's smart moves">
+          <SectionHeader title="Today's smart moves" />
           <div className="smart-move-grid">
             {SMART_MOVES.map((move) => (
-              <button
+              <Button
                 key={move.title}
                 type="button"
+                variant="secondary"
                 onClick={() => useExample(move.query)}
                 aria-label={`Search ${move.title}`}
               >
                 <span className="smart-icon" aria-hidden="true">{move.icon}</span>
                 <strong>{move.title}</strong>
                 <span>{move.text}</span>
-              </button>
+              </Button>
             ))}
           </div>
         </section>
       </section>
 
       <section className="answer-grid" aria-live="polite">
-        <div className="answer-card primary">
-          <div className="section-heading">
-            <p className="eyebrow">Use this card</p>
-            {merchant && <span>{merchant}</span>}
-          </div>
+        <Card className="answer-card primary recommendation-hero" variant="hero">
+          <SectionHeader
+            eyebrow="Best choice"
+            action={merchant ? <Badge tone="info">{merchant}</Badge> : null}
+          />
 
           {!submittedIntent && (
-            <div className="empty-state">
-              <h2>Start with what you're buying.</h2>
-              <p>Rewardly will recommend the best card and explain which rewards, credits, or protections you can use.</p>
-            </div>
+            <EmptyState title="Start with what you're buying.">
+              Rewardly will recommend the best card and explain which rewards, credits, or protections you can use.
+            </EmptyState>
           )}
 
           {loading && (
-            <div className="loading-state" role="status" aria-live="polite">
-              <span>Checking your wallet for the smartest way to pay...</span>
-              <div className="loading-card" aria-hidden="true">
-                <div className="skeleton skeleton-logo" />
-                <div className="skeleton-stack">
-                  <div className="skeleton skeleton-title" />
-                  <div className="skeleton skeleton-line" />
-                  <div className="skeleton skeleton-line short" />
-                </div>
-              </div>
-            </div>
+            <LoadingState message="Checking your wallet for the smartest way to pay..." />
           )}
           {error && (
             <div className="error-state">
               <strong>Could not load a recommendation.</strong>
               <span>{error}</span>
-              <button type="button" onClick={refetch}>Try again</button>
+              <Button type="button" variant="primary" onClick={refetch}>Try again</Button>
             </div>
           )}
 
@@ -311,57 +370,66 @@ export default function App() {
                     <LogoMark src={topCardLogo} label={topPick.card.name} />
                   </div>
                   <div>
-                    <p className="recommendation-label">Use this card</p>
+                    <p className="recommendation-label">Best choice</p>
                     <h2>{topPick.card.name}</h2>
+                    <p className="concierge-copy">
+                      I would use this card here. It gives you the strongest mix of rewards and usable benefits for this purchase.
+                    </p>
                   </div>
                 </div>
                 <div className="badge-stack">
-                  <span className="confidence-badge">{confidenceText(topPick.confidence, topPick.confidenceLabel)}</span>
-                  <span className="match-badge">{matchTierLabel(topPick.matchTier)}</span>
+                  <Badge tone="success">{confidenceText(topPick.confidence, topPick.confidenceLabel)}</Badge>
+                  <Badge tone="neutral">{matchTierLabel(topPick.matchTier)}</Badge>
                 </div>
               </div>
-              <div className="recommendation-body">
-                <section>
-                  <h3>Why this wins</h3>
-                  <p>{topPick.explainer || topPick.why?.[0] || "This is the strongest card match for this purchase."}</p>
-                </section>
-                <section>
-                  <h3>What you unlock</h3>
-                  <p>{unlockedBenefits[0]?.label || topPick.matchedBenefit || "Rewards or protections may apply based on this card."}</p>
-                </section>
+              <div className="advice-grid">
+                <div>
+                  <span>Rewards earned</span>
+                  <strong>{formatRewards(topPick.effectiveRate)}</strong>
+                </div>
+                <div>
+                  <span>Benefits unlocked</span>
+                  <strong>{unlockedBenefits[0]?.label || topPick.matchedBenefit || "Relevant card benefits"}</strong>
+                </div>
+                <div>
+                  <span>Why this was chosen</span>
+                  <strong>{topPick.explainer || topPick.why?.[0] || "Best fit for this purchase."}</strong>
+                </div>
               </div>
               <div className="metadata-row">
                 <strong>Details</strong>
-                {formatFee(topPick.annualFee) && <span>{formatFee(topPick.annualFee)}</span>}
-                {topPick.lastVerified && <span>Verified {new Date(topPick.lastVerified).toLocaleDateString()}</span>}
+                {formatFee(topPick.annualFee) && <Badge>{formatFee(topPick.annualFee)}</Badge>}
+                {topPick.lastVerified && <Badge>Verified {new Date(topPick.lastVerified).toLocaleDateString()}</Badge>}
               </div>
             </div>
           )}
 
           {!loading && !error && submittedIntent && !topPick && (
-            <div className="empty-state">
-              <h2>We don't have a confident match yet.</h2>
-              <p>Try a specific merchant, category, or benefit like Lululemon, groceries, or cell phone protection.</p>
+            <EmptyState
+              title="We don't have a confident match yet."
+              action={(
               <div className="suggestion-row" aria-label="No result suggestions">
                 {NO_RESULT_SUGGESTIONS.map((suggestion) => (
-                  <button
+                  <Button
                     key={suggestion}
                     type="button"
+                    variant="secondary"
                     onClick={() => useExample(suggestion)}
                     aria-label={`Try ${suggestion}`}
                   >
                     Try "{suggestion}"
-                  </button>
+                  </Button>
                 ))}
               </div>
-            </div>
+              )}
+            >
+              Try a specific merchant, category, or benefit like Lululemon, groceries, or cell phone protection.
+            </EmptyState>
           )}
-        </div>
+        </Card>
 
-        <aside className="answer-card">
-          <div className="section-heading">
-            <p className="eyebrow">Benefits unlocked by this purchase</p>
-          </div>
+        <Card className="answer-card" variant="subtle">
+          <SectionHeader eyebrow="Benefits unlocked by this purchase" />
           {unlockedBenefits.length ? (
             <ul className="benefit-list">
               {unlockedBenefits.map((benefit) => (
@@ -376,12 +444,10 @@ export default function App() {
           ) : (
             <p className="muted">Search a merchant, purchase, or benefit to see what your cards can unlock.</p>
           )}
-        </aside>
+        </Card>
 
-        <aside className="answer-card">
-          <div className="section-heading">
-            <p className="eyebrow">Related perks and offers</p>
-          </div>
+        <Card className="answer-card" variant="subtle">
+          <SectionHeader eyebrow="Related perks and offers" />
           {offers.length ? (
             <div className="offer-list">
               {offers.slice(0, 4).map((offer) => (
@@ -405,23 +471,84 @@ export default function App() {
           ) : (
             <p className="muted">Related card perks and offers will appear after a search.</p>
           )}
-        </aside>
+        </Card>
 
         {otherBest.length > 0 && (
-          <aside className="answer-card">
-            <div className="section-heading">
-              <p className="eyebrow">Other cards to consider</p>
-            </div>
+          <Card className="answer-card" variant="subtle">
+            <SectionHeader eyebrow="Other cards to consider" />
             <div className="alternate-list">
               {otherBest.slice(0, 3).map((card) => (
                 <div key={card.card.slug}>
                   <strong>{card.card.name}</strong>
-                  <span>{matchTierLabel(card.matchTier)}</span>
+                  <Badge>{matchTierLabel(card.matchTier)}</Badge>
                 </div>
               ))}
             </div>
-          </aside>
+          </Card>
         )}
+      </section>
+
+      <section className="wallet-section" aria-label="Wallet">
+        <SectionHeader
+          eyebrow="Wallet"
+          title="Your cards, organized for decisions."
+          action={<Badge tone="info">{walletCards.length || "Demo"} cards</Badge>}
+        />
+        <div className="wallet-layout">
+          <div className="wallet-stack" aria-label="Wallet cards">
+            {walletCards.slice(0, 5).map((card, index) => {
+              const key = card.slug || card.name;
+              const selected = key === (selectedWalletCard?.slug || selectedWalletCard?.name);
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  className={`wallet-card ${selected ? "selected" : ""}`}
+                  style={{ transform: `translateY(${index * -18}px)` }}
+                  onClick={() => setSelectedWalletSlug(key)}
+                  aria-label={`Open ${card.name}`}
+                >
+                  <span>{card.issuer}</span>
+                  <strong>{card.name}</strong>
+                  <LogoMark src={getCardLogo(card)} label={card.name} />
+                </button>
+              );
+            })}
+          </div>
+
+          <Card className="wallet-detail" variant="subtle">
+            {selectedWalletCard ? (
+              <>
+                <div className="wallet-detail-head">
+                  <div className="card-logo-tile">
+                    <LogoMark src={getCardLogo(selectedWalletCard)} label={selectedWalletCard.name} />
+                  </div>
+                  <div>
+                    <p className="recommendation-label">In your wallet</p>
+                    <h2>{selectedWalletCard.name}</h2>
+                    <p>{selectedWalletCard.issuer}</p>
+                  </div>
+                </div>
+                <div className="wallet-detail-grid">
+                  {walletSections(selectedWalletCard).map((section) => (
+                    <section key={section.title}>
+                      <h3>{section.title}</h3>
+                      <ul>
+                        {section.items.map((item) => (
+                          <li key={item}>{item}</li>
+                        ))}
+                      </ul>
+                    </section>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <EmptyState title="No wallet cards yet.">
+                Link cards or seed demo data to see a wallet-style card stack.
+              </EmptyState>
+            )}
+          </Card>
+        </div>
       </section>
     </main>
   );

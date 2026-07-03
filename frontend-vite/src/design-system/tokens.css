@@ -1,0 +1,34 @@
+:root {
+  --rw-bg: #08111f;
+  --rw-surface: rgba(15, 23, 42, 0.68);
+  --rw-surface-soft: rgba(15, 23, 42, 0.44);
+  --rw-surface-faint: rgba(255, 255, 255, 0.045);
+  --rw-line: rgba(148, 163, 184, 0.16);
+  --rw-line-soft: rgba(148, 163, 184, 0.1);
+  --rw-text: #f8fafc;
+  --rw-text-muted: #cbd5e1;
+  --rw-text-faint: #94a3b8;
+  --rw-accent: #38bdf8;
+  --rw-accent-strong: #7dd3fc;
+  --rw-success: #34d399;
+  --rw-warning: #fbbf24;
+  --rw-danger: #fb7185;
+  --rw-radius-xs: 10px;
+  --rw-radius-sm: 14px;
+  --rw-radius-md: 18px;
+  --rw-radius-lg: 24px;
+  --rw-radius-xl: 32px;
+  --rw-space-1: 4px;
+  --rw-space-2: 8px;
+  --rw-space-3: 12px;
+  --rw-space-4: 16px;
+  --rw-space-5: 20px;
+  --rw-space-6: 24px;
+  --rw-space-8: 32px;
+  --rw-space-10: 40px;
+  --rw-shadow-soft: 0 18px 48px rgba(0, 0, 0, 0.18);
+  --rw-shadow-card: 0 24px 70px rgba(0, 0, 0, 0.22);
+  --rw-shadow-hero: 0 32px 110px rgba(0, 0, 0, 0.34);
+  --rw-font: "Plus Jakarta Sans", "Segoe UI", sans-serif;
+  --rw-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
