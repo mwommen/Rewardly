@@ -9,12 +9,20 @@ type DebugState = {
 };
 
 const EXAMPLES = [
-  "I am buying a belt bag at Lululemon",
-  "Ordering dinner on DoorDash",
+  "Lululemon",
+  "DoorDash",
   "Booking a flight",
-  "Paying for Capital One Travel",
-  "Shopping at Saks",
-  "Buying groceries",
+  "Cell phone insurance",
+  "Rental car insurance",
+  "Saks credit",
+  "Groceries",
+  "Best Buy purchase protection",
+];
+
+const SMART_MOVES = [
+  "Use Amex Gold for dining",
+  "Check travel protections before booking flights",
+  "Search benefits like cell phone insurance or rental car coverage",
 ];
 
 function parseIntent(input: string) {
@@ -37,7 +45,18 @@ function parseIntent(input: string) {
     "cvs",
     "walgreens",
   ];
-  const knownCategories = ["travel", "dining", "groceries", "gas", "streaming", "drugstores", "apparel"];
+  const knownCategories = [
+    "travel",
+    "dining",
+    "groceries",
+    "gas",
+    "streaming",
+    "drugstores",
+    "apparel",
+    "cell phone insurance",
+    "rental car insurance",
+    "purchase protection",
+  ];
 
   const merchant = knownMerchants.find((candidate) => lower.includes(candidate));
   if (merchant) return merchant;
@@ -94,9 +113,6 @@ export default function App() {
   const benefitLines = useMemo(() => {
     const lines = new Set<string>();
     if (topPick?.matchedBenefit) lines.add(topPick.matchedBenefit);
-    for (const reason of topPick?.why || []) {
-      if (reason) lines.add(reason);
-    }
     for (const offer of offers) {
       for (const perk of offer.perks || []) {
         if (perk) lines.add(perk);
@@ -124,10 +140,10 @@ export default function App() {
         </div>
         <div className="hero-copy">
           <p className="eyebrow">Wallet assistant</p>
-          <h1>Ask what card to use before you pay.</h1>
+          <h1>Know the best card to use before you pay.</h1>
           <p>
-            Tell Rewardly what you are buying or where you are shopping. It checks card rewards,
-            merchant benefits, and confidence signals without making you think in MCC codes.
+            Search a store, purchase, or benefit. Rewardly checks your cards and tells you the
+            smartest way to pay.
           </p>
         </div>
 
@@ -138,10 +154,10 @@ export default function App() {
               id="intent"
               value={intent}
               onChange={(event) => setIntent(event.target.value)}
-              placeholder="e.g. I am buying a belt bag at Lululemon"
+              placeholder="Try: Lululemon, DoorDash, booking a flight, cell phone insurance"
               autoComplete="off"
             />
-            <button type="submit">Ask Rewardly</button>
+            <button type="submit">Find best card</button>
           </div>
           <div className="example-row" aria-label="Example searches">
             {EXAMPLES.map((example) => (
@@ -152,7 +168,8 @@ export default function App() {
           </div>
 
           <details className="debug-panel" open={debugOpen} onToggle={(event) => setDebugOpen(event.currentTarget.open)}>
-            <summary>Developer/debug inputs</summary>
+            <summary>Advanced inputs</summary>
+            <p>Optional: used for testing domain, amount, and MCC.</p>
             <div className="debug-grid">
               <label>
                 Domain
@@ -182,19 +199,30 @@ export default function App() {
             </div>
           </details>
         </form>
+
+        <section className="smart-moves" aria-labelledby="smart-moves-heading">
+          <h2 id="smart-moves-heading">Today's smart moves</h2>
+          <div className="smart-move-grid">
+            {SMART_MOVES.map((move) => (
+              <button key={move} type="button" onClick={() => useExample(move)}>
+                {move}
+              </button>
+            ))}
+          </div>
+        </section>
       </section>
 
       <section className="answer-grid" aria-live="polite">
         <div className="answer-card primary">
           <div className="section-heading">
-            <p className="eyebrow">Best card to use</p>
+            <p className="eyebrow">Use this card</p>
             {merchant && <span>{merchant}</span>}
           </div>
 
           {!submittedIntent && (
             <div className="empty-state">
-              <h2>Start with a purchase, not a form.</h2>
-              <p>Try "I am buying a belt bag at Lululemon" or "Booking a flight".</p>
+              <h2>Start with what you're buying.</h2>
+              <p>Rewardly will recommend the best card and explain which rewards, credits, or protections you can use.</p>
             </div>
           )}
 
@@ -210,20 +238,27 @@ export default function App() {
           {!loading && !error && submittedIntent && topPick && (
             <div className="recommendation">
               <div className="card-title-row">
-                <h2>{topPick.card.name}</h2>
-                <span>{matchTierLabel(topPick.matchTier)}</span>
+                <div>
+                  <p className="recommendation-label">Use this card</p>
+                  <h2>{topPick.card.name}</h2>
+                </div>
+                <div className="badge-stack">
+                  <span className="confidence-badge">{confidenceText(topPick.confidence, topPick.confidenceLabel)}</span>
+                  <span className="match-badge">{matchTierLabel(topPick.matchTier)}</span>
+                </div>
               </div>
               <div className="recommendation-body">
-                <div>
-                  <h3>Why</h3>
+                <section>
+                  <h3>Why this wins</h3>
                   <p>{topPick.explainer || topPick.why?.[0] || "This is the strongest card match for this purchase."}</p>
-                </div>
-                <div>
-                  <h3>Confidence</h3>
-                  <p>{confidenceText(topPick.confidence, topPick.confidenceLabel)}</p>
-                </div>
+                </section>
+                <section>
+                  <h3>Benefits unlocked</h3>
+                  <p>{benefitLines[0] || topPick.matchedBenefit || "Rewards or protections may apply based on this card."}</p>
+                </section>
               </div>
               <div className="metadata-row">
+                <strong>Good to know</strong>
                 {formatFee(topPick.annualFee) && <span>{formatFee(topPick.annualFee)}</span>}
                 {topPick.lastVerified && <span>Verified {new Date(topPick.lastVerified).toLocaleDateString()}</span>}
               </div>
@@ -232,15 +267,15 @@ export default function App() {
 
           {!loading && !error && submittedIntent && !topPick && (
             <div className="empty-state">
-              <h2>No confident card match yet.</h2>
-              <p>Try a specific merchant like Lululemon, Saks, DoorDash, or Capital One Travel.</p>
+              <h2>We don't have a confident match yet.</h2>
+              <p>Try a specific merchant, category, or benefit like Lululemon, groceries, or cell phone protection.</p>
             </div>
           )}
         </div>
 
         <aside className="answer-card">
           <div className="section-heading">
-            <p className="eyebrow">Benefits you would unlock</p>
+            <p className="eyebrow">Benefits unlocked by this purchase</p>
           </div>
           {benefitLines.length ? (
             <ul className="benefit-list">
@@ -249,13 +284,13 @@ export default function App() {
               ))}
             </ul>
           ) : (
-            <p className="muted">Benefits and perks will appear here after a search.</p>
+            <p className="muted">Search a merchant, purchase, or benefit to see what your cards can unlock.</p>
           )}
         </aside>
 
         <aside className="answer-card">
           <div className="section-heading">
-            <p className="eyebrow">Benefit search</p>
+            <p className="eyebrow">Related perks and offers</p>
           </div>
           {offers.length ? (
             <div className="offer-list">
@@ -270,7 +305,7 @@ export default function App() {
               ))}
             </div>
           ) : (
-            <p className="muted">Search a merchant or category to find relevant perks across cards.</p>
+            <p className="muted">Related card perks and offers will appear after a search.</p>
           )}
         </aside>
 
