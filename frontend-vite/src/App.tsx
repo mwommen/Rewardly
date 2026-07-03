@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
 import { useRecommendations } from "./hooks/useRecommendations";
+import { getBenefitLogo } from "./lib/benefitLogos";
+import { getCardLogo } from "./lib/cardLogos";
 import "./App.css";
 
 type DebugState = {
@@ -20,9 +22,31 @@ const EXAMPLES = [
 ];
 
 const SMART_MOVES = [
-  "Use Amex Gold for dining",
-  "Check travel protections before booking flights",
-  "Search benefits like cell phone insurance or rental car coverage",
+  {
+    icon: "D",
+    title: "Dining",
+    text: "Use the card that earns the most at restaurants.",
+    query: "Dining",
+  },
+  {
+    icon: "T",
+    title: "Flights",
+    text: "Check travel protections before booking.",
+    query: "Booking a flight",
+  },
+  {
+    icon: "P",
+    title: "Protections",
+    text: "Search coverage like phone insurance or rental cars.",
+    query: "Cell phone insurance",
+  },
+];
+
+const NO_RESULT_SUGGESTIONS = [
+  "groceries",
+  "rental car insurance",
+  "Best Buy",
+  "cell phone protection",
 ];
 
 function parseIntent(input: string) {
@@ -90,6 +114,21 @@ function formatFee(fee?: number) {
   return fee === 0 ? "No annual fee" : `$${fee.toLocaleString()} annual fee`;
 }
 
+function LogoMark({ src, label }: { src: string | null; label: string }) {
+  if (src) {
+    return <img src={src} alt="" aria-hidden="true" />;
+  }
+
+  const initials = label
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0]?.toUpperCase())
+    .join("") || "R";
+
+  return <span aria-hidden="true">{initials}</span>;
+}
+
 export default function App() {
   const [intent, setIntent] = useState("");
   const [submittedIntent, setSubmittedIntent] = useState("");
@@ -110,16 +149,18 @@ export default function App() {
 
   const { loading, error, topPick, otherBest, offers, refetch } = useRecommendations(query);
 
-  const benefitLines = useMemo(() => {
-    const lines = new Set<string>();
-    if (topPick?.matchedBenefit) lines.add(topPick.matchedBenefit);
+  const unlockedBenefits = useMemo(() => {
+    const lines = new Map<string, string | null>();
+    if (topPick?.matchedBenefit) lines.set(topPick.matchedBenefit, getBenefitLogo(topPick.matchedBenefit));
     for (const offer of offers) {
       for (const perk of offer.perks || []) {
-        if (perk) lines.add(perk);
+        if (perk && !lines.has(perk)) lines.set(perk, getBenefitLogo(perk));
       }
     }
-    return Array.from(lines).slice(0, 5);
+    return Array.from(lines, ([label, logo]) => ({ label, logo })).slice(0, 5);
   }, [offers, topPick]);
+
+  const topCardLogo = getCardLogo(topPick?.card);
 
   const onSubmit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -159,9 +200,17 @@ export default function App() {
             />
             <button type="submit">Find best card</button>
           </div>
+          <p className="privacy-note">
+            Rewardly only uses your card benefits to make recommendations. You stay in control.
+          </p>
           <div className="example-row" aria-label="Example searches">
             {EXAMPLES.map((example) => (
-              <button key={example} type="button" onClick={() => useExample(example)}>
+              <button
+                key={example}
+                type="button"
+                onClick={() => useExample(example)}
+                aria-label={`Search ${example}`}
+              >
                 {example}
               </button>
             ))}
@@ -204,8 +253,15 @@ export default function App() {
           <h2 id="smart-moves-heading">Today's smart moves</h2>
           <div className="smart-move-grid">
             {SMART_MOVES.map((move) => (
-              <button key={move} type="button" onClick={() => useExample(move)}>
-                {move}
+              <button
+                key={move.title}
+                type="button"
+                onClick={() => useExample(move.query)}
+                aria-label={`Search ${move.title}`}
+              >
+                <span className="smart-icon" aria-hidden="true">{move.icon}</span>
+                <strong>{move.title}</strong>
+                <span>{move.text}</span>
               </button>
             ))}
           </div>
@@ -226,7 +282,19 @@ export default function App() {
             </div>
           )}
 
-          {loading && <div className="empty-state">Checking your wallet...</div>}
+          {loading && (
+            <div className="loading-state" role="status" aria-live="polite">
+              <span>Checking your wallet for the smartest way to pay...</span>
+              <div className="loading-card" aria-hidden="true">
+                <div className="skeleton skeleton-logo" />
+                <div className="skeleton-stack">
+                  <div className="skeleton skeleton-title" />
+                  <div className="skeleton skeleton-line" />
+                  <div className="skeleton skeleton-line short" />
+                </div>
+              </div>
+            </div>
+          )}
           {error && (
             <div className="error-state">
               <strong>Could not load a recommendation.</strong>
@@ -238,9 +306,14 @@ export default function App() {
           {!loading && !error && submittedIntent && topPick && (
             <div className="recommendation">
               <div className="card-title-row">
-                <div>
-                  <p className="recommendation-label">Use this card</p>
-                  <h2>{topPick.card.name}</h2>
+                <div className="card-identity">
+                  <div className="card-logo-tile">
+                    <LogoMark src={topCardLogo} label={topPick.card.name} />
+                  </div>
+                  <div>
+                    <p className="recommendation-label">Use this card</p>
+                    <h2>{topPick.card.name}</h2>
+                  </div>
                 </div>
                 <div className="badge-stack">
                   <span className="confidence-badge">{confidenceText(topPick.confidence, topPick.confidenceLabel)}</span>
@@ -253,12 +326,12 @@ export default function App() {
                   <p>{topPick.explainer || topPick.why?.[0] || "This is the strongest card match for this purchase."}</p>
                 </section>
                 <section>
-                  <h3>Benefits unlocked</h3>
-                  <p>{benefitLines[0] || topPick.matchedBenefit || "Rewards or protections may apply based on this card."}</p>
+                  <h3>What you unlock</h3>
+                  <p>{unlockedBenefits[0]?.label || topPick.matchedBenefit || "Rewards or protections may apply based on this card."}</p>
                 </section>
               </div>
               <div className="metadata-row">
-                <strong>Good to know</strong>
+                <strong>Details</strong>
                 {formatFee(topPick.annualFee) && <span>{formatFee(topPick.annualFee)}</span>}
                 {topPick.lastVerified && <span>Verified {new Date(topPick.lastVerified).toLocaleDateString()}</span>}
               </div>
@@ -269,6 +342,18 @@ export default function App() {
             <div className="empty-state">
               <h2>We don't have a confident match yet.</h2>
               <p>Try a specific merchant, category, or benefit like Lululemon, groceries, or cell phone protection.</p>
+              <div className="suggestion-row" aria-label="No result suggestions">
+                {NO_RESULT_SUGGESTIONS.map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    type="button"
+                    onClick={() => useExample(suggestion)}
+                    aria-label={`Try ${suggestion}`}
+                  >
+                    Try "{suggestion}"
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -277,10 +362,15 @@ export default function App() {
           <div className="section-heading">
             <p className="eyebrow">Benefits unlocked by this purchase</p>
           </div>
-          {benefitLines.length ? (
+          {unlockedBenefits.length ? (
             <ul className="benefit-list">
-              {benefitLines.map((line) => (
-                <li key={line}>{line}</li>
+              {unlockedBenefits.map((benefit) => (
+                <li key={benefit.label}>
+                  <span className="benefit-logo">
+                    <LogoMark src={benefit.logo} label={benefit.label} />
+                  </span>
+                  <span>{benefit.label}</span>
+                </li>
               ))}
             </ul>
           ) : (
@@ -296,7 +386,15 @@ export default function App() {
             <div className="offer-list">
               {offers.slice(0, 4).map((offer) => (
                 <article key={offer.card.slug}>
-                  <strong>{offer.card.name}</strong>
+                  <div className="offer-card-heading">
+                    <span className="benefit-logo">
+                      <LogoMark
+                        src={getBenefitLogo(offer.perks?.[0] || offer.signupOffer || offer.card.name)}
+                        label={offer.card.name}
+                      />
+                    </span>
+                    <strong>{offer.card.name}</strong>
+                  </div>
                   {offer.signupOffer && <span>{offer.signupOffer}</span>}
                   {(offer.perks || []).slice(0, 2).map((perk) => (
                     <p key={perk}>{perk}</p>
