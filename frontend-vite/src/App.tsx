@@ -120,9 +120,10 @@ function formatFee(fee?: number) {
 }
 
 function formatRewards(rate?: number) {
-  if (typeof rate !== "number" || !Number.isFinite(rate)) return "Best available rewards";
-  if (rate >= 10) return `About ${rate.toFixed(0)}x value`;
-  return Number.isInteger(rate) ? `${rate}x rewards` : `${rate.toFixed(1)}x rewards`;
+  if (typeof rate !== "number" || !Number.isFinite(rate)) return "You'll earn the best available rewards";
+  if (rate >= 10) return `You'll get about ${rate.toFixed(0)}x value`;
+  const formatted = Number.isInteger(rate) ? rate.toFixed(0) : rate.toFixed(1);
+  return `You'll earn ${formatted}x rewards`;
 }
 
 function formatCategory(value: string) {
@@ -315,6 +316,16 @@ export default function App() {
                 />
               </label>
             </div>
+            {topPick && (
+              <div className="debug-result">
+                <span>Recommendation logic</span>
+                <Badge tone="neutral">{confidenceText(topPick.confidence, topPick.confidenceLabel)}</Badge>
+                <Badge tone="neutral">{matchTierLabel(topPick.matchTier)}</Badge>
+                {typeof topPick.confidence === "number" && (
+                  <Badge tone="neutral">{Math.round(topPick.confidence * 100)}% confidence</Badge>
+                )}
+              </div>
+            )}
           </details>
         </Card>
 
@@ -341,7 +352,7 @@ export default function App() {
       <section className="answer-grid" aria-live="polite">
         <Card className="answer-card primary recommendation-hero" variant="hero">
           <SectionHeader
-            eyebrow="Best choice"
+            eyebrow="Best Choice"
             action={merchant ? <Badge tone="info">{merchant}</Badge> : null}
           />
 
@@ -370,29 +381,24 @@ export default function App() {
                     <LogoMark src={topCardLogo} label={topPick.card.name} />
                   </div>
                   <div>
-                    <p className="recommendation-label">Best choice</p>
+                    <p className="recommendation-label">Use this card</p>
                     <h2>{topPick.card.name}</h2>
                     <p className="concierge-copy">
                       I would use this card here. It gives you the strongest mix of rewards and usable benefits for this purchase.
                     </p>
                   </div>
                 </div>
-                <div className="badge-stack">
-                  <Badge tone="success">{confidenceText(topPick.confidence, topPick.confidenceLabel)}</Badge>
-                  <Badge tone="neutral">{matchTierLabel(topPick.matchTier)}</Badge>
-                </div>
               </div>
               <div className="advice-grid">
-                <div>
-                  <span>Rewards earned</span>
+                <div className="reward-callout">
                   <strong>{formatRewards(topPick.effectiveRate)}</strong>
                 </div>
                 <div>
-                  <span>Benefits unlocked</span>
+                  <span>What you unlock</span>
                   <strong>{unlockedBenefits[0]?.label || topPick.matchedBenefit || "Relevant card benefits"}</strong>
                 </div>
                 <div>
-                  <span>Why this was chosen</span>
+                  <span>Why it wins</span>
                   <strong>{topPick.explainer || topPick.why?.[0] || "Best fit for this purchase."}</strong>
                 </div>
               </div>
@@ -480,7 +486,7 @@ export default function App() {
               {otherBest.slice(0, 3).map((card) => (
                 <div key={card.card.slug}>
                   <strong>{card.card.name}</strong>
-                  <Badge>{matchTierLabel(card.matchTier)}</Badge>
+                  <Badge>Backup option</Badge>
                 </div>
               ))}
             </div>

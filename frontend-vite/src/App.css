@@ -420,6 +420,21 @@ summary:focus-visible {
   min-height: 44px;
 }
 
+.debug-result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--rw-space-2);
+  margin-top: var(--rw-space-3);
+}
+
+.debug-result > span {
+  color: var(--rw-text-faint);
+  font-size: 12px;
+  font-weight: 800;
+  margin-right: var(--rw-space-1);
+}
+
 .smart-moves {
   display: grid;
   gap: 12px;
@@ -677,6 +692,21 @@ summary:focus-visible {
   font-weight: 900;
 }
 
+.recommendation-hero .card-logo-tile {
+  width: 154px;
+  height: 98px;
+  border-radius: 24px;
+}
+
+.recommendation-hero .card-logo-tile img {
+  max-width: 124px;
+  max-height: 76px;
+}
+
+.recommendation-hero .card-logo-tile span {
+  font-size: 28px;
+}
+
 .card-title-row h2 {
   font-size: clamp(30px, 4vw, 48px);
   line-height: 1.02;
@@ -698,15 +728,6 @@ summary:focus-visible {
   text-transform: uppercase;
 }
 
-.badge-stack {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.confidence-badge,
-.match-badge,
 .metadata-row span {
   border-radius: 999px;
   padding: 7px 10px;
@@ -715,12 +736,6 @@ summary:focus-visible {
   white-space: nowrap;
 }
 
-.confidence-badge {
-  background: rgba(52, 211, 153, 0.16);
-  color: #bbf7d0;
-}
-
-.match-badge,
 .metadata-row span {
   background: rgba(148, 163, 184, 0.12);
   color: #cbd5e1;
@@ -765,6 +780,13 @@ summary:focus-visible {
   padding: var(--rw-space-4);
 }
 
+.advice-grid .reward-callout {
+  grid-column: span 1;
+  background:
+    linear-gradient(135deg, rgba(56, 189, 248, 0.18), rgba(52, 211, 153, 0.08)),
+    rgba(255, 255, 255, 0.055);
+}
+
 .advice-grid span {
   color: var(--rw-text-faint);
   font-size: 12px;
@@ -777,6 +799,11 @@ summary:focus-visible {
   color: var(--rw-text);
   font-size: clamp(18px, 2vw, 24px);
   line-height: 1.16;
+}
+
+.reward-callout strong {
+  font-size: clamp(24px, 3vw, 36px);
+  letter-spacing: 0;
 }
 
 .metadata-row {
@@ -1073,10 +1100,6 @@ summary:focus-visible {
     align-items: flex-start;
   }
 
-  .badge-stack {
-    justify-content: flex-start;
-  }
-
   .wallet-stack {
     min-height: 300px;
   }
@@ -1122,6 +1145,11 @@ summary:focus-visible {
   .card-logo-tile {
     width: 106px;
     height: 68px;
+  }
+
+  .recommendation-hero .card-logo-tile {
+    width: 132px;
+    height: 84px;
   }
 
   .wallet-card {
