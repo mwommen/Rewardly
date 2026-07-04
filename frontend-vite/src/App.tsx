@@ -9,7 +9,6 @@ import SmartMoves, { type SmartMove } from "./components/SmartMoves";
 import TrustSection from "./components/TrustSection";
 import UnlocksSection from "./components/UnlocksSection";
 import WalletPreview from "./components/WalletPreview";
-import { Badge, Card, SectionHeader } from "./design-system/components";
 import { useRecommendations } from "./hooks/useRecommendations";
 import { API_BASE } from "./lib/api";
 import { getBenefitLogo } from "./lib/benefitLogos";
@@ -179,6 +178,7 @@ export default function App() {
           loading={loading}
           error={error}
           topPick={topPick}
+          alternatives={otherBest}
           unlockedBenefits={unlockedBenefits}
           onRetry={refetch}
           onSuggestion={useExample}
@@ -186,20 +186,6 @@ export default function App() {
 
         <UnlocksSection unlockedBenefits={unlockedBenefits} />
         <RelatedPerksSection offers={offers} benefitIntent={benefitIntent} />
-
-        {otherBest.length > 0 && (
-          <Card className="answer-card" variant="subtle">
-            <SectionHeader eyebrow="Other cards to consider" />
-            <div className="alternate-list">
-              {otherBest.slice(0, 3).map((card) => (
-                <div key={card.card.slug}>
-                  <strong>{card.card.name}</strong>
-                  <Badge>Backup option</Badge>
-                </div>
-              ))}
-            </div>
-          </Card>
-        )}
       </section>
 
       <TrustSection />
