@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { API_BASE } from "../lib/api";
 
-type BestCard = {
+export type BestCard = {
   card: { slug: string; name: string };
   effectiveRate?: number;
   explainer?: string;
@@ -14,7 +14,7 @@ type BestCard = {
   annualFee?: number;
 };
 
-type Offer = {
+export type Offer = {
   card: { slug: string; name: string };
   signupOffer?: string | null;
   perks: string[];
