@@ -33,28 +33,37 @@ const BENEFIT_LESSONS = [
   {
     match: /purchase protection/i,
     title: "Purchase Protection",
-    body: "Use the recommended card for eligible purchases you would want protected if they are damaged or stolen soon after checkout.",
+    body: "You only receive Purchase Protection when you pay with the eligible card.",
   },
   {
     match: /rental car|rental car insurance|rental car coverage/i,
     title: "Rental Car Insurance",
-    body: "Paying with the right card can help you unlock rental coverage before you accept expensive add-ons at the counter.",
+    body: "Rental coverage usually depends on paying for the booking with the card that includes it.",
   },
   {
     match: /dining credit|restaurant/i,
     title: "Dining Credit",
-    body: "Dining credits are easiest to miss. Use the card that can offset the bill instead of only earning points.",
+    body: "Dining credits only help if you use the card tied to that credit at checkout.",
   },
   {
     match: /travel|trip|flight/i,
     title: "Travel Insurance",
-    body: "Before booking, use the card that can pair rewards with eligible delay, cancellation, or interruption protections.",
+    body: "Travel protections usually require booking the trip with the card that provides them.",
   },
   {
     match: /extended warranty|warranty/i,
     title: "Extended Warranty",
-    body: "For electronics and higher-ticket items, the right card may add warranty time after the manufacturer coverage ends.",
+    body: "Extended Warranty can apply only when the eligible purchase is paid for with that card.",
   },
+];
+
+const BENEFIT_ICONS = [
+  { match: /purchase protection/i, icon: "🛡" },
+  { match: /travel|trip|flight/i, icon: "✈" },
+  { match: /cell phone|phone/i, icon: "📱" },
+  { match: /extended warranty|warranty/i, icon: "🔄" },
+  { match: /dining|restaurant/i, icon: "💳" },
+  { match: /rental car|coverage|insurance/i, icon: "✓" },
 ];
 
 function primaryUnlock(unlockedBenefits: UnlockBenefit[], topPick: BestCard) {
@@ -67,9 +76,10 @@ function primaryUnlock(unlockedBenefits: UnlockBenefit[], topPick: BestCard) {
 }
 
 function recommendationSentence(topPick: BestCard) {
-  const reason =
-    topPick.explainer || topPick.why?.[0] || "it is the strongest fit here";
-  return `This is the smartest card to use because ${reason.replace(/\.$/, "")}.`;
+  if (topPick.matchedBenefit) {
+    return "This card earns strong rewards while also unlocking a benefit you can use on this purchase.";
+  }
+  return "Rewardly recommends this card because it gives you the strongest overall value for this purchase.";
 }
 
 function alternativeReason(card: BestCard) {
@@ -85,12 +95,39 @@ function rewardCallout(rate?: number) {
   return rewardChip(rate);
 }
 
+function rewardPhrase(rate?: number) {
+  if (typeof rate !== "number" || !Number.isFinite(rate)) {
+    return "strong rewards";
+  }
+  return rewardChip(rate).toLowerCase();
+}
+
 function specificReason(topPick: BestCard, unlockLabel: string) {
   const rewards = rewardCallout(topPick.effectiveRate).toLowerCase();
   if (unlockLabel && unlockLabel !== "Relevant card benefits") {
     return `${topPick.card.name} wins because it pairs ${rewards} with ${unlockLabel}.`;
   }
   return `${topPick.card.name} wins because it gives you ${rewards} for this purchase.`;
+}
+
+function benefitIcon(label: string) {
+  return BENEFIT_ICONS.find((item) => item.match.test(label))?.icon || "✓";
+}
+
+function whyBullets(topPick: BestCard, unlockLabel: string) {
+  const bullets = [
+    `${rewardPhrase(topPick.effectiveRate)} for this purchase`,
+    unlockLabel && unlockLabel !== "Relevant card benefits"
+      ? `Unlocks ${unlockLabel}`
+      : "Strong fit for this purchase",
+    topPick.matchedBenefit
+      ? "Useful card benefit available"
+      : topPick.why?.[0] ||
+        topPick.explainer ||
+        "Best card in your wallet here",
+  ];
+
+  return Array.from(new Set(bullets)).slice(0, 3);
 }
 
 function benefitLesson(
@@ -130,6 +167,7 @@ export default function RecommendationResult({
   const lesson = topPick
     ? benefitLesson(submittedIntent, topPick, unlockedBenefits)
     : BENEFIT_LESSONS[0];
+  const reasons = topPick ? whyBullets(topPick, unlockLabel) : [];
 
   return (
     <Card className="answer-card primary recommendation-hero" variant="hero">
@@ -161,6 +199,10 @@ export default function RecommendationResult({
 
       {!loading && !error && submittedIntent && topPick && (
         <div className="recommendation">
+          <p className="recommendation-summary">
+            {recommendationSentence(topPick)}
+          </p>
+
           <div className="recommendation-advice">
             <div className="recommendation-card-art">
               <LogoMark src={topCardLogo} label={topPick.card.name} />
@@ -170,7 +212,7 @@ export default function RecommendationResult({
               <p className="recommendation-label">Best Choice</p>
               <h2>{topPick.card.name}</h2>
               <p className="concierge-copy">
-                {recommendationSentence(topPick)}
+                {specificReason(topPick, unlockLabel)}
               </p>
             </div>
           </div>
@@ -184,19 +226,15 @@ export default function RecommendationResult({
               <span>You unlock</span>
               <strong>{unlockLabel}</strong>
             </div>
-            <div>
-              <span>Primary reason</span>
-              <strong>
-                {topPick.explainer ||
-                  topPick.why?.[0] ||
-                  "Best fit for this purchase."}
-              </strong>
-            </div>
           </div>
 
-          <section className="why-rewardly">
-            <p className="recommendation-label">Why Rewardly recommends this</p>
-            <p>{specificReason(topPick, unlockLabel)}</p>
+          <section className="why-card">
+            <p className="recommendation-label">Why this card?</p>
+            <ul>
+              {reasons.map((reason) => (
+                <li key={reason}>{reason}</li>
+              ))}
+            </ul>
           </section>
 
           {unlockedBenefits.length > 0 && (
@@ -210,11 +248,9 @@ export default function RecommendationResult({
                   key={benefit.label}
                   style={{ animationDelay: `${index * 70}ms` }}
                 >
-                  {benefit.logo && (
-                    <span className="benefit-logo">
-                      <LogoMark src={benefit.logo} label={benefit.label} />
-                    </span>
-                  )}
+                  <span className="benefit-chip-icon" aria-hidden="true">
+                    {benefitIcon(benefit.label)}
+                  </span>
                   {benefit.label}
                 </span>
               ))}
@@ -224,9 +260,9 @@ export default function RecommendationResult({
           <div className="recommendation-support">
             {alternatives.length > 0 && (
               <section className="recommendation-panel">
-                <p className="recommendation-label">Alternative Cards</p>
+                <p className="recommendation-label">Also consider</p>
                 <div className="recommendation-alternatives">
-                  {alternatives.slice(0, 2).map((card) => (
+                  {alternatives.slice(0, 1).map((card) => (
                     <article key={card.card.slug}>
                       <div className="alternative-card-heading">
                         <span className="alternative-logo">
@@ -237,7 +273,6 @@ export default function RecommendationResult({
                         </span>
                         <strong>{card.card.name}</strong>
                       </div>
-                      <span className="alternative-tag">Backup option</span>
                       <p>{alternativeReason(card)}</p>
                     </article>
                   ))}
@@ -246,7 +281,7 @@ export default function RecommendationResult({
             )}
 
             <section className="recommendation-panel did-you-know">
-              <p className="recommendation-label">Useful insight</p>
+              <p className="recommendation-label">Did you know?</p>
               <div>
                 <strong>{lesson.title}</strong>
                 <p>{lesson.body}</p>

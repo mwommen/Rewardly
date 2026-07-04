@@ -876,6 +876,15 @@ summary:focus-visible {
   animation: recommendation-in 520ms var(--rw-ease) both;
 }
 
+.recommendation-summary {
+  max-width: 820px;
+  margin: 0;
+  color: var(--rw-text-muted);
+  font-size: clamp(19px, 2.2vw, 25px);
+  font-weight: 750;
+  line-height: 1.38;
+}
+
 @keyframes recommendation-in {
   from {
     opacity: 0;
@@ -1075,7 +1084,7 @@ summary:focus-visible {
 
 .advice-grid {
   display: grid;
-  grid-template-columns: 0.95fr 1fr 1.35fr;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
   gap: var(--rw-space-3);
 }
 
@@ -1130,7 +1139,8 @@ summary:focus-visible {
   letter-spacing: 0;
 }
 
-.why-rewardly {
+.why-rewardly,
+.why-card {
   display: grid;
   gap: var(--rw-space-2);
   max-width: 780px;
@@ -1145,6 +1155,35 @@ summary:focus-visible {
   color: var(--rw-text-muted);
   font-size: 17px;
   line-height: 1.5;
+}
+
+.why-card ul {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.why-card li {
+  position: relative;
+  margin: 0;
+  color: var(--rw-text-muted);
+  font-size: 16px;
+  line-height: 1.45;
+  padding-left: 22px;
+}
+
+.why-card li::before {
+  position: absolute;
+  top: 0.45em;
+  left: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--rw-accent);
+  box-shadow: 0 0 0 5px rgba(110, 231, 249, 0.1);
+  content: "";
 }
 
 .recommendation-benefits {
@@ -1171,11 +1210,24 @@ summary:focus-visible {
   padding: 6px 14px 6px 8px;
   font-size: 13px;
   font-weight: 850;
+  cursor: pointer;
   animation: benefit-chip-in 360ms var(--rw-ease) both;
   transition:
     border-color 180ms var(--rw-ease),
     background 180ms var(--rw-ease),
     transform 180ms var(--rw-ease);
+}
+
+.benefit-chip-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: rgba(7, 12, 24, 0.42);
+  color: var(--rw-text);
+  font-size: 14px;
+  line-height: 1;
 }
 
 .recommendation-benefit-chip:hover {
