@@ -25,7 +25,9 @@ export default function SmartMoves({ moves, onSelect }: SmartMovesProps) {
             onClick={() => onSelect(move.query)}
             aria-label={`Search ${move.title}`}
           >
-            <span className="smart-icon" aria-hidden="true">{move.icon}</span>
+            <span className="smart-icon" aria-hidden="true">
+              {move.icon}
+            </span>
             <strong>{move.title}</strong>
             <span>{move.text}</span>
           </Button>

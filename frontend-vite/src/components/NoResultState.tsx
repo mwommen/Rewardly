@@ -15,7 +15,7 @@ export default function NoResultState({ onSelect }: NoResultStateProps) {
   return (
     <EmptyState
       title="We don't have a confident match yet."
-      action={(
+      action={
         <div className="suggestion-row" aria-label="No result suggestions">
           {NO_RESULT_SUGGESTIONS.map((suggestion) => (
             <Button
@@ -29,9 +29,10 @@ export default function NoResultState({ onSelect }: NoResultStateProps) {
             </Button>
           ))}
         </div>
-      )}
+      }
     >
-      Try a specific merchant, category, or benefit like Lululemon, groceries, or cell phone protection.
+      Try a specific merchant, category, or benefit like Lululemon, groceries,
+      or cell phone protection.
     </EmptyState>
   );
 }

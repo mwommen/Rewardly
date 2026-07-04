@@ -30,20 +30,25 @@ export function formatFee(fee?: number) {
 }
 
 export function formatRewards(rate?: number) {
-  if (typeof rate !== "number" || !Number.isFinite(rate)) return "You'll earn the best available rewards";
+  if (typeof rate !== "number" || !Number.isFinite(rate)) {
+    return "You'll earn the best available rewards";
+  }
   if (rate >= 10) return `You'll get about ${rate.toFixed(0)}x value`;
   const formatted = Number.isInteger(rate) ? rate.toFixed(0) : rate.toFixed(1);
   return `You'll earn ${formatted}x rewards`;
 }
 
 export function rewardChip(rate?: number) {
-  if (typeof rate !== "number" || !Number.isFinite(rate)) return "Strong rewards";
+  if (typeof rate !== "number" || !Number.isFinite(rate))
+    return "Strong rewards";
   const formatted = Number.isInteger(rate) ? rate.toFixed(0) : rate.toFixed(1);
   return `${formatted}x rewards`;
 }
 
 export function formatCategory(value: string) {
-  return value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+  return value
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 export function normalizeUnlockLabel(value: string) {

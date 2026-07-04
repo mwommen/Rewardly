@@ -15,7 +15,7 @@ function formatCategoryLabel(value: string) {
 }
 
 function getTopPerks(card: Card) {
-  const rewards = (card.rewardsByCategory || card.benefits) || {};
+  const rewards = card.rewardsByCategory || card.benefits || {};
   const entries = Object.entries(rewards)
     .filter(([, v]) => typeof v === "number" && Number.isFinite(Number(v)))
     .map(([k, v]) => ({ key: k, value: Number(v) }))
@@ -45,7 +45,11 @@ export default function CardSearch({ cards, onClose, onSelect }: Props) {
     const q = query.trim().toLowerCase();
     if (!q) return cards.slice(0, 10);
     return cards
-      .filter((c) => (c.name || "").toLowerCase().includes(q) || (c.issuer || "").toLowerCase().includes(q))
+      .filter(
+        (c) =>
+          (c.name || "").toLowerCase().includes(q) ||
+          (c.issuer || "").toLowerCase().includes(q),
+      )
       .slice(0, 20);
   }, [cards, query]);
 
@@ -82,7 +86,10 @@ export default function CardSearch({ cards, onClose, onSelect }: Props) {
               }
               if (event.key === "ArrowUp") {
                 event.preventDefault();
-                const next = results[(selectedIndex - 1 + results.length) % results.length];
+                const next =
+                  results[
+                    (selectedIndex - 1 + results.length) % results.length
+                  ];
                 if (next) setSelected(next);
               }
               if (event.key === "Enter") {
@@ -94,12 +101,20 @@ export default function CardSearch({ cards, onClose, onSelect }: Props) {
               }
             }}
           />
-          <button className="card-search-close" onClick={onClose} aria-label="Close card search">
+          <button
+            className="card-search-close"
+            onClick={onClose}
+            aria-label="Close card search"
+          >
             Close
           </button>
         </div>
         <div className="card-search-body">
-          <div className="card-search-list" role="listbox" aria-label="Card search results">
+          <div
+            className="card-search-list"
+            role="listbox"
+            aria-label="Card search results"
+          >
             {results.map((card) => (
               <button
                 key={card.slug || card.name}
@@ -110,7 +125,11 @@ export default function CardSearch({ cards, onClose, onSelect }: Props) {
                 aria-selected={selected?.slug === card.slug}
               >
                 {getCardLogo(card) ? (
-                  <img className="card-search-logo" src={getCardLogo(card) || ""} alt={`${card.name} logo`} />
+                  <img
+                    className="card-search-logo"
+                    src={getCardLogo(card) || ""}
+                    alt={`${card.name} logo`}
+                  />
                 ) : null}
                 <div>
                   <strong>{card.name}</strong>
@@ -118,13 +137,19 @@ export default function CardSearch({ cards, onClose, onSelect }: Props) {
                 </div>
               </button>
             ))}
-            {results.length === 0 && <div className="empty-copy">No cards found.</div>}
+            {results.length === 0 && (
+              <div className="empty-copy">No cards found.</div>
+            )}
           </div>
           <div className="card-search-details">
             {selected ? (
               <div>
                 {getCardLogo(selected) ? (
-                  <img className="card-search-selected-logo" src={getCardLogo(selected) || ""} alt={`${selected.name} logo`} />
+                  <img
+                    className="card-search-selected-logo"
+                    src={getCardLogo(selected) || ""}
+                    alt={`${selected.name} logo`}
+                  />
                 ) : null}
                 <h3>{selected.name}</h3>
                 <p className="muted">{selected.issuer}</p>
@@ -150,7 +175,14 @@ export default function CardSearch({ cards, onClose, onSelect }: Props) {
                   >
                     View card details
                   </button>
-                  <a className="apply-link" href={getApplyUrl(selected) || "#"} target="_blank" rel="noreferrer">Apply / Learn more</a>
+                  <a
+                    className="apply-link"
+                    href={getApplyUrl(selected) || "#"}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Apply / Learn more
+                  </a>
                 </div>
               </div>
             ) : (

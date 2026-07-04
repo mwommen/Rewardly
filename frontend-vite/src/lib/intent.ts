@@ -59,14 +59,21 @@ export function parseIntent(input: string) {
   if (!cleaned) return "";
 
   const lower = cleaned.toLowerCase();
-  const merchant = KNOWN_MERCHANTS.find((candidate) => lower.includes(candidate));
+  const merchant = KNOWN_MERCHANTS.find((candidate) =>
+    lower.includes(candidate),
+  );
   if (merchant) return merchant;
 
-  const category = KNOWN_CATEGORIES.find((candidate) => lower.includes(candidate));
+  const category = KNOWN_CATEGORIES.find((candidate) =>
+    lower.includes(candidate),
+  );
   if (category) return category;
 
   return cleaned
-    .replace(/^(i am|i'm|im|buying|ordering|booking|paying for|shopping at|using)\s+/i, "")
+    .replace(
+      /^(i am|i'm|im|buying|ordering|booking|paying for|shopping at|using)\s+/i,
+      "",
+    )
     .replace(/\s+(checkout|purchase|order|payment)$/i, "")
     .trim();
 }

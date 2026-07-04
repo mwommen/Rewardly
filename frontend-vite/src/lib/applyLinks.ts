@@ -6,32 +6,56 @@ type ApplyCard = {
 };
 
 const APPLY_URLS: Record<string, string> = {
-  "amex-gold": "https://www.americanexpress.com/us/credit-cards/card/gold-card/",
-  "amex-platinum": "https://www.americanexpress.com/us/credit-cards/card/platinum/",
-  "amex-green-card": "https://www.americanexpress.com/us/credit-cards/card/green/",
-  "amex-everyday": "https://www.americanexpress.com/us/credit-cards/card/amex-everyday/",
-  "amex-everyday-preferred": "https://www.americanexpress.com/us/credit-cards/card/amex-everyday-preferred/",
-  "blue-business-plus-credit-card-amex": "https://www.americanexpress.com/us/credit-cards/business/business-blueplus-credit-card/",
-  "chase-sapphire-preferred": "https://creditcards.chase.com/rewards-credit-cards/sapphire/preferred",
-  "chase-sapphire-reserve": "https://creditcards.chase.com/rewards-credit-cards/sapphire/reserve",
-  "chase-freedom-unlimited": "https://creditcards.chase.com/cash-back-credit-cards/freedom/unlimited",
-  "chase-freedom-flex": "https://creditcards.chase.com/cash-back-credit-cards/freedom/flex",
-  "chase-ink-cash": "https://creditcards.chase.com/business-credit-cards/ink/cash",
-  "chase-ink-unlimited": "https://creditcards.chase.com/business-credit-cards/ink/unlimited",
-  "chase-ink-preferred": "https://creditcards.chase.com/business-credit-cards/ink/business-preferred",
-  "citi-custom-cash": "https://www.citi.com/credit-cards/citi-custom-cash-credit-card",
-  "capital-one-savorone": "https://www.capitalone.com/credit-cards/savorone-dining-rewards/",
-  "capital-one-savor": "https://www.capitalone.com/credit-cards/savor-dining-rewards/",
+  "amex-gold":
+    "https://www.americanexpress.com/us/credit-cards/card/gold-card/",
+  "amex-platinum":
+    "https://www.americanexpress.com/us/credit-cards/card/platinum/",
+  "amex-green-card":
+    "https://www.americanexpress.com/us/credit-cards/card/green/",
+  "amex-everyday":
+    "https://www.americanexpress.com/us/credit-cards/card/amex-everyday/",
+  "amex-everyday-preferred":
+    "https://www.americanexpress.com/us/credit-cards/card/amex-everyday-preferred/",
+  "blue-business-plus-credit-card-amex":
+    "https://www.americanexpress.com/us/credit-cards/business/business-blueplus-credit-card/",
+  "chase-sapphire-preferred":
+    "https://creditcards.chase.com/rewards-credit-cards/sapphire/preferred",
+  "chase-sapphire-reserve":
+    "https://creditcards.chase.com/rewards-credit-cards/sapphire/reserve",
+  "chase-freedom-unlimited":
+    "https://creditcards.chase.com/cash-back-credit-cards/freedom/unlimited",
+  "chase-freedom-flex":
+    "https://creditcards.chase.com/cash-back-credit-cards/freedom/flex",
+  "chase-ink-cash":
+    "https://creditcards.chase.com/business-credit-cards/ink/cash",
+  "chase-ink-unlimited":
+    "https://creditcards.chase.com/business-credit-cards/ink/unlimited",
+  "chase-ink-preferred":
+    "https://creditcards.chase.com/business-credit-cards/ink/business-preferred",
+  "citi-custom-cash":
+    "https://www.citi.com/credit-cards/citi-custom-cash-credit-card",
+  "capital-one-savorone":
+    "https://www.capitalone.com/credit-cards/savorone-dining-rewards/",
+  "capital-one-savor":
+    "https://www.capitalone.com/credit-cards/savor-dining-rewards/",
   "capital-one-venture-x": "https://www.capitalone.com/credit-cards/venture-x/",
   "capital-one-venture": "https://www.capitalone.com/credit-cards/venture/",
-  "capital-one-ventureone": "https://www.capitalone.com/credit-cards/ventureone/",
-  "capital-one-quicksilver": "https://www.capitalone.com/credit-cards/quicksilver/",
-  "boa-customized-cash-rewards": "https://www.bankofamerica.com/credit-cards/products/cash-back-credit-card/",
-  "boa-unlimited-cash-rewards": "https://www.bankofamerica.com/credit-cards/products/unlimited-cash-back-credit-card/",
-  "boa-travel-rewards": "https://www.bankofamerica.com/credit-cards/products/travel-rewards-credit-card/",
-  "usbank-cash-plus": "https://www.usbank.com/credit-cards/cash-plus-visa-signature-credit-card.html",
-  "usbank-altitude-go": "https://www.usbank.com/credit-cards/altitude-go-visa-signature-credit-card.html",
-  "usbank-smartly": "https://www.usbank.com/credit-cards/smartly-visa-signature-credit-card.html",
+  "capital-one-ventureone":
+    "https://www.capitalone.com/credit-cards/ventureone/",
+  "capital-one-quicksilver":
+    "https://www.capitalone.com/credit-cards/quicksilver/",
+  "boa-customized-cash-rewards":
+    "https://www.bankofamerica.com/credit-cards/products/cash-back-credit-card/",
+  "boa-unlimited-cash-rewards":
+    "https://www.bankofamerica.com/credit-cards/products/unlimited-cash-back-credit-card/",
+  "boa-travel-rewards":
+    "https://www.bankofamerica.com/credit-cards/products/travel-rewards-credit-card/",
+  "usbank-cash-plus":
+    "https://www.usbank.com/credit-cards/cash-plus-visa-signature-credit-card.html",
+  "usbank-altitude-go":
+    "https://www.usbank.com/credit-cards/altitude-go-visa-signature-credit-card.html",
+  "usbank-smartly":
+    "https://www.usbank.com/credit-cards/smartly-visa-signature-credit-card.html",
 };
 
 const NAME_FALLBACKS: Array<[RegExp, string]> = [
@@ -75,6 +99,8 @@ export function getApplyUrl(card?: ApplyCard | null): string | null {
     if (pattern.test(name)) return APPLY_URLS[key] || null;
   }
 
-  const issuer = String(card.issuer || "").toLowerCase().trim();
+  const issuer = String(card.issuer || "")
+    .toLowerCase()
+    .trim();
   return ISSUER_FALLBACKS[issuer] || null;
 }

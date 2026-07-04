@@ -12,7 +12,11 @@
   border: none;
   border-radius: 28px;
   padding: 1.2rem;
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.92), rgba(246, 243, 237, 0.86));
+  background: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.92),
+    rgba(246, 243, 237, 0.86)
+  );
   box-shadow: 0 20px 36px rgba(15, 23, 42, 0.08);
 }
 
@@ -67,13 +71,19 @@
 
 .card-item {
   flex: 1 1 280px;
-  background: linear-gradient(165deg, rgba(255, 255, 255, 0.95), rgba(245, 242, 235, 0.9));
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.95),
+    rgba(245, 242, 235, 0.9)
+  );
   border-radius: 32px;
   box-shadow: 0 26px 52px rgba(15, 23, 42, 0.12);
   padding: 1.8rem;
   position: relative;
   border: 1px solid rgba(255, 255, 255, 0.7);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .card-item:hover {
@@ -143,7 +153,10 @@
   font-weight: 700;
   padding: 0.45rem 0.9rem;
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .compare-toggle:hover:not(:disabled) {
@@ -162,7 +175,9 @@
   cursor: not-allowed;
 }
 
-.benefits, .perks, .credits {
+.benefits,
+.perks,
+.credits {
   margin-bottom: 1rem;
 }
 
@@ -323,7 +338,11 @@
 
 .highlight {
   border: 1.5px solid rgba(227, 151, 47, 0.6);
-  background: linear-gradient(140deg, rgba(255, 244, 222, 0.9), rgba(255, 255, 255, 0.8));
+  background: linear-gradient(
+    140deg,
+    rgba(255, 244, 222, 0.9),
+    rgba(255, 255, 255, 0.8)
+  );
 }
 
 .empty-state {

@@ -10,7 +10,11 @@ export function trackEvent(event: string, metadata: AnalyticsMetadata = {}) {
     metadata,
   };
 
-  if (typeof window !== "undefined" && window.navigator && window.navigator.sendBeacon) {
+  if (
+    typeof window !== "undefined" &&
+    window.navigator &&
+    window.navigator.sendBeacon
+  ) {
     try {
       const url = `${API_BASE}/api/analytics/event`;
       const body = JSON.stringify(payload);

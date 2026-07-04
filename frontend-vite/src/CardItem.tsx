@@ -25,13 +25,16 @@ const CardItem = ({
 }: Props) => {
   const benefitSource = Object.keys(card.benefits || {}).length
     ? card.benefits
-    : (card.rewardsByCategory || {});
+    : card.rewardsByCategory || {};
   const benefits = Object.entries(benefitSource || {});
   const merchantCredits = filterCredits(card.merchantCredits || []);
   const recurringCredits = filterCredits(card.recurringCredits || []);
   const filteredPerks = filterPerks(card.perks || []);
-  const creditsTotal = sumCreditsAnnual(merchantCredits) + sumCreditsAnnual(recurringCredits);
-  const annualFee = Number.isFinite(card.annualFee) ? `$${card.annualFee}` : "—";
+  const creditsTotal =
+    sumCreditsAnnual(merchantCredits) + sumCreditsAnnual(recurringCredits);
+  const annualFee = Number.isFinite(card.annualFee)
+    ? `$${card.annualFee}`
+    : "—";
   const apr = card.apr ? `${card.apr}` : "—";
   const creditCount = merchantCredits.length + recurringCredits.length;
 
@@ -82,7 +85,9 @@ const CardItem = ({
         )}
         <div>
           <strong>{creditCount}</strong> credits
-          {creditsTotal > 0 && <span className="summary-muted"> · up to ${creditsTotal}/yr</span>}
+          {creditsTotal > 0 && (
+            <span className="summary-muted"> · up to ${creditsTotal}/yr</span>
+          )}
         </div>
         <div>
           <strong>{filteredPerks.length}</strong> perks
@@ -101,8 +106,12 @@ const CardItem = ({
               <ul>
                 {benefits.map(([category, multiplier], i) => (
                   <li key={i}>
-                    <span className="category-icon">{getCategoryIcon(category)}</span>
-                    <strong>{category.charAt(0).toUpperCase() + category.slice(1)}:</strong>{" "}
+                    <span className="category-icon">
+                      {getCategoryIcon(category)}
+                    </span>
+                    <strong>
+                      {category.charAt(0).toUpperCase() + category.slice(1)}:
+                    </strong>{" "}
                     {formatRewardValue(multiplier)}
                   </li>
                 ))}
@@ -124,7 +133,9 @@ const CardItem = ({
                 {merchantCredits.map((credit) => (
                   <li key={credit.id}>
                     <strong>
-                      <span className="credit-icon">{getCreditIcon(credit.label)}</span>
+                      <span className="credit-icon">
+                        {getCreditIcon(credit.label)}
+                      </span>
                       {credit.label}
                     </strong>
                     <span>{formatCredit(credit.amountUSD, credit.period)}</span>
@@ -134,7 +145,9 @@ const CardItem = ({
                 {recurringCredits.map((credit) => (
                   <li key={credit.id}>
                     <strong>
-                      <span className="credit-icon">{getCreditIcon(credit.label)}</span>
+                      <span className="credit-icon">
+                        {getCreditIcon(credit.label)}
+                      </span>
                       {credit.label}
                     </strong>
                     <span>{formatCredit(credit.amountUSD, credit.period)}</span>
@@ -168,21 +181,29 @@ const CardItem = ({
 // Example category icons
 const getCategoryIcon = (category: string) => {
   switch (category.toLowerCase()) {
-    case "groceries": return "🛒";
-    case "travel": return "✈️";
-    case "electronics": return "💻";
-    case "dining": return "🍽️";
-    default: return "💳";
+    case "groceries":
+      return "🛒";
+    case "travel":
+      return "✈️";
+    case "electronics":
+      return "💻";
+    case "dining":
+      return "🍽️";
+    default:
+      return "💳";
   }
 };
 
 const formatCredit = (amountUSD: number, period: string) => {
   const amount = Number.isFinite(amountUSD) ? `$${amountUSD}` : "$—";
   const per =
-    period === "month" ? "per month" :
-    period === "quarter" ? "per quarter" :
-    period === "semi-annual" ? "per half-year" :
-    "per year";
+    period === "month"
+      ? "per month"
+      : period === "quarter"
+        ? "per quarter"
+        : period === "semi-annual"
+          ? "per half-year"
+          : "per year";
   return `${amount} ${per}`;
 };
 
@@ -201,18 +222,30 @@ const getCreditIcon = (label: string) => {
 };
 
 const filterCredits = <
-  T extends { label: string; amountUSD: number; period: string; confidence?: number }
->(credits: T[]) => {
+  T extends {
+    label: string;
+    amountUSD: number;
+    period: string;
+    confidence?: number;
+  },
+>(
+  credits: T[],
+) => {
   const seen = new Set<string>();
   return credits.filter((credit) => {
     const label = (credit.label || "").trim();
     if (!label || label.length > 160) return false;
     if (/[<>]/.test(label) || /https?:\/\//i.test(label)) return false;
-    if (!Number.isFinite(credit.amountUSD) || credit.amountUSD < 5 || credit.amountUSD > 1000) {
+    if (
+      !Number.isFinite(credit.amountUSD) ||
+      credit.amountUSD < 5 ||
+      credit.amountUSD > 1000
+    ) {
       return false;
     }
     if (credit.confidence != null && credit.confidence < 0.7) return false;
-    if (!/(credit|statement|cash|reimburse|membership)/i.test(label)) return false;
+    if (!/(credit|statement|cash|reimburse|membership)/i.test(label))
+      return false;
     const key = `${label}|${credit.amountUSD}|${credit.period}`;
     if (seen.has(key)) return false;
     seen.add(key);
@@ -230,7 +263,9 @@ const formatRewardValue = (value: number) => {
   return `${value}x points`;
 };
 
-const sumCreditsAnnual = (credits: Array<{ amountUSD: number; period: string }>) => {
+const sumCreditsAnnual = (
+  credits: Array<{ amountUSD: number; period: string }>,
+) => {
   const factor = (period: string) => {
     if (period === "month") return 12;
     if (period === "quarter") return 4;
@@ -238,7 +273,12 @@ const sumCreditsAnnual = (credits: Array<{ amountUSD: number; period: string }>)
     return 1;
   };
   return Math.round(
-    credits.reduce((sum, c) => sum + (Number.isFinite(c.amountUSD) ? c.amountUSD * factor(c.period) : 0), 0)
+    credits.reduce(
+      (sum, c) =>
+        sum +
+        (Number.isFinite(c.amountUSD) ? c.amountUSD * factor(c.period) : 0),
+      0,
+    ),
   );
 };
 
@@ -247,8 +287,17 @@ const filterPerks = (perks: string[]) => {
   const keepers = perks
     .map((p) => p.replace(/\s+/g, " ").trim())
     .filter((p) => p.length > 10 && p.length < 160)
-    .filter((p) => /(credit|bonus|points|cash back|dining|travel|airport|lounge|protection|insurance|hotel|transfer|dashpass|uber|saks|resy|walmart)/i.test(p))
-    .filter((p) => !/opens new credit card offers|reward(s)? program|credit card offers/i.test(p))
+    .filter((p) =>
+      /(credit|bonus|points|cash back|dining|travel|airport|lounge|protection|insurance|hotel|transfer|dashpass|uber|saks|resy|walmart)/i.test(
+        p,
+      ),
+    )
+    .filter(
+      (p) =>
+        !/opens new credit card offers|reward(s)? program|credit card offers/i.test(
+          p,
+        ),
+    )
     .filter((p) => {
       const key = p.toLowerCase();
       if (seen.has(key)) return false;
@@ -260,7 +309,7 @@ const filterPerks = (perks: string[]) => {
 
 const renderOptIn = (
   card: { issuer?: string; sourceUrl?: string; name?: string },
-  credit: { sourceUrl?: string; label?: string; partner?: string }
+  credit: { sourceUrl?: string; label?: string; partner?: string },
 ) => {
   const link = getEnrollmentLink({
     cardName: card.name,

@@ -1,5 +1,10 @@
 import type { Card as WalletCard } from "../cardModules";
-import { Badge, Card, EmptyState, SectionHeader } from "../design-system/components";
+import {
+  Badge,
+  Card,
+  EmptyState,
+  SectionHeader,
+} from "../design-system/components";
 import { getCardLogo } from "../lib/cardLogos";
 import { walletSections } from "../lib/walletSections";
 import LogoMark from "./LogoMark";
@@ -10,7 +15,11 @@ type WalletPreviewProps = {
   onSelect: (key: string) => void;
 };
 
-export default function WalletPreview({ walletCards, selectedWalletCard, onSelect }: WalletPreviewProps) {
+export default function WalletPreview({
+  walletCards,
+  selectedWalletCard,
+  onSelect,
+}: WalletPreviewProps) {
   return (
     <section className="wallet-section" aria-label="Wallet">
       <SectionHeader
@@ -22,7 +31,8 @@ export default function WalletPreview({ walletCards, selectedWalletCard, onSelec
         <div className="wallet-stack" aria-label="Wallet cards">
           {walletCards.slice(0, 5).map((card, index) => {
             const key = card.slug || card.name;
-            const selected = key === (selectedWalletCard?.slug || selectedWalletCard?.name);
+            const selected =
+              key === (selectedWalletCard?.slug || selectedWalletCard?.name);
             return (
               <button
                 key={key}
@@ -45,7 +55,10 @@ export default function WalletPreview({ walletCards, selectedWalletCard, onSelec
             <>
               <div className="wallet-detail-head">
                 <div className="card-logo-tile">
-                  <LogoMark src={getCardLogo(selectedWalletCard)} label={selectedWalletCard.name} />
+                  <LogoMark
+                    src={getCardLogo(selectedWalletCard)}
+                    label={selectedWalletCard.name}
+                  />
                 </div>
                 <div>
                   <p className="recommendation-label">In your wallet</p>

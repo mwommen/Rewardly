@@ -46,7 +46,10 @@ const PlaidLinkButton: React.FC<PlaidLinkButtonProps> = ({
       .catch((err) => {
         console.error("Failed to get link token:", err);
         onError?.("Unable to start Plaid. Please try again.");
-        trackEvent("plaid_link_error", { stage: "create_link_token", message: err?.message || "unknown" });
+        trackEvent("plaid_link_error", {
+          stage: "create_link_token",
+          message: err?.message || "unknown",
+        });
         setLoading(false);
       });
   }, [apiBase, userId, onError]);
@@ -65,25 +68,34 @@ const PlaidLinkButton: React.FC<PlaidLinkButtonProps> = ({
         const data = await res.json();
         console.log("[Plaid] exchange response", data);
         if (res.ok && (data?.ok || data?.linked || data?.access_token)) {
-          trackEvent("plaid_link_exchange", { status: "ok", itemId: data?.linked?.itemId });
+          trackEvent("plaid_link_exchange", {
+            status: "ok",
+            itemId: data?.linked?.itemId,
+          });
           const callbackValue =
             typeof data?.access_token === "string"
               ? data.access_token
               : typeof data?.linked?.itemId === "string"
-              ? data.linked.itemId
-              : "linked";
+                ? data.linked.itemId
+                : "linked";
           if (typeof data?.access_token === "string") {
             localStorage.setItem("plaid_access_token", data.access_token);
           }
           onAccessToken(callbackValue);
           onSuccess?.();
         } else {
-          trackEvent("plaid_link_exchange", { status: "error", error: data?.error });
+          trackEvent("plaid_link_exchange", {
+            status: "error",
+            error: data?.error,
+          });
           onError?.(data?.error || "Link failed. Please try again.");
         }
       } catch (err) {
         console.error("Failed to exchange public token:", err);
-        trackEvent("plaid_link_error", { stage: "exchange_public_token", message: getErrorMessage(err, "unknown") });
+        trackEvent("plaid_link_error", {
+          stage: "exchange_public_token",
+          message: getErrorMessage(err, "unknown"),
+        });
         onError?.("Link failed. Please try again.");
       }
     },
@@ -98,7 +110,11 @@ const PlaidLinkButton: React.FC<PlaidLinkButtonProps> = ({
   });
 
   return (
-    <button onClick={() => open()} disabled={!ready || !linkToken || loading} className={className}>
+    <button
+      onClick={() => open()}
+      disabled={!ready || !linkToken || loading}
+      className={className}
+    >
       {loading ? "Preparing…" : label || "Link Credit Cards"}
     </button>
   );

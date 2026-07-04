@@ -10,7 +10,9 @@ type UnlocksSectionProps = {
   unlockedBenefits: UnlockBenefit[];
 };
 
-export default function UnlocksSection({ unlockedBenefits }: UnlocksSectionProps) {
+export default function UnlocksSection({
+  unlockedBenefits,
+}: UnlocksSectionProps) {
   return (
     <Card className="answer-card unlock-card" variant="subtle">
       <SectionHeader eyebrow="What you unlock" />
@@ -26,7 +28,10 @@ export default function UnlocksSection({ unlockedBenefits }: UnlocksSectionProps
           ))}
         </ul>
       ) : (
-        <p className="muted">Rewardly didn't find a specific benefit yet, but this card still looks like the strongest option based on available rewards.</p>
+        <p className="muted">
+          Rewardly didn't find a specific benefit yet, but this card still looks
+          like the strongest option based on available rewards.
+        </p>
       )}
     </Card>
   );

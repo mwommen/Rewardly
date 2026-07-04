@@ -32,7 +32,9 @@ export default function MapLinkedAccounts({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [accountFilter, setAccountFilter] = useState<"all" | "needs_review">("all");
+  const [accountFilter, setAccountFilter] = useState<"all" | "needs_review">(
+    "all",
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -40,10 +42,14 @@ export default function MapLinkedAccounts({
     try {
       const [s, l] = await Promise.all([
         fetch(`${API_BASE}/api/cards/slugs`).then((r) =>
-          r.ok ? r.json() : Promise.reject(new Error("Failed to load cards"))
+          r.ok ? r.json() : Promise.reject(new Error("Failed to load cards")),
         ),
-        fetch(`${API_BASE}/api/plaid/linked-accounts?userId=${encodeURIComponent(userId)}`).then((r) =>
-          r.ok ? r.json() : Promise.reject(new Error("Failed to load linked accounts"))
+        fetch(
+          `${API_BASE}/api/plaid/linked-accounts?userId=${encodeURIComponent(userId)}`,
+        ).then((r) =>
+          r.ok
+            ? r.json()
+            : Promise.reject(new Error("Failed to load linked accounts")),
         ),
       ]);
       setSlugs(Array.isArray(s?.slugs) ? s.slugs : []);
@@ -59,7 +65,10 @@ export default function MapLinkedAccounts({
     load();
   }, [load]);
 
-  const cardMap = useMemo(() => new Map(slugs.map((s) => [s.slug, s.name])), [slugs]);
+  const cardMap = useMemo(
+    () => new Map(slugs.map((s) => [s.slug, s.name])),
+    [slugs],
+  );
 
   const accounts = useMemo(() => {
     const arr: LinkedAccount[] = [];
@@ -67,13 +76,16 @@ export default function MapLinkedAccounts({
 
     linked.forEach((doc) =>
       doc.accounts?.forEach((account) => {
-        const key = account.accountId || `${account.official_name || account.name || ""}|${account.mask || ""}`;
+        const key =
+          account.accountId ||
+          `${account.official_name || account.name || ""}|${account.mask || ""}`;
         if (!key || seen.has(key)) return;
         seen.add(key);
         const type = String(account.type || "").toLowerCase();
         const subtype = String(account.subtype || "").toLowerCase();
-        if (type.includes("credit") || subtype.includes("credit")) arr.push(account);
-      })
+        if (type.includes("credit") || subtype.includes("credit"))
+          arr.push(account);
+      }),
     );
 
     return arr;
@@ -83,7 +95,11 @@ export default function MapLinkedAccounts({
     if (accountFilter === "needs_review") {
       return accounts.filter((acc) => {
         const mappedSlug = String(acc.mappedCardSlug || "").trim();
-        return !mappedSlug || mappedSlug === "unknown" || mappedSlug === "generic-credit";
+        return (
+          !mappedSlug ||
+          mappedSlug === "unknown" ||
+          mappedSlug === "generic-credit"
+        );
       });
     }
     return accounts;
@@ -91,7 +107,9 @@ export default function MapLinkedAccounts({
 
   const reviewCount = accounts.filter((acc) => {
     const mappedSlug = String(acc.mappedCardSlug || "").trim();
-    return !mappedSlug || mappedSlug === "unknown" || mappedSlug === "generic-credit";
+    return (
+      !mappedSlug || mappedSlug === "unknown" || mappedSlug === "generic-credit"
+    );
   }).length;
 
   async function mapAccount(accountId: string, mappedCardSlug: string) {
@@ -104,7 +122,8 @@ export default function MapLinkedAccounts({
         body: JSON.stringify({ userId, accountId, mappedCardSlug }),
       });
       const json = await res.json();
-      if (!res.ok || !json.ok) throw new Error(json?.error || "Failed to save mapping");
+      if (!res.ok || !json.ok)
+        throw new Error(json?.error || "Failed to save mapping");
       setLinked(Array.isArray(json?.linked) ? json.linked : []);
       onChanged?.();
     } catch (e) {
@@ -124,7 +143,8 @@ export default function MapLinkedAccounts({
         body: JSON.stringify({ userId }),
       });
       const json = await res.json();
-      if (!res.ok || !json.ok) throw new Error(json?.error || "Failed to refresh mappings");
+      if (!res.ok || !json.ok)
+        throw new Error(json?.error || "Failed to refresh mappings");
       setLinked(Array.isArray(json?.linked) ? json.linked : []);
       onChanged?.();
     } catch (e) {
@@ -139,11 +159,15 @@ export default function MapLinkedAccounts({
     setSaving("clearing");
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/api/plaid/linked-accounts?userId=${encodeURIComponent(userId)}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(
+        `${API_BASE}/api/plaid/linked-accounts?userId=${encodeURIComponent(userId)}`,
+        {
+          method: "DELETE",
+        },
+      );
       const json = await res.json();
-      if (!res.ok || !json.ok) throw new Error(json?.error || "Failed to clear linked accounts");
+      if (!res.ok || !json.ok)
+        throw new Error(json?.error || "Failed to clear linked accounts");
       await load();
       onChanged?.();
     } catch (e) {
@@ -153,7 +177,8 @@ export default function MapLinkedAccounts({
     }
   }
 
-  if (loading) return <div className="result-note">Loading linked accounts…</div>;
+  if (loading)
+    return <div className="result-note">Loading linked accounts…</div>;
 
   return (
     <div className="linked-panel">
@@ -178,20 +203,31 @@ export default function MapLinkedAccounts({
       <div className="linked-filter-bar">
         <button
           type="button"
-          className={accountFilter === "all" ? "linked-filter-button active" : "linked-filter-button"}
+          className={
+            accountFilter === "all"
+              ? "linked-filter-button active"
+              : "linked-filter-button"
+          }
           onClick={() => setAccountFilter("all")}
         >
           All
         </button>
         <button
           type="button"
-          className={accountFilter === "needs_review" ? "linked-filter-button active" : "linked-filter-button"}
+          className={
+            accountFilter === "needs_review"
+              ? "linked-filter-button active"
+              : "linked-filter-button"
+          }
           onClick={() => setAccountFilter("needs_review")}
         >
           Needs review ({reviewCount})
         </button>
       </div>
-      <p className="linked-help">If a card name looks wrong, choose the best matching card from the dropdown.</p>
+      <p className="linked-help">
+        If a card name looks wrong, choose the best matching card from the
+        dropdown.
+      </p>
       {error && <div className="linked-error">{error}</div>}
       {accounts.length === 0 ? (
         <div className="linked-empty">No credit card accounts found yet.</div>
@@ -200,13 +236,21 @@ export default function MapLinkedAccounts({
           {reviewAccounts.map((acc) => {
             const mappedSlug = String(acc.mappedCardSlug || "").trim();
             const mappedName = mappedSlug
-              ? cardMap.get(mappedSlug) || (mappedSlug === "generic-credit" ? "Generic credit card" : mappedSlug)
+              ? cardMap.get(mappedSlug) ||
+                (mappedSlug === "generic-credit"
+                  ? "Generic credit card"
+                  : mappedSlug)
               : "";
-            const isUnknown = !mappedSlug || mappedSlug === "unknown" || mappedSlug === "generic-credit";
+            const isUnknown =
+              !mappedSlug ||
+              mappedSlug === "unknown" ||
+              mappedSlug === "generic-credit";
             return (
               <div key={acc.accountId} className="linked-row">
                 <div className="linked-meta">
-                  <div className="linked-name">{acc.name || acc.official_name || "Account"}</div>
+                  <div className="linked-name">
+                    {acc.name || acc.official_name || "Account"}
+                  </div>
                   <div className="linked-sub">
                     {acc.type}/{acc.subtype} · •{acc.mask || "••••"}
                   </div>
@@ -229,11 +273,15 @@ export default function MapLinkedAccounts({
                       </option>
                     ))}
                   </select>
-                  <span className={`linked-status ${isUnknown ? "warning" : "ok"}`}>
+                  <span
+                    className={`linked-status ${isUnknown ? "warning" : "ok"}`}
+                  >
                     {isUnknown ? "Needs review" : "Mapped"}
                   </span>
                 </div>
-                {saving === acc.accountId && <span className="linked-saving">saving…</span>}
+                {saving === acc.accountId && (
+                  <span className="linked-saving">saving…</span>
+                )}
               </div>
             );
           })}

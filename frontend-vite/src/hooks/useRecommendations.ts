@@ -65,9 +65,13 @@ export function useRecommendations(inputs: QueryInputs) {
     return sp;
   };
 
-  const normalizeCard = (raw: RecommendationRaw): { slug: string; name: string } => {
+  const normalizeCard = (
+    raw: RecommendationRaw,
+  ): { slug: string; name: string } => {
     const slug = String(raw?.slug || raw?.card?.slug || "").trim();
-    const name = String(raw?.name || raw?.card?.name || slug || "Unknown card").trim();
+    const name = String(
+      raw?.name || raw?.card?.name || slug || "Unknown card",
+    ).trim();
     return {
       slug: slug || "unknown-card",
       name: name || "Unknown card",
@@ -76,22 +80,31 @@ export function useRecommendations(inputs: QueryInputs) {
 
   const toBestCard = (raw: RecommendationRaw): BestCard => ({
     card: normalizeCard(raw),
-    effectiveRate: typeof raw?.effectiveRate === "number" ? raw.effectiveRate : undefined,
+    effectiveRate:
+      typeof raw?.effectiveRate === "number" ? raw.effectiveRate : undefined,
     explainer:
       typeof raw?.reason === "string"
         ? raw.reason
         : typeof raw?.explainer === "string"
-        ? raw.explainer
-        : undefined,
-    confidence: typeof raw?.confidence === "number" ? raw.confidence : undefined,
+          ? raw.explainer
+          : undefined,
+    confidence:
+      typeof raw?.confidence === "number" ? raw.confidence : undefined,
     why: Array.isArray(raw?.why) ? raw.why.map(String) : [],
-    confidenceLabel: typeof raw?.confidenceLabel === "string" ? raw.confidenceLabel : undefined,
+    confidenceLabel:
+      typeof raw?.confidenceLabel === "string"
+        ? raw.confidenceLabel
+        : undefined,
     matchTier:
-      raw?.matchTier === "exact_benefit" || raw?.matchTier === "category_match" || raw?.matchTier === "base_rate"
+      raw?.matchTier === "exact_benefit" ||
+      raw?.matchTier === "category_match" ||
+      raw?.matchTier === "base_rate"
         ? raw.matchTier
         : undefined,
-    matchedBenefit: typeof raw?.matchedBenefit === "string" ? raw.matchedBenefit : null,
-    lastVerified: typeof raw?.lastVerified === "string" ? raw.lastVerified : null,
+    matchedBenefit:
+      typeof raw?.matchedBenefit === "string" ? raw.matchedBenefit : null,
+    lastVerified:
+      typeof raw?.lastVerified === "string" ? raw.lastVerified : null,
     annualFee: typeof raw?.annualFee === "number" ? raw.annualFee : undefined,
   });
 
@@ -136,12 +149,25 @@ export function useRecommendations(inputs: QueryInputs) {
         "annualFee",
         "reason",
       ].join(",");
-      const bestParams = buildParams({ merchant: trimmedMerchant, domain, amount, mcc, limit, fields: bestFields });
+      const bestParams = buildParams({
+        merchant: trimmedMerchant,
+        domain,
+        amount,
+        mcc,
+        limit,
+        fields: bestFields,
+      });
       const bestUrl = `${API_BASE}/api/recommendations/best?${bestParams.toString()}`;
 
       // ---- /offers ----
       const offersFields = ["slug", "name", "signupOffer", "perks"].join(",");
-      const offersParams = buildParams({ merchant: trimmedMerchant, domain, amount, mcc, fields: offersFields });
+      const offersParams = buildParams({
+        merchant: trimmedMerchant,
+        domain,
+        amount,
+        mcc,
+        fields: offersFields,
+      });
       const offersUrl = `${API_BASE}/api/recommendations/offers?${offersParams.toString()}`;
 
       const [bestRes, offersRes] = await Promise.all([
@@ -155,11 +181,15 @@ export function useRecommendations(inputs: QueryInputs) {
       const bestJson = await bestRes.json();
       const offersJson = await offersRes.json();
 
-      const bestListRaw = Array.isArray(bestJson?.recommendations) ? bestJson.recommendations : [];
+      const bestListRaw = Array.isArray(bestJson?.recommendations)
+        ? bestJson.recommendations
+        : [];
       const normalizedBest = bestListRaw.map(toBestCard);
       const [first, ...rest] = normalizedBest;
 
-      const offersRaw = Array.isArray(offersJson?.offers) ? offersJson.offers : [];
+      const offersRaw = Array.isArray(offersJson?.offers)
+        ? offersJson.offers
+        : [];
       const normalizedOffers = offersRaw.map(toOffer);
 
       setTopPick(first ?? null);

@@ -36,7 +36,11 @@ export default function LinkedAccountsReview({
             <strong>Review linked accounts</strong>
             <p>Confirm or correct how Plaid matched your cards.</p>
           </div>
-          <button type="button" className="linked-review-close" onClick={onClose}>
+          <button
+            type="button"
+            className="linked-review-close"
+            onClick={onClose}
+          >
             Close
           </button>
         </div>

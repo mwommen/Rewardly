@@ -8,10 +8,17 @@ type RelatedPerksSectionProps = {
   benefitIntent: boolean;
 };
 
-export default function RelatedPerksSection({ offers, benefitIntent }: RelatedPerksSectionProps) {
+export default function RelatedPerksSection({
+  offers,
+  benefitIntent,
+}: RelatedPerksSectionProps) {
   return (
     <Card className="answer-card" variant="subtle">
-      <SectionHeader eyebrow={benefitIntent ? "Cards with this benefit" : "Related perks and offers"} />
+      <SectionHeader
+        eyebrow={
+          benefitIntent ? "Cards with this benefit" : "Related perks and offers"
+        }
+      />
       {offers.length ? (
         <div className="offer-list">
           {offers.slice(0, 4).map((offer) => (
@@ -19,7 +26,9 @@ export default function RelatedPerksSection({ offers, benefitIntent }: RelatedPe
               <div className="offer-card-heading">
                 <span className="benefit-logo">
                   <LogoMark
-                    src={getBenefitLogo(offer.perks?.[0] || offer.signupOffer || offer.card.name)}
+                    src={getBenefitLogo(
+                      offer.perks?.[0] || offer.signupOffer || offer.card.name,
+                    )}
                     label={offer.card.name}
                   />
                 </span>
@@ -32,7 +41,9 @@ export default function RelatedPerksSection({ offers, benefitIntent }: RelatedPe
               {benefitIntent && (
                 <div className="benefit-detail-grid">
                   <span>What it covers</span>
-                  <p>{offer.perks?.[0] || "Relevant card benefit or protection."}</p>
+                  <p>
+                    {offer.perks?.[0] || "Relevant card benefit or protection."}
+                  </p>
                   <span>Requirements</span>
                   <p>Use this card when you pay.</p>
                   <span>Good to know</span>
@@ -43,7 +54,9 @@ export default function RelatedPerksSection({ offers, benefitIntent }: RelatedPe
           ))}
         </div>
       ) : (
-        <p className="muted">Related card perks and offers will appear after a search.</p>
+        <p className="muted">
+          Related card perks and offers will appear after a search.
+        </p>
       )}
     </Card>
   );

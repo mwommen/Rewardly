@@ -16,9 +16,19 @@ type AdvancedInputsProps = {
   onOpenChange: (open: boolean) => void;
 };
 
-export default function AdvancedInputs({ debug, open, topPick, onChange, onOpenChange }: AdvancedInputsProps) {
+export default function AdvancedInputs({
+  debug,
+  open,
+  topPick,
+  onChange,
+  onOpenChange,
+}: AdvancedInputsProps) {
   return (
-    <details className="debug-panel" open={open} onToggle={(event) => onOpenChange(event.currentTarget.open)}>
+    <details
+      className="debug-panel"
+      open={open}
+      onToggle={(event) => onOpenChange(event.currentTarget.open)}
+    >
       <summary>Advanced inputs</summary>
       <p>Optional: used for testing domain, amount, and MCC.</p>
       <div className="debug-grid">
@@ -26,7 +36,9 @@ export default function AdvancedInputs({ debug, open, topPick, onChange, onOpenC
           Domain
           <input
             value={debug.domain}
-            onChange={(event) => onChange({ ...debug, domain: event.target.value })}
+            onChange={(event) =>
+              onChange({ ...debug, domain: event.target.value })
+            }
             placeholder="lululemon.com"
           />
         </label>
@@ -34,7 +46,9 @@ export default function AdvancedInputs({ debug, open, topPick, onChange, onOpenC
           Amount
           <input
             value={debug.amount}
-            onChange={(event) => onChange({ ...debug, amount: event.target.value })}
+            onChange={(event) =>
+              onChange({ ...debug, amount: event.target.value })
+            }
             placeholder="84.24"
             inputMode="decimal"
           />
@@ -43,7 +57,9 @@ export default function AdvancedInputs({ debug, open, topPick, onChange, onOpenC
           MCC
           <input
             value={debug.mcc}
-            onChange={(event) => onChange({ ...debug, mcc: event.target.value })}
+            onChange={(event) =>
+              onChange({ ...debug, mcc: event.target.value })
+            }
             placeholder="5651"
           />
         </label>
@@ -51,10 +67,14 @@ export default function AdvancedInputs({ debug, open, topPick, onChange, onOpenC
       {topPick && (
         <div className="debug-result">
           <span>Recommendation logic</span>
-          <Badge tone="neutral">{confidenceText(topPick.confidence, topPick.confidenceLabel)}</Badge>
+          <Badge tone="neutral">
+            {confidenceText(topPick.confidence, topPick.confidenceLabel)}
+          </Badge>
           <Badge tone="neutral">{matchTierLabel(topPick.matchTier)}</Badge>
           {typeof topPick.confidence === "number" && (
-            <Badge tone="neutral">{Math.round(topPick.confidence * 100)}% confidence</Badge>
+            <Badge tone="neutral">
+              {Math.round(topPick.confidence * 100)}% confidence
+            </Badge>
           )}
         </div>
       )}

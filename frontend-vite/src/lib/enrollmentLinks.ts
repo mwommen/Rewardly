@@ -24,8 +24,14 @@ const ISSUER_FALLBACKS: Record<string, string> = {
 };
 
 const AMEX_CARD_BENEFIT_PAGES: Array<{ pattern: RegExp; url: string }> = [
-  { pattern: /platinum/i, url: "https://www.americanexpress.com/en-us/benefits/the-platinum-card/" },
-  { pattern: /gold/i, url: "https://www.americanexpress.com/en-us/benefits/the-gold-card/" },
+  {
+    pattern: /platinum/i,
+    url: "https://www.americanexpress.com/en-us/benefits/the-platinum-card/",
+  },
+  {
+    pattern: /gold/i,
+    url: "https://www.americanexpress.com/en-us/benefits/the-gold-card/",
+  },
 ];
 
 function resolveAmexBenefitPage(cardName?: string): string | null {
@@ -36,22 +42,37 @@ function resolveAmexBenefitPage(cardName?: string): string | null {
   return null;
 }
 
-export function getEnrollmentLink(input: EnrollmentLinkInput): EnrollmentLink | null {
-  const issuerKey = String(input.issuer || "").toLowerCase().trim();
+export function getEnrollmentLink(
+  input: EnrollmentLinkInput,
+): EnrollmentLink | null {
+  const issuerKey = String(input.issuer || "")
+    .toLowerCase()
+    .trim();
 
-  if (input.enrollmentUrl) return { url: input.enrollmentUrl, ctaLabel: "Enroll" };
+  if (input.enrollmentUrl)
+    return { url: input.enrollmentUrl, ctaLabel: "Enroll" };
 
   if (issuerKey === "american express") {
     const amexBenefitPage = resolveAmexBenefitPage(input.cardName);
-    if (amexBenefitPage) return { url: amexBenefitPage, ctaLabel: "Open benefit page" };
-    if (input.creditSourceUrl) return { url: input.creditSourceUrl, ctaLabel: "Open benefit page" };
-    if (input.cardSourceUrl) return { url: input.cardSourceUrl, ctaLabel: "View card details" };
-    if (ISSUER_FALLBACKS[issuerKey]) return { url: ISSUER_FALLBACKS[issuerKey], ctaLabel: "Open benefits hub" };
+    if (amexBenefitPage)
+      return { url: amexBenefitPage, ctaLabel: "Open benefit page" };
+    if (input.creditSourceUrl)
+      return { url: input.creditSourceUrl, ctaLabel: "Open benefit page" };
+    if (input.cardSourceUrl)
+      return { url: input.cardSourceUrl, ctaLabel: "View card details" };
+    if (ISSUER_FALLBACKS[issuerKey])
+      return {
+        url: ISSUER_FALLBACKS[issuerKey],
+        ctaLabel: "Open benefits hub",
+      };
     return null;
   }
 
-  if (input.creditSourceUrl) return { url: input.creditSourceUrl, ctaLabel: "Open benefit page" };
-  if (input.cardSourceUrl) return { url: input.cardSourceUrl, ctaLabel: "View card details" };
-  if (ISSUER_FALLBACKS[issuerKey]) return { url: ISSUER_FALLBACKS[issuerKey], ctaLabel: "Open issuer page" };
+  if (input.creditSourceUrl)
+    return { url: input.creditSourceUrl, ctaLabel: "Open benefit page" };
+  if (input.cardSourceUrl)
+    return { url: input.cardSourceUrl, ctaLabel: "View card details" };
+  if (ISSUER_FALLBACKS[issuerKey])
+    return { url: ISSUER_FALLBACKS[issuerKey], ctaLabel: "Open issuer page" };
   return null;
 }

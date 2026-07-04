@@ -60,12 +60,22 @@ export default function App() {
   const [intent, setIntent] = useState("");
   const [submittedIntent, setSubmittedIntent] = useState("");
   const [debugOpen, setDebugOpen] = useState(false);
-  const [debug, setDebug] = useState<DebugState>({ domain: "", amount: "", mcc: "" });
+  const [debug, setDebug] = useState<DebugState>({
+    domain: "",
+    amount: "",
+    mcc: "",
+  });
   const [walletCards, setWalletCards] = useState<WalletCard[]>([]);
   const [selectedWalletSlug, setSelectedWalletSlug] = useState<string>("");
 
-  const merchant = useMemo(() => parseIntent(submittedIntent), [submittedIntent]);
-  const benefitIntent = useMemo(() => isBenefitIntent(submittedIntent), [submittedIntent]);
+  const merchant = useMemo(
+    () => parseIntent(submittedIntent),
+    [submittedIntent],
+  );
+  const benefitIntent = useMemo(
+    () => isBenefitIntent(submittedIntent),
+    [submittedIntent],
+  );
   const query = useMemo(() => {
     const amount = debug.amount.trim() ? Number(debug.amount) : undefined;
     return {
@@ -77,7 +87,8 @@ export default function App() {
     };
   }, [debug.amount, debug.domain, debug.mcc, merchant]);
 
-  const { loading, error, topPick, otherBest, offers, refetch } = useRecommendations(query);
+  const { loading, error, topPick, otherBest, offers, refetch } =
+    useRecommendations(query);
 
   useEffect(() => {
     let cancelled = false;
@@ -95,7 +106,10 @@ export default function App() {
           return (aIndex === -1 ? 99 : aIndex) - (bIndex === -1 ? 99 : bIndex);
         });
         setWalletCards(prioritized.slice(0, 6));
-        setSelectedWalletSlug((current) => current || prioritized[0]?.slug || prioritized[0]?.name || "");
+        setSelectedWalletSlug(
+          (current) =>
+            current || prioritized[0]?.slug || prioritized[0]?.name || "",
+        );
       })
       .catch(() => {
         if (!cancelled) setWalletCards([]);
@@ -108,7 +122,9 @@ export default function App() {
   const unlockedBenefits = useMemo(() => {
     const lines = new Map<string, string | null>();
     if (topPick) lines.set(rewardChip(topPick.effectiveRate), null);
-    if (topPick?.matchedBenefit) lines.set(topPick.matchedBenefit, getBenefitLogo(topPick.matchedBenefit));
+    if (topPick?.matchedBenefit) {
+      lines.set(topPick.matchedBenefit, getBenefitLogo(topPick.matchedBenefit));
+    }
     for (const offer of offers) {
       for (const perk of offer.perks || []) {
         if (perk && !lines.has(perk)) lines.set(perk, getBenefitLogo(perk));
@@ -118,10 +134,16 @@ export default function App() {
       const label = normalizeUnlockLabel(submittedIntent);
       if (!lines.has(label)) lines.set(label, getBenefitLogo(label));
     }
-    return Array.from(lines, ([label, logo]) => ({ label: normalizeUnlockLabel(label), logo })).slice(0, 8);
+    return Array.from(lines, ([label, logo]) => ({
+      label: normalizeUnlockLabel(label),
+      logo,
+    })).slice(0, 8);
   }, [benefitIntent, offers, submittedIntent, topPick]);
 
-  const selectedWalletCard = walletCards.find((card) => (card.slug || card.name) === selectedWalletSlug) || walletCards[0];
+  const selectedWalletCard =
+    walletCards.find(
+      (card) => (card.slug || card.name) === selectedWalletSlug,
+    ) || walletCards[0];
 
   const submitIntent = (event: FormEvent) => {
     event.preventDefault();

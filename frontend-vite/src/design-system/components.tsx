@@ -1,12 +1,25 @@
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from "react";
+import type {
+  ButtonHTMLAttributes,
+  InputHTMLAttributes,
+  ReactNode,
+} from "react";
 import "./tokens.css";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "primary" | "secondary" | "ghost";
 };
 
-export function Button({ className = "", variant = "secondary", ...props }: ButtonProps) {
-  return <button className={`rw-button rw-button-${variant} ${className}`.trim()} {...props} />;
+export function Button({
+  className = "",
+  variant = "secondary",
+  ...props
+}: ButtonProps) {
+  return (
+    <button
+      className={`rw-button rw-button-${variant} ${className}`.trim()}
+      {...props}
+    />
+  );
 }
 
 type CardProps = {
@@ -15,8 +28,16 @@ type CardProps = {
   variant?: "default" | "hero" | "subtle" | "flat";
 };
 
-export function Card({ children, className = "", variant = "default" }: CardProps) {
-  return <div className={`rw-card rw-card-${variant} ${className}`.trim()}>{children}</div>;
+export function Card({
+  children,
+  className = "",
+  variant = "default",
+}: CardProps) {
+  return (
+    <div className={`rw-card rw-card-${variant} ${className}`.trim()}>
+      {children}
+    </div>
+  );
 }
 
 type SearchInputProps = InputHTMLAttributes<HTMLInputElement> & {
@@ -25,7 +46,13 @@ type SearchInputProps = InputHTMLAttributes<HTMLInputElement> & {
   note?: ReactNode;
 };
 
-export function SearchInput({ label, action, note, className = "", ...props }: SearchInputProps) {
+export function SearchInput({
+  label,
+  action,
+  note,
+  className = "",
+  ...props
+}: SearchInputProps) {
   return (
     <div className={`rw-search ${className}`.trim()}>
       <label htmlFor={props.id}>{label}</label>
@@ -44,8 +71,16 @@ type BadgeProps = {
   className?: string;
 };
 
-export function Badge({ children, tone = "neutral", className = "" }: BadgeProps) {
-  return <span className={`rw-badge rw-badge-${tone} ${className}`.trim()}>{children}</span>;
+export function Badge({
+  children,
+  tone = "neutral",
+  className = "",
+}: BadgeProps) {
+  return (
+    <span className={`rw-badge rw-badge-${tone} ${className}`.trim()}>
+      {children}
+    </span>
+  );
 }
 
 type SectionHeaderProps = {
@@ -55,7 +90,12 @@ type SectionHeaderProps = {
   className?: string;
 };
 
-export function SectionHeader({ eyebrow, title, action, className = "" }: SectionHeaderProps) {
+export function SectionHeader({
+  eyebrow,
+  title,
+  action,
+  className = "",
+}: SectionHeaderProps) {
   return (
     <div className={`rw-section-header ${className}`.trim()}>
       <div>
@@ -74,7 +114,12 @@ type EmptyStateProps = {
   className?: string;
 };
 
-export function EmptyState({ title, children, action, className = "" }: EmptyStateProps) {
+export function EmptyState({
+  title,
+  children,
+  action,
+  className = "",
+}: EmptyStateProps) {
   return (
     <div className={`rw-empty ${className}`.trim()}>
       <h2>{title}</h2>
@@ -91,7 +136,11 @@ type LoadingStateProps = {
 
 export function LoadingState({ message, className = "" }: LoadingStateProps) {
   return (
-    <div className={`rw-loading ${className}`.trim()} role="status" aria-live="polite">
+    <div
+      className={`rw-loading ${className}`.trim()}
+      role="status"
+      aria-live="polite"
+    >
       <span>{message}</span>
       <div className="rw-loading-card" aria-hidden="true">
         <div className="rw-skeleton rw-skeleton-logo" />

@@ -10,16 +10,29 @@ interface Props {
   onToggleCompare?: (card: Card) => void;
 }
 
-const CardList = ({ cards, bestCardId, compareIds = [], onToggleCompare }: Props) => {
+const CardList = ({
+  cards,
+  bestCardId,
+  compareIds = [],
+  onToggleCompare,
+}: Props) => {
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
-  const chaseBusinessCards = cards.filter((card) => (card.slug || "").startsWith("chase-ink-"));
-  const visibleCards = cards.filter((card) => !(card.slug || "").startsWith("chase-ink-"));
-  const bestChaseBusiness = chaseBusinessCards.find((card) => card._id === bestCardId);
-  const [selectedChaseBusinessSlug, setSelectedChaseBusinessSlug] = useState<string | null>(
-    bestChaseBusiness?.slug || chaseBusinessCards[0]?.slug || null
+  const chaseBusinessCards = cards.filter((card) =>
+    (card.slug || "").startsWith("chase-ink-"),
   );
+  const visibleCards = cards.filter(
+    (card) => !(card.slug || "").startsWith("chase-ink-"),
+  );
+  const bestChaseBusiness = chaseBusinessCards.find(
+    (card) => card._id === bestCardId,
+  );
+  const [selectedChaseBusinessSlug, setSelectedChaseBusinessSlug] = useState<
+    string | null
+  >(bestChaseBusiness?.slug || chaseBusinessCards[0]?.slug || null);
   const selectedChaseBusiness =
-    chaseBusinessCards.find((card) => card.slug === selectedChaseBusinessSlug) || chaseBusinessCards[0];
+    chaseBusinessCards.find(
+      (card) => card.slug === selectedChaseBusinessSlug,
+    ) || chaseBusinessCards[0];
 
   if (!cards.length) {
     return (
@@ -64,7 +77,9 @@ const CardList = ({ cards, bestCardId, compareIds = [], onToggleCompare }: Props
                 highlight={selectedChaseBusiness._id === bestCardId}
                 expanded={expandedKeys.has(key)}
                 isCompared={compareIds.includes(compareKey)}
-                compareDisabled={!compareIds.includes(compareKey) && compareIds.length >= 3}
+                compareDisabled={
+                  !compareIds.includes(compareKey) && compareIds.length >= 3
+                }
                 onToggleCompare={() => onToggleCompare?.(selectedChaseBusiness)}
                 onToggle={() =>
                   setExpandedKeys((prev) => {
@@ -90,7 +105,9 @@ const CardList = ({ cards, bestCardId, compareIds = [], onToggleCompare }: Props
             highlight={card._id === bestCardId}
             expanded={expandedKeys.has(key)}
             isCompared={compareIds.includes(compareKey)}
-            compareDisabled={!compareIds.includes(compareKey) && compareIds.length >= 3}
+            compareDisabled={
+              !compareIds.includes(compareKey) && compareIds.length >= 3
+            }
             onToggleCompare={() => onToggleCompare?.(card)}
             onToggle={() =>
               setExpandedKeys((prev) => {
