@@ -15,33 +15,40 @@ type DebugState = {
 
 const EXAMPLES = [
   "Lululemon",
-  "DoorDash",
+  "Costco",
   "Booking a flight",
-  "Cell phone insurance",
   "Rental car insurance",
-  "Saks credit",
-  "Groceries",
+  "Cell phone protection",
+  "TSA PreCheck",
+  "Airport lounge",
   "Best Buy purchase protection",
+  "Dining credit",
 ];
 
 const SMART_MOVES = [
   {
-    icon: "D",
-    title: "Dining",
-    text: "Use the card that earns the most at restaurants.",
+    icon: "E",
+    title: "Eating out tonight?",
+    text: "Find the card that earns the most at restaurants.",
     query: "Dining",
   },
   {
-    icon: "T",
-    title: "Flights",
-    text: "Check travel protections before booking.",
+    icon: "B",
+    title: "Booking travel?",
+    text: "Check protections before you pay.",
     query: "Booking a flight",
   },
   {
     icon: "P",
-    title: "Protections",
-    text: "Search coverage like phone insurance or rental cars.",
-    query: "Cell phone insurance",
+    title: "Buying electronics?",
+    text: "See purchase protection or extended warranty.",
+    query: "Best Buy purchase protection",
+  },
+  {
+    icon: "C",
+    title: "Have credits expiring?",
+    text: "Use benefits before they disappear.",
+    query: "Dining credit",
   },
 ];
 
@@ -53,6 +60,34 @@ const NO_RESULT_SUGGESTIONS = [
 ];
 
 const WALLET_FALLBACKS = ["amex-platinum", "amex-gold", "chase-sapphire-preferred", "capital-one-venture-x"];
+
+const BENEFIT_TERMS = [
+  "cell phone insurance",
+  "cell phone protection",
+  "rental car insurance",
+  "rental car coverage",
+  "lounge access",
+  "airport lounge",
+  "tsa precheck",
+  "uber credit",
+  "dining credit",
+  "purchase protection",
+  "extended warranty",
+  "return protection",
+  "trip delay insurance",
+  "travel protection",
+];
+
+const UNLOCK_LABELS = [
+  "purchase protection",
+  "extended warranty",
+  "return protection",
+  "active offer",
+  "travel protection",
+  "dining credit",
+  "cell phone insurance",
+  "rental car coverage",
+];
 
 function parseIntent(input: string) {
   const cleaned = input.trim();
@@ -83,8 +118,18 @@ function parseIntent(input: string) {
     "drugstores",
     "apparel",
     "cell phone insurance",
+    "cell phone protection",
     "rental car insurance",
+    "rental car coverage",
     "purchase protection",
+    "extended warranty",
+    "return protection",
+    "tsa precheck",
+    "airport lounge",
+    "lounge access",
+    "dining credit",
+    "uber credit",
+    "trip delay insurance",
   ];
 
   const merchant = knownMerchants.find((candidate) => lower.includes(candidate));
@@ -97,6 +142,11 @@ function parseIntent(input: string) {
     .replace(/^(i am|i'm|im|buying|ordering|booking|paying for|shopping at|using)\s+/i, "")
     .replace(/\s+(checkout|purchase|order|payment)$/i, "")
     .trim();
+}
+
+function isBenefitIntent(input: string) {
+  const lower = input.toLowerCase();
+  return BENEFIT_TERMS.some((term) => lower.includes(term));
 }
 
 function matchTierLabel(tier?: string) {
@@ -126,6 +176,18 @@ function formatRewards(rate?: number) {
   return `You'll earn ${formatted}x rewards`;
 }
 
+function rewardChip(rate?: number) {
+  if (typeof rate !== "number" || !Number.isFinite(rate)) return "Strong rewards";
+  const formatted = Number.isInteger(rate) ? rate.toFixed(0) : rate.toFixed(1);
+  return `${formatted}x rewards`;
+}
+
+function normalizeUnlockLabel(value: string) {
+  const lower = value.toLowerCase();
+  const known = UNLOCK_LABELS.find((label) => lower.includes(label));
+  return known ? formatCategory(known) : value;
+}
+
 function formatCategory(value: string) {
   return value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
@@ -147,6 +209,7 @@ function walletSections(card: WalletCard) {
   const travel = perks.filter((perk) => /travel|lounge|hotel|flight|rental|trip/i.test(perk)).slice(0, 3);
 
   return [
+    { title: "Best for", items: topRewards(card).slice(0, 2) },
     { title: "Rewards", items: rewards },
     { title: "Benefits", items: perks.filter((perk) => !protections.includes(perk) && !travel.includes(perk)).slice(0, 3) },
     { title: "Protections", items: protections },
@@ -192,6 +255,7 @@ export default function App() {
   }, [debug.amount, debug.domain, debug.mcc, merchant]);
 
   const { loading, error, topPick, otherBest, offers, refetch } = useRecommendations(query);
+  const benefitIntent = useMemo(() => isBenefitIntent(submittedIntent), [submittedIntent]);
 
   useEffect(() => {
     let cancelled = false;
@@ -221,14 +285,19 @@ export default function App() {
 
   const unlockedBenefits = useMemo(() => {
     const lines = new Map<string, string | null>();
+    if (topPick) lines.set(rewardChip(topPick.effectiveRate), null);
     if (topPick?.matchedBenefit) lines.set(topPick.matchedBenefit, getBenefitLogo(topPick.matchedBenefit));
     for (const offer of offers) {
       for (const perk of offer.perks || []) {
         if (perk && !lines.has(perk)) lines.set(perk, getBenefitLogo(perk));
       }
     }
-    return Array.from(lines, ([label, logo]) => ({ label, logo })).slice(0, 5);
-  }, [offers, topPick]);
+    if (benefitIntent && submittedIntent) {
+      const label = normalizeUnlockLabel(submittedIntent);
+      if (!lines.has(label)) lines.set(label, getBenefitLogo(label));
+    }
+    return Array.from(lines, ([label, logo]) => ({ label: normalizeUnlockLabel(label), logo })).slice(0, 8);
+  }, [benefitIntent, offers, submittedIntent, topPick]);
 
   const topCardLogo = getCardLogo(topPick?.card);
   const selectedWalletCard = walletCards.find((card) => (card.slug || card.name) === selectedWalletSlug) || walletCards[0];
@@ -251,7 +320,6 @@ export default function App() {
           <span>Rewardly</span>
         </div>
         <div className="hero-copy">
-          <p className="eyebrow">Wallet assistant</p>
           <h1>Know the best card to use before you pay.</h1>
           <p>
             Search a store, purchase, or benefit. Rewardly checks your cards and tells you the
@@ -266,9 +334,9 @@ export default function App() {
               label="What are you buying or trying to use?"
               value={intent}
               onChange={(event) => setIntent(event.target.value)}
-              placeholder="Try: Lululemon, DoorDash, booking a flight, cell phone insurance"
+              placeholder="Ask about Lululemon, flights, rental car insurance, cell phone protection..."
               autoComplete="off"
-              action={<Button type="submit" variant="primary">Find best card</Button>}
+              action={<Button type="submit" variant="primary">Ask Rewardly</Button>}
               note="Rewardly only uses your card benefits to make recommendations. You stay in control."
             />
           </form>
@@ -367,8 +435,8 @@ export default function App() {
           )}
           {error && (
             <div className="error-state">
-              <strong>Could not load a recommendation.</strong>
-              <span>{error}</span>
+              <strong>Something went wrong while checking your wallet.</strong>
+              <span>Try again in a moment.</span>
               <Button type="button" variant="primary" onClick={refetch}>Try again</Button>
             </div>
           )}
@@ -384,7 +452,7 @@ export default function App() {
                     <p className="recommendation-label">Use this card</p>
                     <h2>{topPick.card.name}</h2>
                     <p className="concierge-copy">
-                      I would use this card here. It gives you the strongest mix of rewards and usable benefits for this purchase.
+                      Rewardly recommends this card because it gives you the strongest mix of rewards and usable benefits for this purchase.
                     </p>
                   </div>
                 </div>
@@ -395,7 +463,7 @@ export default function App() {
                 </div>
                 <div>
                   <span>What you unlock</span>
-                  <strong>{unlockedBenefits[0]?.label || topPick.matchedBenefit || "Relevant card benefits"}</strong>
+                  <strong>{unlockedBenefits.find((benefit) => !/rewards/i.test(benefit.label))?.label || topPick.matchedBenefit || "Relevant card benefits"}</strong>
                 </div>
                 <div>
                   <span>Why it wins</span>
@@ -434,8 +502,8 @@ export default function App() {
           )}
         </Card>
 
-        <Card className="answer-card" variant="subtle">
-          <SectionHeader eyebrow="Benefits unlocked by this purchase" />
+        <Card className="answer-card unlock-card" variant="subtle">
+          <SectionHeader eyebrow="What you unlock" />
           {unlockedBenefits.length ? (
             <ul className="benefit-list">
               {unlockedBenefits.map((benefit) => (
@@ -448,12 +516,12 @@ export default function App() {
               ))}
             </ul>
           ) : (
-            <p className="muted">Search a merchant, purchase, or benefit to see what your cards can unlock.</p>
+            <p className="muted">Rewardly didn't find a specific benefit yet, but this card still looks like the strongest option based on available rewards.</p>
           )}
         </Card>
 
         <Card className="answer-card" variant="subtle">
-          <SectionHeader eyebrow="Related perks and offers" />
+          <SectionHeader eyebrow={benefitIntent ? "Cards with this benefit" : "Related perks and offers"} />
           {offers.length ? (
             <div className="offer-list">
               {offers.slice(0, 4).map((offer) => (
@@ -471,6 +539,16 @@ export default function App() {
                   {(offer.perks || []).slice(0, 2).map((perk) => (
                     <p key={perk}>{perk}</p>
                   ))}
+                  {benefitIntent && (
+                    <div className="benefit-detail-grid">
+                      <span>What it covers</span>
+                      <p>{offer.perks?.[0] || "Relevant card benefit or protection."}</p>
+                      <span>Requirements</span>
+                      <p>Use this card when you pay.</p>
+                      <span>Good to know</span>
+                      <p>Coverage and limits depend on issuer terms.</p>
+                    </div>
+                  )}
                 </article>
               ))}
             </div>
@@ -492,6 +570,20 @@ export default function App() {
             </div>
           </Card>
         )}
+      </section>
+
+      <section className="trust-section" aria-label="Rewardly trust and privacy">
+        <div>
+          <p className="recommendation-label">Trust</p>
+          <h2>Your data stays yours.</h2>
+          <p>Rewardly never moves money. It only uses your card and benefit information to recommend the smartest way to pay.</p>
+        </div>
+        <div className="trust-points">
+          <span>Read-only data</span>
+          <span>Secure connections</span>
+          <span>You stay in control</span>
+          <span>No payment movement</span>
+        </div>
       </section>
 
       <section className="wallet-section" aria-label="Wallet">
