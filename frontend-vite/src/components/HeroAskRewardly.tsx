@@ -1,4 +1,4 @@
-import type { FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Button, Card, SearchInput } from "../design-system/components";
 import type { BestCard } from "../hooks/useRecommendations";
 import AdvancedInputs, { type DebugState } from "./AdvancedInputs";
@@ -29,6 +29,20 @@ export default function HeroAskRewardly({
   onDebugChange,
   onDebugOpenChange,
 }: HeroAskRewardlyProps) {
+  const [placeholderIndex, setPlaceholderIndex] = useState(0);
+  const placeholder =
+    examples[placeholderIndex] || "Ask Rewardly what you're buying";
+
+  useEffect(() => {
+    if (!examples.length) return undefined;
+
+    const rotation = window.setInterval(() => {
+      setPlaceholderIndex((current) => (current + 1) % examples.length);
+    }, 2800);
+
+    return () => window.clearInterval(rotation);
+  }, [examples.length]);
+
   return (
     <>
       <div className="brand-row">
@@ -50,7 +64,7 @@ export default function HeroAskRewardly({
             label="What are you buying or trying to use?"
             value={intent}
             onChange={(event) => onIntentChange(event.target.value)}
-            placeholder="Ask about Lululemon, flights, rental car insurance, cell phone protection..."
+            placeholder={placeholder}
             autoComplete="off"
             action={
               <Button type="submit" variant="primary">

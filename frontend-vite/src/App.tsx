@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import type { Card as WalletCard } from "./cardModules";
 import { type DebugState } from "./components/AdvancedInputs";
 import HeroAskRewardly from "./components/HeroAskRewardly";
+import HowRewardlyWorks from "./components/HowRewardlyWorks";
 import RecommendationResult from "./components/RecommendationResult";
 import RelatedPerksSection from "./components/RelatedPerksSection";
 import SmartMoves, { type SmartMove } from "./components/SmartMoves";
@@ -18,15 +19,12 @@ import { WALLET_FALLBACKS } from "./lib/walletSections";
 import "./App.css";
 
 const EXAMPLES = [
-  "Lululemon",
-  "Costco",
-  "Booking a flight",
-  "Rental car insurance",
-  "Cell phone protection",
-  "TSA PreCheck",
-  "Airport lounge",
-  "Best Buy purchase protection",
-  "Dining credit",
+  "I'm buying an iPhone",
+  "I'm booking a flight",
+  "I'm shopping at Costco",
+  "I need rental car insurance",
+  "Which card has airport lounge access?",
+  "Which card has purchase protection?",
 ];
 
 const SMART_MOVES: SmartMove[] = [
@@ -170,6 +168,7 @@ export default function App() {
           onDebugChange={setDebug}
           onDebugOpenChange={setDebugOpen}
         />
+        <HowRewardlyWorks />
         <SmartMoves moves={SMART_MOVES} onSelect={useExample} />
       </section>
 

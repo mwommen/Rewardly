@@ -1,7 +1,7 @@
 .assistant-shell {
   width: min(1160px, calc(100% - 32px));
   margin: 0 auto;
-  padding: 56px 0 80px;
+  padding: 72px 0 88px;
 }
 
 .rw-button,
@@ -43,6 +43,10 @@
   transform: translateY(-1px);
 }
 
+.rw-button:active {
+  transform: translateY(0);
+}
+
 .rw-card {
   border: 1px solid var(--rw-line);
   border-radius: var(--rw-radius-lg);
@@ -82,29 +86,65 @@
 
 .rw-search {
   display: grid;
-  gap: var(--rw-space-3);
+  gap: var(--rw-space-4);
 }
 
 .rw-search > label {
   color: var(--rw-text);
-  font-weight: 850;
+  font-size: 17px;
+  font-weight: 900;
 }
 
 .rw-search-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: var(--rw-space-3);
+  gap: var(--rw-space-4);
+  align-items: stretch;
 }
 
 .rw-search input {
   width: 100%;
-  min-height: 60px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  border-radius: var(--rw-radius-md);
-  background: rgba(2, 6, 23, 0.44);
+  min-height: 74px;
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  border-radius: 24px;
+  background: rgba(2, 6, 23, 0.58);
   color: var(--rw-text);
-  padding: 17px 18px;
+  padding: 22px 24px;
+  font-size: 20px;
+  font-weight: 750;
   outline: none;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 18px 52px rgba(0, 0, 0, 0.22);
+  transition:
+    border-color 180ms var(--rw-ease),
+    box-shadow 180ms var(--rw-ease),
+    background 180ms var(--rw-ease),
+    transform 180ms var(--rw-ease);
+}
+
+.rw-search input::placeholder {
+  color: rgba(203, 213, 225, 0.62);
+}
+
+.rw-search input:hover {
+  border-color: rgba(125, 211, 252, 0.34);
+  background: rgba(2, 6, 23, 0.68);
+}
+
+.rw-search input:focus {
+  border-color: rgba(56, 189, 248, 0.84);
+  box-shadow:
+    0 0 0 5px rgba(56, 189, 248, 0.13),
+    0 22px 62px rgba(56, 189, 248, 0.16);
+  transform: translateY(-1px);
+}
+
+.rw-search .rw-button {
+  min-height: 74px;
+  border-radius: 24px;
+  padding: 0 28px;
+  font-size: 16px;
 }
 
 .rw-search-note {
@@ -250,8 +290,8 @@
 
 .assistant-hero {
   display: grid;
-  gap: 30px;
-  margin-bottom: 34px;
+  gap: 34px;
+  margin-bottom: 48px;
 }
 
 .brand-row {
@@ -275,8 +315,9 @@
 
 .hero-copy {
   display: grid;
-  gap: 12px;
-  max-width: 820px;
+  gap: 16px;
+  max-width: 900px;
+  padding-top: 18px;
 }
 
 .eyebrow {
@@ -291,16 +332,16 @@
 .hero-copy h1 {
   margin: 0;
   color: #f8fafc;
-  font-size: clamp(42px, 7vw, 72px);
-  line-height: 1;
+  font-size: clamp(48px, 7vw, 80px);
+  line-height: 0.98;
   letter-spacing: 0;
 }
 
 .hero-copy p {
   margin: 0;
-  max-width: 720px;
+  max-width: 760px;
   color: #cbd5e1;
-  font-size: 18px;
+  font-size: 20px;
   line-height: 1.55;
 }
 
@@ -314,11 +355,27 @@
 
 .intent-panel {
   display: grid;
-  gap: 16px;
-  padding: 22px;
+  gap: 20px;
+  padding: 28px;
   background:
     linear-gradient(135deg, rgba(56, 189, 248, 0.12), rgba(15, 23, 42, 0) 38%),
     rgba(15, 23, 42, 0.78);
+  border-color: rgba(125, 211, 252, 0.22);
+  box-shadow:
+    0 30px 90px rgba(0, 0, 0, 0.3),
+    0 0 0 1px rgba(255, 255, 255, 0.03);
+  transition:
+    border-color 180ms var(--rw-ease),
+    box-shadow 180ms var(--rw-ease),
+    transform 180ms var(--rw-ease);
+}
+
+.intent-panel:focus-within {
+  border-color: rgba(56, 189, 248, 0.38);
+  box-shadow:
+    0 34px 110px rgba(0, 0, 0, 0.34),
+    0 0 0 1px rgba(56, 189, 248, 0.12);
+  transform: translateY(-2px);
 }
 
 .intent-panel form {
@@ -378,7 +435,7 @@ summary:focus-visible {
 .example-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
 }
 
 .example-row button {
@@ -386,9 +443,21 @@ summary:focus-visible {
   border-radius: 999px;
   background: rgba(148, 163, 184, 0.09);
   color: #dbeafe;
-  padding: 9px 12px;
+  padding: 10px 14px;
   font-size: 13px;
   cursor: pointer;
+  transition:
+    transform 180ms var(--rw-ease),
+    border-color 180ms var(--rw-ease),
+    background 180ms var(--rw-ease),
+    box-shadow 180ms var(--rw-ease);
+}
+
+.example-row button:hover {
+  border-color: rgba(125, 211, 252, 0.34);
+  background: rgba(56, 189, 248, 0.12);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+  transform: translateY(-2px);
 }
 
 .privacy-note {
@@ -452,9 +521,67 @@ summary:focus-visible {
   margin-right: var(--rw-space-1);
 }
 
+.how-it-works {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+  padding: 4px 2px;
+}
+
+.work-step-group {
+  display: contents;
+}
+
+.work-step {
+  display: grid;
+  gap: 8px;
+  min-height: 112px;
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  border-radius: 22px;
+  background: rgba(15, 23, 42, 0.34);
+  padding: 18px;
+  transition:
+    border-color 180ms var(--rw-ease),
+    background 180ms var(--rw-ease),
+    transform 180ms var(--rw-ease);
+}
+
+.work-step:hover {
+  border-color: rgba(125, 211, 252, 0.22);
+  background: rgba(15, 23, 42, 0.48);
+  transform: translateY(-2px);
+}
+
+.work-step span {
+  color: var(--rw-accent-strong);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.work-step strong {
+  color: var(--rw-text);
+  font-size: 16px;
+  line-height: 1.35;
+}
+
+.work-arrow {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: rgba(56, 189, 248, 0.1);
+  color: var(--rw-accent-strong);
+  font-weight: 900;
+}
+
 .smart-moves {
   display: grid;
   gap: 12px;
+  margin-top: -6px;
 }
 
 .smart-moves h2 {
@@ -1195,8 +1322,18 @@ summary:focus-visible {
   .trust-section,
   .trust-points,
   .wallet-layout,
-  .wallet-detail-grid {
+  .wallet-detail-grid,
+  .how-it-works {
     grid-template-columns: 1fr;
+  }
+
+  .work-step-group {
+    display: grid;
+    gap: 12px;
+  }
+
+  .work-arrow {
+    justify-self: center;
   }
 
   .search-row button {
@@ -1230,6 +1367,10 @@ summary:focus-visible {
     font-size: 42px;
   }
 
+  .hero-copy p {
+    font-size: 17px;
+  }
+
   .intent-panel,
   .answer-card {
     border-radius: 20px;
@@ -1242,6 +1383,20 @@ summary:focus-visible {
 
   .example-row button {
     max-width: 100%;
+  }
+
+  .rw-search > label {
+    font-size: 15px;
+  }
+
+  .rw-search input {
+    min-height: 66px;
+    padding: 19px 18px;
+    font-size: 17px;
+  }
+
+  .rw-search .rw-button {
+    min-height: 58px;
   }
 
   .alternate-list div {
