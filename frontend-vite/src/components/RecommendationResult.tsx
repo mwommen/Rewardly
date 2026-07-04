@@ -7,7 +7,7 @@ import {
   SectionHeader,
 } from "../design-system/components";
 import type { BestCard } from "../hooks/useRecommendations";
-import { formatFee, formatRewards } from "../lib/formatters";
+import { formatFee, formatRewards, rewardChip } from "../lib/formatters";
 import { getCardLogo } from "../lib/cardLogos";
 import LogoMark from "./LogoMark";
 import NoResultState from "./NoResultState";
@@ -33,27 +33,27 @@ const BENEFIT_LESSONS = [
   {
     match: /purchase protection/i,
     title: "Purchase Protection",
-    body: "Some cards can help cover eligible new purchases if they're damaged or stolen soon after you buy.",
+    body: "Use the recommended card for eligible purchases you would want protected if they are damaged or stolen soon after checkout.",
   },
   {
     match: /rental car|rental car insurance|rental car coverage/i,
     title: "Rental Car Insurance",
-    body: "Paying with the right card may unlock rental car coverage, which can help you avoid paying extra at the counter.",
+    body: "Paying with the right card can help you unlock rental coverage before you accept expensive add-ons at the counter.",
   },
   {
     match: /dining credit|restaurant/i,
     title: "Dining Credit",
-    body: "Dining credits can quietly offset your bill when you use the right card at eligible restaurants or services.",
+    body: "Dining credits are easiest to miss. Use the card that can offset the bill instead of only earning points.",
   },
   {
     match: /travel|trip|flight/i,
     title: "Travel Insurance",
-    body: "The right travel card may include protections for eligible delays, cancellations, or interruptions.",
+    body: "Before booking, use the card that can pair rewards with eligible delay, cancellation, or interruption protections.",
   },
   {
     match: /extended warranty|warranty/i,
     title: "Extended Warranty",
-    body: "Some cards can add extra warranty time to eligible purchases when you pay with that card.",
+    body: "For electronics and higher-ticket items, the right card may add warranty time after the manufacturer coverage ends.",
   },
 ];
 
@@ -69,13 +69,28 @@ function primaryUnlock(unlockedBenefits: UnlockBenefit[], topPick: BestCard) {
 function recommendationSentence(topPick: BestCard) {
   const reason =
     topPick.explainer || topPick.why?.[0] || "it is the strongest fit here";
-  return `Use this card because ${reason.replace(/\.$/, "")}.`;
+  return `This is the smartest card to use because ${reason.replace(/\.$/, "")}.`;
 }
 
 function alternativeReason(card: BestCard) {
   if (card.explainer) return card.explainer;
   if (card.why?.[0]) return card.why[0];
   return `${formatRewards(card.effectiveRate)} if your first choice is not available.`;
+}
+
+function rewardCallout(rate?: number) {
+  if (typeof rate !== "number" || !Number.isFinite(rate)) {
+    return "Strong rewards for this purchase";
+  }
+  return rewardChip(rate);
+}
+
+function specificReason(topPick: BestCard, unlockLabel: string) {
+  const rewards = rewardCallout(topPick.effectiveRate).toLowerCase();
+  if (unlockLabel && unlockLabel !== "Relevant card benefits") {
+    return `${topPick.card.name} wins because it pairs ${rewards} with ${unlockLabel}.`;
+  }
+  return `${topPick.card.name} wins because it gives you ${rewards} for this purchase.`;
 }
 
 function benefitLesson(
@@ -124,9 +139,9 @@ export default function RecommendationResult({
       />
 
       {!submittedIntent && (
-        <EmptyState title="Start with what you're buying.">
-          Rewardly will recommend the best card and explain which rewards,
-          credits, or protections you can use.
+        <EmptyState title="Ask Rewardly what you're buying.">
+          Tell us what you're buying and we'll show you the smartest card to
+          use.
         </EmptyState>
       )}
 
@@ -152,7 +167,7 @@ export default function RecommendationResult({
             </div>
 
             <div className="recommendation-copy">
-              <p className="recommendation-label">Use this card</p>
+              <p className="recommendation-label">Best Choice</p>
               <h2>{topPick.card.name}</h2>
               <p className="concierge-copy">
                 {recommendationSentence(topPick)}
@@ -162,11 +177,11 @@ export default function RecommendationResult({
 
           <div className="advice-grid">
             <div className="reward-callout">
-              <span>Estimated rewards earned</span>
-              <strong>{formatRewards(topPick.effectiveRate)}</strong>
+              <span>You'll earn</span>
+              <strong>{rewardCallout(topPick.effectiveRate)}</strong>
             </div>
             <div>
-              <span>Benefits unlocked</span>
+              <span>You unlock</span>
               <strong>{unlockLabel}</strong>
             </div>
             <div>
@@ -181,12 +196,7 @@ export default function RecommendationResult({
 
           <section className="why-rewardly">
             <p className="recommendation-label">Why Rewardly recommends this</p>
-            <p>
-              Rewardly looks for the card that gives you the strongest
-              combination of rewards, credits, protections, and practical value
-              for this purchase. For this search, {topPick.card.name} is the
-              clearest choice.
-            </p>
+            <p>{specificReason(topPick, unlockLabel)}</p>
           </section>
 
           {unlockedBenefits.length > 0 && (
@@ -227,6 +237,7 @@ export default function RecommendationResult({
                         </span>
                         <strong>{card.card.name}</strong>
                       </div>
+                      <span className="alternative-tag">Backup option</span>
                       <p>{alternativeReason(card)}</p>
                     </article>
                   ))}
@@ -235,7 +246,7 @@ export default function RecommendationResult({
             )}
 
             <section className="recommendation-panel did-you-know">
-              <p className="recommendation-label">Did you know?</p>
+              <p className="recommendation-label">Useful insight</p>
               <div>
                 <strong>{lesson.title}</strong>
                 <p>{lesson.body}</p>
