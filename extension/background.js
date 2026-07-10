@@ -1,6 +1,7 @@
 // extension/background.js
 
 const DEFAULT_API_BASE = "http://localhost:5001";
+const PAYMENT_DECISION_API_PATH = "/api/decisions/payment";
 // Keeping FIELDS here for later, but NOT sending it right now since your backend
 // doesn't return `top` yet. You can re-enable once backend supports it.
 const BEST_FIELDS =
@@ -21,7 +22,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         const data = await fetchJsonWithFallback(
           apiBase,
           `/api/merchant/infer?host=${encodeURIComponent(host)}`,
-          { method: "GET" }
+          { method: "GET" },
         );
         console.log("[CCO] infer response:", data);
         sendResponse({ ok: true, data });
@@ -38,29 +39,36 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       try {
         const apiBase = (await getSetting("API_BASE")) || DEFAULT_API_BASE;
         const settingsUserId = (await getSetting("USER_ID")) || "devUser";
-        const storedManualCardSlugs = (await getSetting("MANUAL_CARD_SLUGS")) || [];
-        const { merchant, mcc, userId = settingsUserId, restrictToLinked, manualCardSlugs } = msg.payload || {};
+        const storedManualCardSlugs =
+          (await getSetting("MANUAL_CARD_SLUGS")) || [];
+        const {
+          merchant,
+          mcc,
+          userId = settingsUserId,
+          restrictToLinked,
+          manualCardSlugs,
+        } = msg.payload || {};
         if (!merchant) throw new Error("merchant required");
 
         const path = "/api/cards/best-card-for-merchant";
         console.log("[CCO] best request:", `${apiBase}${path}`, merchant);
 
-        const data = await fetchJsonWithFallback(
-          apiBase,
-          path,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              merchant,
-              mcc,
-              userId,
-              ...(typeof restrictToLinked === "boolean" ? { restrictToLinked } : {}),
-              manualCardSlugs: Array.isArray(manualCardSlugs) ? manualCardSlugs : storedManualCardSlugs,
-            }),
-            credentials: "include",
-          }
-        );
+        const data = await fetchJsonWithFallback(apiBase, path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            merchant,
+            mcc,
+            userId,
+            ...(typeof restrictToLinked === "boolean"
+              ? { restrictToLinked }
+              : {}),
+            manualCardSlugs: Array.isArray(manualCardSlugs)
+              ? manualCardSlugs
+              : storedManualCardSlugs,
+          }),
+          credentials: "include",
+        });
         console.log("[CCO] best raw response:", data);
 
         const top = data?.bestCard
@@ -80,13 +88,70 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             }))
           : [];
 
-        sendResponse({ ok: true, data: { top, benefitMatches, note: data?.note || null } });
+        sendResponse({
+          ok: true,
+          data: { top, benefitMatches, note: data?.note || null },
+        });
       } catch (e) {
         console.error("[CCO] best error:", e);
         sendResponse({ ok: false, error: String(e?.message || e) });
       }
     })();
     return true; // keep channel open for async
+  }
+
+  if (msg?.type === "REWARDLY_PAYMENT_DECISION") {
+    (async () => {
+      try {
+        const apiBase = (await getSetting("API_BASE")) || DEFAULT_API_BASE;
+        const settingsUserId = (await getSetting("USER_ID")) || "devUser";
+        const storedManualCardSlugs =
+          (await getSetting("MANUAL_CARD_SLUGS")) || [];
+        const debugLogs = !!(await getSetting("DEBUG_LOGS"));
+        const payload = msg.payload || {};
+        const decisionPayload = {
+          ...payload,
+          userId: payload.userId || settingsUserId,
+          manualCardSlugs: Array.isArray(payload.manualCardSlugs)
+            ? payload.manualCardSlugs
+            : storedManualCardSlugs,
+          restrictToWallet:
+            typeof payload.restrictToWallet === "boolean"
+              ? payload.restrictToWallet
+              : true,
+        };
+        rewardlyDebugLog(debugLogs, "background decision request", {
+          apiBase,
+          payload: decisionPayload,
+        });
+        const data = await fetchJsonWithFallback(
+          apiBase,
+          PAYMENT_DECISION_API_PATH,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(decisionPayload),
+            credentials: "include",
+          },
+        );
+        rewardlyDebugLog(debugLogs, "background decision response", {
+          hasDecision: !!data?.decision,
+          hasRecommendation: !!data?.decision?.recommendedCard,
+          cardSlug: data?.decision?.recommendedCard?.card?.slug || null,
+          merchant: data?.decision?.merchant?.name || null,
+        });
+        sendResponse({ ok: true, data });
+      } catch (e) {
+        console.error("[Rewardly] pipeline-failed", {
+          stage: "background-payment-decision",
+          url: msg?.payload?.url || null,
+          merchant: msg?.payload?.merchant || null,
+          message: String(e?.message || e),
+        });
+        sendResponse({ ok: false, error: String(e?.message || e) });
+      }
+    })();
+    return true;
   }
 
   if (msg?.type === "CCO_GET_USER_BENEFIT_STATES") {
@@ -96,7 +161,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         const settingsUserId = (await getSetting("USER_ID")) || "devUser";
         const userId = msg.payload?.userId || settingsUserId;
         const path = `/api/user-benefits?userId=${encodeURIComponent(userId)}`;
-        const data = await fetchJsonWithFallback(apiBase, path, { method: "GET" });
+        const data = await fetchJsonWithFallback(apiBase, path, {
+          method: "GET",
+        });
         sendResponse({ ok: true, data });
       } catch (e) {
         console.error("[CCO] benefit states error:", e);
@@ -113,7 +180,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         const settingsUserId = (await getSetting("USER_ID")) || "devUser";
         const userId = msg.payload?.userId || settingsUserId;
         const path = `/api/user-benefits/summary?userId=${encodeURIComponent(userId)}`;
-        const data = await fetchJsonWithFallback(apiBase, path, { method: "GET" });
+        const data = await fetchJsonWithFallback(apiBase, path, {
+          method: "GET",
+        });
         sendResponse({ ok: true, data });
       } catch (e) {
         console.error("[CCO] benefit summary error:", e);
@@ -128,13 +197,21 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       try {
         const apiBase = (await getSetting("API_BASE")) || DEFAULT_API_BASE;
         const settingsUserId = (await getSetting("USER_ID")) || "devUser";
-        const { userId = settingsUserId, benefitKey, ...state } = msg.payload || {};
+        const {
+          userId = settingsUserId,
+          benefitKey,
+          ...state
+        } = msg.payload || {};
         if (!benefitKey) throw new Error("benefitKey required");
-        const data = await fetchJsonWithFallback(apiBase, "/api/user-benefits/state", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId, benefitKey, ...state }),
-        });
+        const data = await fetchJsonWithFallback(
+          apiBase,
+          "/api/user-benefits/state",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ userId, benefitKey, ...state }),
+          },
+        );
         sendResponse({ ok: true, data });
       } catch (e) {
         console.error("[CCO] save benefit state error:", e);
@@ -145,7 +222,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
 
   if (msg?.type === "CCO_SAVE_SETTINGS") {
-    chrome.storage.sync.set(msg.payload || {}, () => sendResponse({ ok: true }));
+    chrome.storage.sync.set(msg.payload || {}, () =>
+      sendResponse({ ok: true }),
+    );
     return true;
   }
 });
@@ -154,6 +233,11 @@ async function getSetting(key) {
   return new Promise((resolve) => {
     chrome.storage.sync.get([key], (o) => resolve(o?.[key]));
   });
+}
+
+function rewardlyDebugLog(enabled, label, data) {
+  if (!enabled) return;
+  console.log(`[Rewardly] ${label}`, data || {});
 }
 
 async function fetchJsonWithFallback(apiBase, path, options) {

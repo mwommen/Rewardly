@@ -7,6 +7,7 @@ const saved = document.getElementById("saved");
 const walletCount = document.getElementById("walletCount");
 const cardSearch = document.getElementById("cardSearch");
 const cardList = document.getElementById("cardList");
+const debugLogs = document.getElementById("debugLogs");
 const quickButtons = {
   demoAmexGold: "amex-gold",
   demoPlatinum: "amex-platinum",
@@ -16,13 +17,19 @@ const quickButtons = {
 let allCards = [];
 let selectedSlugs = new Set();
 
-chrome.storage.sync.get(["API_BASE", "USER_ID", "MANUAL_CARD_SLUGS"], (o) => {
+chrome.storage.sync.get(
+  ["API_BASE", "USER_ID", "MANUAL_CARD_SLUGS", "DEBUG_LOGS"],
+  (o) => {
   apiBaseEl.value = o?.API_BASE || "http://localhost:5001";
   userIdEl.value = o?.USER_ID || "devUser";
-  selectedSlugs = new Set(Array.isArray(o?.MANUAL_CARD_SLUGS) ? o.MANUAL_CARD_SLUGS : []);
+    debugLogs.checked = !!o?.DEBUG_LOGS;
+    selectedSlugs = new Set(
+      Array.isArray(o?.MANUAL_CARD_SLUGS) ? o.MANUAL_CARD_SLUGS : [],
+    );
   updateCount();
   loadCards();
-});
+  },
+);
 
 Object.entries(quickButtons).forEach(([id, slug]) => {
   document.getElementById(id)?.addEventListener("click", () => {
@@ -103,6 +110,7 @@ function saveSettings() {
         API_BASE: apiBaseEl.value.trim() || "http://localhost:5001",
         USER_ID: userIdEl.value.trim() || "devUser",
         MANUAL_CARD_SLUGS: Array.from(selectedSlugs),
+        DEBUG_LOGS: !!debugLogs.checked,
       },
     },
     (resp) => {

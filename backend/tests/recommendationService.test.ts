@@ -1,4 +1,7 @@
-import { recommendAllBenefits, recommendBestCards } from "../src/services/recommendationService";
+import {
+  recommendAllBenefits,
+  recommendBestCards,
+} from "../src/services/recommendationService";
 
 // --- Correct mocks for your current structure ---
 jest.mock("../src/db", () => ({
@@ -13,9 +16,11 @@ jest.mock("../src/utils/valuation", () => ({
   toCashEquivalent: jest.fn(
     (unit: "cash" | "points" | "miles", rate: number, issuer: string) => {
       if (unit === "cash") return rate / 100; // e.g., 2 -> 0.02
-      const big = /chase|american express|amex|citi/i.test(issuer) ? 0.015 : 0.01; // 1.5cpp vs 1cpp
+      const big = /chase|american express|amex|citi/i.test(issuer)
+        ? 0.015
+        : 0.01; // 1.5cpp vs 1cpp
       return rate * big; // e.g., 3x -> 0.045
-    }
+    },
   ),
 }));
 
@@ -23,7 +28,9 @@ import { getDb } from "../src/db";
 import { inferCategories } from "../src/utils/category";
 
 const mockedGetDb = getDb as jest.MockedFunction<typeof getDb>;
-const mockedInferCategories = inferCategories as jest.MockedFunction<typeof inferCategories>;
+const mockedInferCategories = inferCategories as jest.MockedFunction<
+  typeof inferCategories
+>;
 
 type Card = any;
 function makeDb(cards: Card[]) {
@@ -59,7 +66,7 @@ describe("recommendationService", () => {
             "Global Entry credit",
           ],
         },
-      ] as Card[])
+      ] as Card[]),
     );
     mockedInferCategories.mockReturnValue(["restaurants"]);
 
@@ -72,9 +79,13 @@ describe("recommendationService", () => {
     expect(out.offers).toHaveLength(1);
     const perks = out.offers[0].perks;
     expect(perks.some((p: string) => /5% on dining/i.test(p))).toBe(true);
-    expect(perks.some((p: string) => /purchase protection/i.test(p))).toBe(true);
+    expect(perks.some((p: string) => /purchase protection/i.test(p))).toBe(
+      true,
+    );
     expect(perks.some((p: string) => /learn more/i.test(p))).toBe(false);
-    expect(perks.some((p: string) => /open in the same window/i.test(p))).toBe(false);
+    expect(perks.some((p: string) => /open in the same window/i.test(p))).toBe(
+      false,
+    );
   });
 
   test("chooses category match over baseline and computes estValueUSD", async () => {
@@ -88,11 +99,15 @@ describe("recommendationService", () => {
           rewardsFlat: [{ rate: 1, unit: "cash" }],
           rewardsByCategory: { restaurants: "3%", other: "1%" },
         },
-      ] as Card[])
+      ] as Card[]),
     );
     mockedInferCategories.mockReturnValue(["restaurants"]);
 
-    const out = await recommendAllBenefits({ merchant: "Food Place", amount: 200, includeRotating: true });
+    const out = await recommendAllBenefits({
+      merchant: "Food Place",
+      amount: 200,
+      includeRotating: true,
+    });
     const offer = out.offers[0];
     expect(offer.effectiveRate).toBeCloseTo(0.03, 5);
     expect(offer.estValueUSD).toBeCloseTo(6.0, 2);
@@ -107,9 +122,11 @@ describe("recommendationService", () => {
           name: "Card B",
           issuer: "Citi",
           annualFee: 95,
-          rewardsByCategory: [{ keys: ["restaurants"], rate: "4x", unit: "points" }],
+          rewardsByCategory: [
+            { keys: ["restaurants"], rate: "4x", unit: "points" },
+          ],
         },
-      ] as Card[])
+      ] as Card[]),
     );
     mockedInferCategories.mockReturnValue(["restaurants"]);
 
@@ -139,11 +156,14 @@ describe("recommendationService", () => {
             },
           ],
         },
-      ] as Card[])
+      ] as Card[]),
     );
     mockedInferCategories.mockReturnValue(["groceries"]);
 
-    const out = await recommendAllBenefits({ merchant: "Supermarket", amount: 100 });
+    const out = await recommendAllBenefits({
+      merchant: "Supermarket",
+      amount: 100,
+    });
     const offer = out.offers[0];
     expect(offer.effectiveRate).toBeCloseTo(0.05, 5);
     expect(offer.reason).toMatch(/rotating/i);
@@ -153,27 +173,79 @@ describe("recommendationService", () => {
   test("filters out zero-rate cards unless they include perks or signup offer", async () => {
     mockedGetDb.mockResolvedValueOnce(
       makeDb([
-        { slug: "zero-a", name: "Zero A", issuer: "Other", rewardsFlat: [{ rate: 0, unit: "cash" }], perks: [] },
-        { slug: "zero-b", name: "Zero B", issuer: "Other", rewardsFlat: [{ rate: 0, unit: "cash" }], perks: ["No foreign transaction fee"] },
-        { slug: "zero-c", name: "Zero C", issuer: "Other", rewardsFlat: [{ rate: 0, unit: "cash" }], signupOffer: "Earn 50,000 points after you spend $3,000" },
-      ] as Card[])
+        {
+          slug: "zero-a",
+          name: "Zero A",
+          issuer: "Other",
+          rewardsFlat: [{ rate: 0, unit: "cash" }],
+          perks: [],
+        },
+        {
+          slug: "zero-b",
+          name: "Zero B",
+          issuer: "Other",
+          rewardsFlat: [{ rate: 0, unit: "cash" }],
+          perks: ["No foreign transaction fee"],
+        },
+        {
+          slug: "zero-c",
+          name: "Zero C",
+          issuer: "Other",
+          rewardsFlat: [{ rate: 0, unit: "cash" }],
+          signupOffer: "Earn 50,000 points after you spend $3,000",
+        },
+      ] as Card[]),
     );
     mockedInferCategories.mockReturnValue(["other"]);
 
     const out = await recommendAllBenefits({ merchant: "Misc", amount: 10 });
-    expect(out.offers.map((o: any) => o.slug).sort()).toEqual(["zero-b", "zero-c"]);
+    expect(out.offers.map((o: any) => o.slug).sort()).toEqual([
+      "zero-b",
+      "zero-c",
+    ]);
   });
 
   test("recommendBestCards returns sorted projected recommendations", async () => {
     mockedGetDb.mockResolvedValueOnce(
       makeDb([
-        { slug: "a", name: "A", issuer: "Other", rewardsFlat: [{ rate: 1, unit: "cash" }] }, // 1%
-        { slug: "b", name: "B", issuer: "Other", rewardsByCategory: { restaurants: "3%" } },
-        { slug: "c", name: "C", issuer: "Citi", rewardsByCategory: { restaurants: "4x" }, annualFee: 95 },
-        { slug: "d", name: "D", issuer: "Other", rewardsByCategory: { restaurants: "2%" } },
-        { slug: "e", name: "E", issuer: "Other", rewardsByCategory: { restaurants: "1%" } },
-        { slug: "f", name: "F", issuer: "Other", rewardsByCategory: { restaurants: "0.5%" } }
-      ] as Card[])
+        {
+          slug: "a",
+          name: "A",
+          issuer: "Other",
+          rewardsFlat: [{ rate: 1, unit: "cash" }],
+        }, // 1%
+        {
+          slug: "b",
+          name: "B",
+          issuer: "Other",
+          rewardsByCategory: { restaurants: "3%" },
+        },
+        {
+          slug: "c",
+          name: "C",
+          issuer: "Citi",
+          rewardsByCategory: { restaurants: "4x" },
+          annualFee: 95,
+        },
+        {
+          slug: "d",
+          name: "D",
+          issuer: "Other",
+          rewardsByCategory: { restaurants: "2%" },
+        },
+        {
+          slug: "e",
+          name: "E",
+          issuer: "Other",
+          rewardsByCategory: { restaurants: "1%" },
+        },
+        {
+          slug: "f",
+          name: "F",
+          issuer: "Other",
+          rewardsByCategory: { restaurants: "0.5%" },
+        },
+      ] as Card[]),
     );
     mockedInferCategories.mockReturnValue(["restaurants"]);
 
@@ -204,15 +276,32 @@ describe("recommendationService", () => {
             },
           ],
         },
-        { slug: "flat-2", name: "Flat 2", issuer: "Other", rewardsFlat: [{ rate: 2, unit: "cash" }] },
-        { slug: "flat-15", name: "Flat 1.5", issuer: "Other", rewardsFlat: [{ rate: 1.5, unit: "cash" }] },
-      ] as Card[])
+        {
+          slug: "flat-2",
+          name: "Flat 2",
+          issuer: "Other",
+          rewardsFlat: [{ rate: 2, unit: "cash" }],
+        },
+        {
+          slug: "flat-15",
+          name: "Flat 1.5",
+          issuer: "Other",
+          rewardsFlat: [{ rate: 1.5, unit: "cash" }],
+        },
+      ] as Card[]),
     );
     mockedInferCategories.mockReturnValue(["apparel"]);
 
-    const out = await recommendBestCards({ merchant: "lululemon", amount: 100 });
+    const out = await recommendBestCards({
+      merchant: "lululemon",
+      amount: 100,
+    });
 
-    expect(out.recommendations.map((r: any) => r.slug)).toEqual(["amex-platinum", "flat-2", "flat-15"]);
+    expect(out.recommendations.map((r: any) => r.slug)).toEqual([
+      "amex-platinum",
+      "flat-2",
+      "flat-15",
+    ]);
     expect(out.recommendations[0].matchTier).toBe("exact_benefit");
     expect(out.recommendations[1].matchTier).toBe("base_rate");
   });
@@ -241,7 +330,7 @@ describe("recommendationService", () => {
             },
           ],
         },
-      ] as Card[])
+      ] as Card[]),
     );
     mockedInferCategories.mockReturnValue(["restaurants"]);
 
@@ -249,6 +338,134 @@ describe("recommendationService", () => {
 
     expect(out.recommendations[0].slug).toBe("dining-card");
     expect(out.recommendations[0].matchTier).toBe("category_match");
-    expect(out.recommendations.some((r: any) => r.matchTier === "exact_benefit")).toBe(false);
+    expect(
+      out.recommendations.some((r: any) => r.matchTier === "exact_benefit"),
+    ).toBe(false);
+  });
+
+  test("allowedCardSlugs filters candidates before scoring when user owns Amex Gold only", async () => {
+    mockedGetDb.mockResolvedValueOnce(
+      makeDb([
+        {
+          slug: "amex-gold",
+          name: "Amex Gold",
+          issuer: "American Express",
+          rewardsByCategory: { restaurants: "4x", other: "1x" },
+        },
+        {
+          slug: "chase-sapphire-reserve",
+          name: "Chase Sapphire Reserve",
+          issuer: "Chase",
+          rewardsByCategory: { restaurants: "10x", other: "1x" },
+        },
+      ] as Card[]),
+    );
+    mockedInferCategories.mockReturnValue(["restaurants"]);
+
+    const out = await recommendBestCards({
+      merchant: "restaurant",
+      amount: 100,
+      allowedCardSlugs: ["amex-gold"],
+    });
+
+    expect(out.recommendations.map((card: any) => card.slug)).toEqual([
+      "amex-gold",
+    ]);
+    expect(
+      out.recommendations.some((card: any) => /chase/i.test(card.slug)),
+    ).toBe(false);
+  });
+
+  test("allowedCardSlugs filters candidates before scoring when user owns Chase only", async () => {
+    mockedGetDb.mockResolvedValueOnce(
+      makeDb([
+        {
+          slug: "amex-platinum",
+          name: "Amex Platinum",
+          issuer: "American Express",
+          merchantCredits: [
+            {
+              label: "$75 statement credit at lululemon",
+              amountUSD: 75,
+              eligibleWhen: { merchantPatterns: ["lululemon"] },
+            },
+          ],
+        },
+        {
+          slug: "chase-freedom-unlimited",
+          name: "Chase Freedom Unlimited",
+          issuer: "Chase",
+          rewardsFlat: [{ rate: 1.5, unit: "cash" }],
+        },
+      ] as Card[]),
+    );
+    mockedInferCategories.mockReturnValue(["apparel"]);
+
+    const out = await recommendBestCards({
+      merchant: "lululemon",
+      amount: 100,
+      allowedCardSlugs: ["chase-freedom-unlimited"],
+    });
+
+    expect(out.recommendations.map((card: any) => card.slug)).toEqual([
+      "chase-freedom-unlimited",
+    ]);
+    expect(
+      out.recommendations.some((card: any) => /amex/i.test(card.slug)),
+    ).toBe(false);
+  });
+
+  test("empty allowedCardSlugs returns no recommendations instead of scoring full catalog", async () => {
+    mockedGetDb.mockResolvedValueOnce(
+      makeDb([
+        {
+          slug: "chase-sapphire-reserve",
+          name: "Chase Sapphire Reserve",
+          issuer: "Chase",
+          rewardsByCategory: { restaurants: "10x" },
+        },
+      ] as Card[]),
+    );
+    mockedInferCategories.mockReturnValue(["restaurants"]);
+
+    const out = await recommendBestCards({
+      merchant: "restaurant",
+      amount: 100,
+      allowedCardSlugs: [],
+    });
+
+    expect(out.recommendations).toEqual([]);
+  });
+
+  test("omitting allowedCardSlugs still scores the full catalog for demo/search flows", async () => {
+    mockedGetDb.mockResolvedValueOnce(
+      makeDb([
+        {
+          slug: "amex-gold",
+          name: "Amex Gold",
+          issuer: "American Express",
+          rewardsByCategory: { restaurants: "4x" },
+        },
+        {
+          slug: "chase-sapphire-reserve",
+          name: "Chase Sapphire Reserve",
+          issuer: "Chase",
+          rewardsByCategory: { restaurants: "10x" },
+        },
+      ] as Card[]),
+    );
+    mockedInferCategories.mockReturnValue(["restaurants"]);
+
+    const out = await recommendBestCards({
+      merchant: "restaurant",
+      amount: 100,
+    });
+
+    expect(out.recommendations.map((card: any) => card.slug)).toContain(
+      "amex-gold",
+    );
+    expect(out.recommendations.map((card: any) => card.slug)).toContain(
+      "chase-sapphire-reserve",
+    );
   });
 });

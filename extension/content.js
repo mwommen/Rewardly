@@ -1,19 +1,14 @@
-// extension/content.js
-// Zero-input version: infer merchant from domain, no amount scraping.
+// Rewardly magic moment: detect checkout, request one wallet decision, show one card.
 
-console.log("[CCO] content loaded on", location.href);
-
-const DEBOUNCE_MS = 400;
-const RETRY_MS = 5000;
-let lastHost = "";
-let lastAttemptAt = 0;
-let timer = null;
-let inFlight = false;
-let lastHadBenefit = false;
+const REWARDLY_CHECK_DELAY_MS = 250;
+const REWARDLY_MIN_CHECK_INTERVAL_MS = 750;
+const REWARDLY_DISMISS_MS = 30 * 60 * 1000;
+const REWARDLY_REQUEST_TIMEOUT_MS = 3000;
 
 const CARD_LOGOS = {
   "amex-gold": "amex-gold.png",
   "amex-platinum": "amex-platinum.png",
+  "amex-blue-business-plus": "Amex Blue Business Plus.png",
   "chase-sapphire-preferred": "chase-sapphire-preferred.png",
   "chase-freedom-unlimited": "chase-freedom-unlimited.png",
   "citi-custom-cash": "citi-custom-cash.png",
@@ -21,1071 +16,1071 @@ const CARD_LOGOS = {
   "capital-one-venture-x": "capital-one-venture-x.png",
 };
 
-const CARD_ENROLL_URLS = {
-  "amex-gold": "https://www.americanexpress.com/en-us/benefits/the-gold-card/",
-  "amex-platinum": "https://www.americanexpress.com/en-us/benefits/the-platinum-card/",
-  "chase-sapphire-preferred": "https://creditcards.chase.com/rewards-credit-cards/sapphire/preferred",
-  "chase-freedom-unlimited": "https://creditcards.chase.com/cash-back-credit-cards/freedom/unlimited",
-  "citi-custom-cash": "https://www.citi.com/credit-cards/citi-custom-cash-credit-card",
-  "capital-one-savorone": "https://www.capitalone.com/credit-cards/savorone/",
-  "capital-one-venture-x": "https://www.capitalone.com/credit-cards/venture-x/",
+const REWARDLY_MERCHANTS = {
+  "lululemon.com": {
+    name: "Lululemon",
+    category: "apparel",
+    mcc: "5651",
+    aliases: ["lululemon", "lulu lemon", "lululemon.com"],
+  },
+  "amazon.com": {
+    name: "Amazon",
+    category: "online_shopping",
+    mcc: "5942",
+    aliases: ["amazon", "amazon.com"],
+  },
+  "target.com": {
+    name: "Target",
+    category: "departmentstores",
+    mcc: "5310",
+    aliases: ["target", "target.com"],
+  },
+  "walmart.com": {
+    name: "Walmart",
+    category: "departmentstores",
+    mcc: "5310",
+    aliases: ["walmart", "wal-mart", "walmart.com"],
+  },
+  "costco.com": {
+    name: "Costco",
+    category: "groceries",
+    mcc: "5300",
+    aliases: ["costco", "costco wholesale", "costco.com"],
+  },
+  "bestbuy.com": {
+    name: "Best Buy",
+    category: "online_shopping",
+    mcc: "5732",
+    aliases: ["best buy", "bestbuy", "bestbuy.com"],
+  },
+  "apple.com": {
+    name: "Apple",
+    category: "online_shopping",
+    mcc: "5732",
+    aliases: ["apple store", "apple.com"],
+  },
+  "nike.com": {
+    name: "Nike",
+    category: "apparel",
+    mcc: "5651",
+    aliases: ["nike", "nike.com"],
+  },
+  "homedepot.com": {
+    name: "Home Depot",
+    category: "other",
+    mcc: "5200",
+    aliases: ["home depot", "the home depot", "homedepot"],
+  },
+  "lowes.com": {
+    name: "Lowe's",
+    category: "other",
+    mcc: "5200",
+    aliases: ["lowe's", "lowes", "lowe’s"],
+  },
+  "doordash.com": {
+    name: "DoorDash",
+    category: "dining",
+    mcc: "5814",
+    aliases: ["doordash", "door dash", "doordash.com"],
+  },
+  "ubereats.com": {
+    name: "Uber Eats",
+    category: "dining",
+    mcc: "5814",
+    aliases: ["uber eats", "ubereats", "ubereats.com"],
+  },
+  "starbucks.com": {
+    name: "Starbucks",
+    category: "dining",
+    mcc: "5814",
+    aliases: ["starbucks", "starbucks coffee"],
+  },
+  "delta.com": {
+    name: "Delta",
+    category: "travel",
+    mcc: "4511",
+    aliases: ["delta air lines", "delta airlines", "delta.com"],
+  },
+  "united.com": {
+    name: "United",
+    category: "travel",
+    mcc: "4511",
+    aliases: ["united airlines", "united.com"],
+  },
+  "southwest.com": {
+    name: "Southwest",
+    category: "travel",
+    mcc: "4511",
+    aliases: ["southwest airlines", "southwest.com"],
+  },
+  "marriott.com": {
+    name: "Marriott",
+    category: "travel",
+    mcc: "7011",
+    aliases: ["marriott", "marriott bonvoy"],
+  },
+  "hilton.com": {
+    name: "Hilton",
+    category: "travel",
+    mcc: "7011",
+    aliases: ["hilton", "hilton honors"],
+  },
+  "airbnb.com": {
+    name: "Airbnb",
+    category: "travel",
+    mcc: "7011",
+    aliases: ["airbnb", "airbnb.com"],
+  },
+  "expedia.com": {
+    name: "Expedia",
+    category: "travel",
+    mcc: "4722",
+    aliases: ["expedia", "expedia.com"],
+  },
+  "booking.com": {
+    name: "Booking.com",
+    category: "travel",
+    mcc: "4722",
+    aliases: ["booking.com", "booking com"],
+  },
 };
 
-const DASHBOARD_URL = "http://localhost:5173";
-let lastBannerContext = null;
-let lastBenefitStateMap = new Map();
+let rewardlyTimer = null;
+let rewardlyLastCheckAt = 0;
+let rewardlyInFlight = false;
+let rewardlyShownKey = "";
+let rewardlyObserver = null;
+let rewardlyDebugEnabled = false;
+let rewardlyLastUrl = location.href;
 
-init();
+initRewardly();
 
-function init() {
-  detectAndRender();
-  const obs = new MutationObserver(() => {
-    clearTimeout(timer);
-    timer = setTimeout(detectAndRender, DEBOUNCE_MS);
+function initRewardly() {
+  document.documentElement.setAttribute("data-rewardly-extension", "loaded");
+  rewardlyLog("content-script-loaded", {
+    url: location.href,
+    host: location.hostname,
   });
-  obs.observe(document.documentElement, { childList: true, subtree: true });
-}
-
-function detectAndRender() {
-  if (!isCheckoutPage()) {
-    removeBanner();
-    return;
-  }
-
-  const host = location.hostname || "";
-  if (!host) return;
-  const now = Date.now();
-  const hasBanner = Boolean(document.getElementById("cco-banner"));
-  if (host === lastHost && hasBanner && now - lastAttemptAt < RETRY_MS) return;
-  if (host !== lastHost) {
-    lastHost = host;
-    lastHadBenefit = false;
-  }
-  lastAttemptAt = now;
-
-  if (isSnoozed(host)) {
-    removeBanner();
-    return;
-  }
-
-  if (inFlight) return;
-  inFlight = true;
-
-  const pageInference = inferMerchantFromPage();
-  const requestRecommendation = (merchantName, mcc) => {
-    chrome.storage.sync.get(["USER_ID"], (o) => {
-      const userId = o?.USER_ID || "devUser";
-      const firstPayload = { merchant: merchantName, mcc, userId, restrictToLinked: true };
-
-      const handleResponse = (rec, benefitStateMap) => {
-        if (!rec?.ok) {
-          inFlight = false;
-          return;
-        }
-        const top = rec.data?.top || null;
-        const benefitMatches = Array.isArray(rec.data?.benefitMatches) ? rec.data?.benefitMatches : [];
-        const topMatches = Array.isArray(top?.matches) ? top.matches : [];
-        const hasAnyBenefit = benefitMatches.length || topMatches.length;
-        if (hasAnyBenefit) {
-          const list = benefitMatches.length ? benefitMatches : topMatches.map((m) => ({
-            card: top?.card,
-            reason: top?.reason || null,
-            matches: [m],
-            credits: top?.credits || [],
-          }));
-          banner({
-            result: benefitMatches.length ? null : top,
-            merchant: merchantName,
-            matches: list,
-            benefitStateMap,
-          });
-          lastHadBenefit = true;
-          inFlight = false;
-          return;
-        }
-
-        removeBanner();
-        lastHadBenefit = false;
-        inFlight = false;
-      };
-
-      chrome.runtime.sendMessage({ type: "CCO_GET_USER_BENEFIT_STATES", payload: { userId } }, (stateResp) => {
-        const stateMap = stateResp?.ok && Array.isArray(stateResp.data?.states)
-          ? buildBenefitStateMap(stateResp.data.states)
-          : new Map();
-
-        chrome.runtime.sendMessage({ type: "CCO_RECOMMEND", payload: firstPayload }, (rec) => {
-          handleResponse(rec, stateMap);
-        });
+  loadRewardlyDebugSetting();
+  chrome.storage?.onChanged?.addListener((changes, area) => {
+    if (
+      area === "sync" &&
+      Object.prototype.hasOwnProperty.call(changes, "DEBUG_LOGS")
+    ) {
+      rewardlyDebugEnabled = !!changes.DEBUG_LOGS.newValue;
+      rewardlyLog("debug-setting-changed", {
+        enabled: rewardlyDebugEnabled,
       });
-    });
-  };
-
-  if (pageInference?.merchantName) {
-    requestRecommendation(pageInference.merchantName, pageInference.mcc);
-  } else {
-    chrome.runtime.sendMessage({ type: "CCO_INFER", payload: { host } }, (inf) => {
-      if (!inf?.ok) {
-        inFlight = false;
-        return;
-      }
-      const { merchantName, mcc } = inf.data || {};
-      if (!merchantName) {
-        inFlight = false;
-        return;
-      }
-      requestRecommendation(merchantName, mcc);
-    });
-  }
+    }
+  });
+  window.addEventListener("message", handleRewardlyDiagnosticMessage);
+  scheduleRewardlyCheck("initial-load", 50);
+  rewardlyObserver = new MutationObserver(() => {
+    scheduleRewardlyCheck("dom-mutated");
+  });
+  rewardlyObserver.observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+  });
+  setInterval(() => {
+    if (location.href === rewardlyLastUrl) return;
+    rewardlyLastUrl = location.href;
+    scheduleRewardlyCheck("url-changed", 50);
+  }, 500);
 }
 
-// ---- Banner UI ----
-function banner({ loading, error, result, merchant, note, matches, benefitStateMap = new Map() }) {
-  lastBannerContext = { loading, error, result, merchant, note, matches };
-  lastBenefitStateMap = benefitStateMap instanceof Map ? new Map(benefitStateMap) : new Map();
-  let host = document.getElementById("cco-banner");
-  if (!host) {
-    ensureStyles();
-    host = document.createElement("div");
-    host.id = "cco-banner";
-    host.className = "cco-root";
-    document.body.appendChild(host);
-  }
-  host.innerHTML = "";
+function scheduleRewardlyCheck(reason, delay = REWARDLY_CHECK_DELAY_MS) {
+  if (rewardlyTimer) return;
+  const elapsed = Date.now() - rewardlyLastCheckAt;
+  const wait = Math.max(delay, REWARDLY_MIN_CHECK_INTERVAL_MS - elapsed, 0);
+  rewardlyTimer = setTimeout(() => {
+    rewardlyTimer = null;
+    rewardlyLastCheckAt = Date.now();
+    runRewardlyPipeline(reason);
+  }, wait);
+}
 
-  const card = document.createElement("div");
-  card.className = "cco-card";
+function runRewardlyPipeline(triggerReason = "scheduled") {
+  try {
+    rewardlyLog("pipeline-started", {
+      triggerReason,
+      url: location.href,
+    });
+    const checkout = detectCheckoutFromPage();
+    document.documentElement.setAttribute(
+      "data-rewardly-checkout-stage",
+      checkout.stage || "unknown",
+    );
+    document.documentElement.setAttribute(
+      "data-rewardly-should-trigger",
+      String(!!checkout.shouldTriggerRecommendation),
+    );
+    rewardlyLog("checkout-detected", {
+      stage: checkout.stage,
+      shouldTriggerRecommendation: checkout.shouldTriggerRecommendation,
+      confidence: checkout.confidence,
+      url: location.href,
+    });
+    if (!checkout.shouldTriggerRecommendation) {
+      rewardlyLog("pipeline-failed", {
+        stage: "checkout-detection",
+        reason: "checkout stage does not trigger",
+        url: location.href,
+        checkoutStage: checkout.stage,
+      });
+      removeRewardlyPopup();
+      return;
+    }
 
-  const header = document.createElement("div");
-  header.className = "cco-header";
+    const merchant = detectMerchantFromPage();
+    const key = decisionKey(merchant, checkout);
+    rewardlyLog("merchant-detected", {
+      merchant: merchant.name,
+      hostname: merchant.hostname,
+      category: merchant.category,
+      mcc: merchant.mcc,
+      url: location.href,
+    });
+    if (!merchant.name || rewardlyInFlight || rewardlyShownKey === key) {
+      rewardlyLog("pipeline-failed", {
+        stage: "pre-request",
+        merchant: merchant.name || null,
+        url: location.href,
+        reason: !merchant.name
+          ? "merchant missing"
+          : rewardlyInFlight
+            ? "decision request already in flight"
+            : "duplicate checkout context",
+        hasMerchant: !!merchant.name,
+        rewardlyInFlight,
+        duplicateContext: rewardlyShownKey === key,
+        key,
+      });
+      return;
+    }
+    if (isDismissed(key)) {
+      rewardlyLog("pipeline-failed", {
+        stage: "dismissal-check",
+        merchant: merchant.name,
+        url: location.href,
+        reason: "dismissed for checkout context",
+        key,
+      });
+      return;
+    }
 
-  const brand = document.createElement("div");
-  brand.className = "cco-brand";
-  brand.innerHTML = `<div class="cco-brand-name">Rewardly</div><div class="cco-brand-sub">Card benefit found</div>`;
+    rewardlyInFlight = true;
+    rewardlyShownKey = key;
 
-  const merchantPill = document.createElement("div");
-  merchantPill.className = "cco-merchant";
-  merchantPill.textContent = merchant || "Merchant";
-
-  header.appendChild(brand);
-  header.appendChild(merchantPill);
-  card.appendChild(header);
-
-  const body = document.createElement("div");
-  body.className = "cco-body";
-
-  const walletSummary = buildWalletSummary(benefitStateMap);
-  if (walletSummary.totalCredits > 0) {
-    const summary = document.createElement("div");
-    summary.className = "cco-summary";
-    summary.innerHTML = `
-      <div class="cco-summary-text">
-        <strong>Your wallet has ${walletSummary.totalCredits} tracked credit${walletSummary.totalCredits === 1 ? "" : "s"}</strong>
-        <span>${walletSummary.enrollmentRequired} still need enrollment</span>
-      </div>
-      <button class="cco-btn cco-btn-primary cco-dashboard-btn" type="button">Manage wallet</button>
-    `;
-    summary.querySelector(".cco-dashboard-btn").onclick = (e) => {
-      e.stopPropagation();
-      window.open(DASHBOARD_URL, "_blank", "noopener");
+    const payload = {
+      merchant: merchant.name,
+      hostname: location.hostname,
+      url: location.href,
+      title: document.title,
+      mcc: merchant.mcc,
+      category: merchant.category,
+      restrictToWallet: true,
+      purchaseContext: {
+        surface: "extension",
+        url: location.href,
+        checkoutDetected: checkout.isCheckout,
+        checkoutStage: checkout.stage,
+        amount: readCheckoutAmount(),
+        timestamp: new Date().toISOString(),
+      },
     };
-    body.appendChild(summary);
-  }
 
-  const content = document.createElement("div");
-  content.className = "cco-content";
-  let primaryCredit = null;
-  let sourceUrl = null;
-  let verifiedAt = null;
-
-  if (loading) {
-    content.textContent = note || "Analyzing…";
-  } else if (error) {
-    content.textContent = `CCO: ${error}`;
-  } else if (result || (Array.isArray(matches) && matches.length)) {
-    const title = document.createElement("div");
-    title.className = "cco-title";
-    title.textContent = matches?.length ? "Use this card before you pay" : "Best card here";
-    content.appendChild(title);
-
-    if (result && (!matches || matches.length === 0)) {
-      const resMatches = Array.isArray(result?.matches) ? result.matches : [];
-      const primaryBenefit = resMatches[0] || (result?.reason ? String(result.reason) : "Best available rate");
-      primaryCredit = pickEnrollCredit(result?.credits || [], primaryBenefit);
-      sourceUrl = primaryCredit?.sourceUrl || result?.card?.sourceUrl || null;
-      verifiedAt = result?.card?.lastScraped || null;
-
-      const row = document.createElement("div");
-      row.className = "cco-cardline";
-
-      const icon = cardIcon(result?.card);
-      icon.classList.add("cco-icon");
-      const text = document.createElement("div");
-      text.className = "cco-text";
-      const cardName = result?.card?.name ? sanitize(result.card.name) : "Card";
-      text.innerHTML = `<div class="cco-card-name">${cardName}</div><div class="cco-benefit">${sanitize(primaryBenefit)}</div>`;
-
-      row.appendChild(icon);
-      row.appendChild(text);
-      const primaryState = primaryCredit?.benefitKey ? benefitStateMap.get(primaryCredit.benefitKey) : null;
-      appendBenefitActions(row, primaryCredit, result?.card, primaryState);
-      content.appendChild(row);
-    }
-  } else {
-    content.textContent = "No result";
-  }
-
-  body.appendChild(content);
-
-  const row = document.createElement("div");
-  row.className = "cco-actions";
-
-  const closeBtn = document.createElement("button");
-  closeBtn.textContent = "Dismiss";
-  closeBtn.className = "cco-btn cco-btn-ghost";
-  closeBtn.onclick = () => {
-    setSnooze(location.hostname || "", 30 * 60 * 1000);
-    host.remove();
-  };
-
-  row.appendChild(closeBtn);
-  card.appendChild(body);
-
-  if (sourceUrl || verifiedAt) {
-    const meta = document.createElement("div");
-    meta.className = "cco-meta";
-
-    if (verifiedAt) {
-      const verified = document.createElement("span");
-      verified.textContent = `Verified: ${formatVerifiedDate(verifiedAt)}`;
-      meta.appendChild(verified);
-    }
-
-    if (sourceUrl) {
-      const link = document.createElement("a");
-      link.href = sourceUrl;
-      link.textContent = "Source";
-      link.target = "_blank";
-      link.rel = "noopener";
-      link.className = "cco-link";
-      meta.appendChild(link);
-    }
-
-    card.appendChild(meta);
-  }
-
-  if (Array.isArray(matches) && matches.length) {
-    const sectionTitle = document.createElement("div");
-    sectionTitle.className = "cco-section-title";
-    sectionTitle.textContent = "Cards with this benefit";
-    card.appendChild(sectionTitle);
-
-    const list = document.createElement("div");
-    list.className = "cco-list";
-
-    const cleanMatches = matches.filter((m) => {
-      const name = String(m?.card?.name || "");
-      return name && !/unknown/i.test(name);
+    rewardlyLog("recommendation-requested", {
+      merchant: payload.merchant,
+      url: payload.url,
+      payload,
     });
-    const maxVisible = 3;
-    const visibleMatches = cleanMatches.slice(0, maxVisible);
 
-    visibleMatches.forEach((m) => {
-      const benefit = (m?.matches && m.matches[0]) || m?.reason || "Benefit available";
-      const matchCredit = pickEnrollCredit(m?.credits || [], benefit);
-      const row = document.createElement("div");
-      row.className = "cco-cardline cco-cardline-compact";
-
-      const icon = cardIcon(m?.card);
-      icon.classList.add("cco-icon");
-      const text = document.createElement("div");
-      text.className = "cco-text";
-      const cardName = m?.card?.name ? sanitize(m.card.name) : "Card";
-      text.innerHTML = `<div class="cco-card-name">${cardName}</div><div class="cco-benefit">${sanitize(benefit)}</div>`;
-
-      row.appendChild(icon);
-      row.appendChild(text);
-      const matchState = matchCredit?.benefitKey ? benefitStateMap.get(matchCredit.benefitKey) : null;
-      appendBenefitActions(row, matchCredit, m?.card, matchState);
-      list.appendChild(row);
-    });
-    card.appendChild(list);
-
-    if (cleanMatches.length > maxVisible) {
-      const toggle = document.createElement("button");
-      toggle.className = "cco-btn cco-btn-ghost cco-toggle";
-      toggle.textContent = `Show all (${cleanMatches.length})`;
-      toggle.onclick = () => {
-        const expanded = list.classList.toggle("expanded");
-        toggle.textContent = expanded ? "Show fewer" : `Show all (${cleanMatches.length})`;
-        if (expanded) {
-          list.innerHTML = "";
-          cleanMatches.forEach((m) => {
-            const benefit = (m?.matches && m.matches[0]) || m?.reason || "Benefit available";
-            const matchCredit = pickEnrollCredit(m?.credits || [], benefit);
-            const row = document.createElement("div");
-            row.className = "cco-cardline cco-cardline-compact";
-
-            const icon = cardIcon(m?.card);
-            icon.classList.add("cco-icon");
-            const text = document.createElement("div");
-            text.className = "cco-text";
-            const cardName = m?.card?.name ? sanitize(m.card.name) : "Card";
-            text.innerHTML = `<div class="cco-card-name">${cardName}</div><div class="cco-benefit">${sanitize(benefit)}</div>`;
-
-            row.appendChild(icon);
-            row.appendChild(text);
-            const matchState = matchCredit?.benefitKey ? benefitStateMap.get(matchCredit.benefitKey) : null;
-            const enrollBtn = enrollButton(matchCredit, m?.card, matchState);
-            if (enrollBtn) row.appendChild(enrollBtn);
-            const saveBtn = saveBenefitStateButton(matchCredit, matchState);
-            if (saveBtn) row.appendChild(saveBtn);
-            list.appendChild(row);
+    requestPaymentDecision(payload)
+      .then((decision) => {
+        rewardlyInFlight = false;
+        rewardlyLog("recommendation-received", {
+          hasRecommendation: !!decision?.recommendedCard,
+          cardSlug: decision?.recommendedCard?.card?.slug || null,
+          cardName: decision?.recommendedCard?.card?.name || null,
+          merchant: decision?.merchant?.name || null,
+          walletCardSlugs: decision?.wallet?.cardSlugs || [],
+        });
+        if (!decision?.recommendedCard) {
+          rewardlyShownKey = "";
+          removeRewardlyPopup();
+          rewardlyLog("pipeline-failed", {
+            stage: "recommendation-response",
+            merchant: payload.merchant,
+            url: payload.url,
+            reason: "no recommended card returned",
           });
-        } else {
-          list.innerHTML = "";
-          visibleMatches.forEach((m) => {
-            const benefit = (m?.matches && m.matches[0]) || m?.reason || "Benefit available";
-            const matchCredit = pickEnrollCredit(m?.credits || [], benefit);
-            const row = document.createElement("div");
-            row.className = "cco-cardline cco-cardline-compact";
-
-            const icon = cardIcon(m?.card);
-            icon.classList.add("cco-icon");
-            const text = document.createElement("div");
-            text.className = "cco-text";
-            const cardName = m?.card?.name ? sanitize(m.card.name) : "Card";
-            text.innerHTML = `<div class="cco-card-name">${cardName}</div><div class="cco-benefit">${sanitize(benefit)}</div>`;
-
-            row.appendChild(icon);
-            row.appendChild(text);
-            const matchState = matchCredit?.benefitKey ? benefitStateMap.get(matchCredit.benefitKey) : null;
-            const enrollBtn = enrollButton(matchCredit, m?.card, matchState);
-            if (enrollBtn) row.appendChild(enrollBtn);
-            const saveBtn = saveBenefitStateButton(matchCredit, matchState);
-            if (saveBtn) row.appendChild(saveBtn);
-            list.appendChild(row);
-          });
+          return;
         }
-      };
-      card.appendChild(toggle);
-    }
+        renderRewardlyPopup(decision, key);
+      })
+      .catch((error) => {
+        rewardlyInFlight = false;
+        rewardlyShownKey = "";
+        rewardlyLog("pipeline-failed", {
+          stage: "recommendation-request",
+          merchant: payload.merchant,
+          url: payload.url,
+          message: String(error?.message || error),
+        });
+        console.warn("[Rewardly] decision failed", error);
+      });
+  } catch (error) {
+    rewardlyInFlight = false;
+    rewardlyShownKey = "";
+    rewardlyLog("pipeline-failed", {
+      stage: "content-script",
+      url: location.href,
+      message: String(error?.message || error),
+    });
+    console.warn("[Rewardly] checkout detection failed", error);
   }
-  const snoozeBtn = document.createElement("button");
-  snoozeBtn.textContent = "Hide on this site";
-  snoozeBtn.className = "cco-btn cco-btn-ghost";
-  snoozeBtn.onclick = () => {
-    setSnooze(location.hostname || "");
-    removeBanner();
-  };
-
-  row.appendChild(snoozeBtn);
-  card.appendChild(row);
-  host.appendChild(card);
 }
 
-function ensureStyles() {
-  if (document.getElementById("cco-styles")) return;
+function requestPaymentDecision(payload) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error("Decision request timed out"));
+    }, REWARDLY_REQUEST_TIMEOUT_MS);
+
+    chrome.runtime.sendMessage(
+      { type: "REWARDLY_PAYMENT_DECISION", payload },
+      (response) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        if (!response?.ok) {
+          reject(new Error(response?.error || "Decision request failed"));
+          return;
+        }
+        resolve(response.data?.decision || null);
+      },
+    );
+  });
+}
+
+function detectCheckoutFromPage() {
+  return detectCheckout({
+    url: location.href,
+    pathname: location.pathname,
+    title: document.title,
+    visibleText: readVisibleText(),
+    hasPaymentForm: Boolean(
+      document.querySelector(
+        [
+          "input[name*='card']",
+          "input[id*='card']",
+          "input[autocomplete='cc-number']",
+          "iframe[src*='payment']",
+          "[data-testid*='payment']",
+          "input[name*='ppw']",
+          "input[id*='ppw']",
+          "form[action*='payselect']",
+          "form[action*='buy']",
+          "#payChangeButtonId",
+          "#payment-information",
+          "[id*='payment']",
+          "[class*='payment']",
+        ].join(","),
+      ),
+    ),
+    hasOrderSummary: Boolean(
+      document.querySelector(
+        [
+          "#spc-orders",
+          "#subtotals-marketplace-table",
+          "#orderSummaryPrimaryActionBtn",
+          "#submitOrderButtonId",
+          "[data-testid*='order-summary']",
+          "[class*='order-summary']",
+          "[id*='order-summary']",
+          "[id*='orderSummary']",
+          "[class*='orderSummary']",
+        ].join(","),
+      ),
+    ),
+  });
+}
+
+// Browser-ready copy of rewardly-core checkoutDetection. Keep behavior aligned
+// with packages/rewardly-core/src/checkoutDetection.ts until the extension is bundled.
+function detectCheckout(input) {
+  const text = [input.url, input.pathname, input.title, input.visibleText]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  const path = input.pathname || input.url;
+
+  if (
+    isSignInPath(path) ||
+    isAmazonAuthPath(path)
+  ) {
+    return {
+      isCheckout: false,
+      stage: "unknown",
+      confidence: 0.88,
+      shouldTriggerRecommendation: false,
+    };
+  }
+
+  if (
+    isConfirmationPath(path) ||
+    (!input.hasPaymentForm &&
+      containsAny(text, [
+        "thank you",
+        "order confirmed",
+        "confirmation",
+        "receipt",
+        "order complete",
+      ]))
+  ) {
+    return {
+      isCheckout: false,
+      stage: "confirmation",
+      confidence: 0.9,
+      shouldTriggerRecommendation: false,
+    };
+  }
+
+  if (isCartPath(path) && !input.hasPaymentForm) {
+    return {
+      isCheckout: true,
+      stage: "cart",
+      confidence: 0.72,
+      shouldTriggerRecommendation: false,
+    };
+  }
+
+  if (isAmazonCheckoutPath(path)) {
+    return {
+      isCheckout: true,
+      stage:
+        input.hasPaymentForm ||
+        containsAny(text, [
+          "payment",
+          "payment method",
+          "select a payment method",
+          "choose a payment method",
+          "use this payment method",
+          "card number",
+          "billing",
+          "billing address",
+          "place order",
+          "place your order",
+          "complete purchase",
+          "review order",
+          "review your order",
+          "review items",
+        ])
+          ? "payment"
+          : "checkout",
+      confidence: input.hasPaymentForm ? 0.92 : 0.78,
+      shouldTriggerRecommendation: true,
+    };
+  }
+
+  if (
+    input.hasPaymentForm ||
+    containsAny(text, [
+      "payment",
+      "payment method",
+      "select a payment method",
+      "choose a payment method",
+      "use this payment method",
+      "card number",
+      "billing",
+      "billing address",
+      "place order",
+      "place your order",
+      "complete purchase",
+      "review order",
+      "review your order",
+      "review items",
+    ])
+  ) {
+    return {
+      isCheckout: true,
+      stage: "payment",
+      confidence: input.hasPaymentForm ? 0.9 : 0.74,
+      shouldTriggerRecommendation: true,
+    };
+  }
+
+  if (
+    input.hasOrderSummary ||
+    containsAny(text, [
+      "checkout",
+      "secure checkout",
+      "proceed to checkout",
+      "shipping",
+      "shipping address",
+      "delivery",
+      "order summary",
+    ])
+  ) {
+    return {
+      isCheckout: true,
+      stage: "checkout",
+      confidence: input.hasOrderSummary ? 0.82 : 0.68,
+      shouldTriggerRecommendation: true,
+    };
+  }
+
+  if (containsAny(text, ["cart", "bag", "basket"])) {
+    return {
+      isCheckout: true,
+      stage: "cart",
+      confidence: 0.58,
+      shouldTriggerRecommendation: false,
+    };
+  }
+
+  return {
+    isCheckout: false,
+    stage: "unknown",
+    confidence: 0.2,
+    shouldTriggerRecommendation: false,
+  };
+}
+
+function detectMerchantFromPage() {
+  const host = normalizeRewardlyHost(location.hostname);
+  const metaName =
+    document
+      .querySelector("meta[property='og:site_name']")
+      ?.getAttribute("content") ||
+    document
+      .querySelector("meta[name='application-name']")
+      ?.getAttribute("content") ||
+    document.querySelector("meta[name='apple-itunes-app']")?.getAttribute("content");
+  const checkoutText = [
+    host,
+    document.title,
+    metaName,
+    document.querySelector("h1")?.textContent,
+    document.querySelector("[data-testid*='checkout' i]")?.textContent,
+    document.querySelector("[aria-label*='checkout' i]")?.getAttribute("aria-label"),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  const known = findRewardlyMerchant(host, checkoutText);
+  if (known) {
+    return {
+      name: known.name,
+      hostname: host,
+      category: known.category || null,
+      mcc: known.mcc || null,
+    };
+  }
+
+  const fallback = host.split(".")[0] || "Merchant";
+  return {
+    name:
+      cleanMerchantName(metaName) || titleCase(fallback.replace(/[-_]+/g, " ")),
+    hostname: host,
+    category: null,
+    mcc: null,
+  };
+}
+
+function renderRewardlyPopup(decision, dismissKey) {
+  if (document.getElementById("rewardly-popup")) {
+    rewardlyLog("popup-render-skipped", {
+      reason: "popup already exists",
+      url: location.href,
+      merchant: decision?.merchant?.name || null,
+    });
+    return;
+  }
+  ensureRewardlyStyles();
+
+  const recommendation = decision.recommendedCard;
+  const card = recommendation.card;
+  const primaryReason =
+    decision.primaryReason?.detail ||
+    recommendation.primaryReason?.detail ||
+    decision.recommendationSummary ||
+    "Best card in your wallet for this checkout.";
+  const reward =
+    decision.rewardEstimate?.label ||
+    recommendation.rewardEstimate?.label ||
+    "Strong available rewards";
+  const benefits = (decision.unlockedBenefits || [])
+    .map((match) => match?.benefit?.label || match?.summary)
+    .filter(Boolean)
+    .slice(0, 2);
+
+  const root = document.createElement("div");
+  root.id = "rewardly-popup";
+  root.className = "rewardly-root";
+  root.setAttribute("role", "dialog");
+  root.setAttribute("aria-label", "Rewardly card recommendation");
+
+  root.innerHTML = `
+    <div class="rewardly-card">
+      <div class="rewardly-topline">
+        <div>
+          <div class="rewardly-brand">Rewardly</div>
+          <div class="rewardly-subtitle">Best card before you pay</div>
+        </div>
+        <div class="rewardly-merchant">${sanitize(decision.merchant?.name || "Checkout")}</div>
+      </div>
+
+      <div class="rewardly-choice">
+        <div class="rewardly-logo" aria-hidden="true"></div>
+        <div>
+          <div class="rewardly-label">Best Card</div>
+          <div class="rewardly-card-name">${sanitize(card.name)}</div>
+        </div>
+      </div>
+
+      <div class="rewardly-section">
+        <span>Why</span>
+        <strong>${sanitize(primaryReason)}</strong>
+      </div>
+
+      <div class="rewardly-grid">
+        <div>
+          <span>Estimated Rewards</span>
+          <strong>${sanitize(reward)}</strong>
+        </div>
+        <div>
+          <span>Benefits</span>
+          <strong>${sanitize(benefits[0] || "No extra benefit found")}</strong>
+        </div>
+      </div>
+
+      <button class="rewardly-dismiss" type="button" aria-label="Dismiss Rewardly recommendation">Dismiss</button>
+    </div>
+  `;
+
+  const logoHost = root.querySelector(".rewardly-logo");
+  const logo = cardLogo(card);
+  if (logo) logoHost.appendChild(logo);
+  else logoHost.textContent = cardInitials(card.name);
+
+  root.querySelector(".rewardly-dismiss").addEventListener("click", () => {
+    rememberDismissal(dismissKey);
+    root.remove();
+    disconnectAfterDismiss();
+  });
+
+  (document.body || document.documentElement).appendChild(root);
+  rewardlyLog("popup-rendered", {
+    merchant: decision.merchant?.name || null,
+    cardSlug: card.slug || null,
+    cardName: card.name || null,
+    url: location.href,
+  });
+  requestAnimationFrame(() => {
+    const rect = root.getBoundingClientRect();
+    const visible =
+      rect.width > 0 &&
+      rect.height > 0 &&
+      rect.bottom > 0 &&
+      rect.right > 0 &&
+      rect.left < window.innerWidth &&
+      rect.top < window.innerHeight;
+    rewardlyLog("popup-visible", {
+      visible,
+      rect: {
+        top: Math.round(rect.top),
+        left: Math.round(rect.left),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+      },
+      zIndex: getComputedStyle(root).zIndex,
+      url: location.href,
+    });
+  });
+}
+
+function ensureRewardlyStyles() {
+  if (document.getElementById("rewardly-styles")) return;
   const style = document.createElement("style");
-  style.id = "cco-styles";
+  style.id = "rewardly-styles";
   style.textContent = `
-    #cco-banner.cco-root {
+    #rewardly-popup.rewardly-root {
       position: fixed;
       right: 18px;
       bottom: 18px;
       z-index: 2147483647;
-      font-family: "Sora", "Space Grotesk", "IBM Plex Sans", "Segoe UI", sans-serif;
-      letter-spacing: 0.01em;
-      color-scheme: light;
-    }
-    #cco-banner .cco-card {
-      width: 360px;
-      max-width: min(360px, 92vw);
+      width: min(342px, calc(100vw - 28px));
       color: #f8fafc;
-      border-radius: 12px;
-      background: #0f172a;
-      border: 1px solid rgba(148,163,184,0.16);
-      box-shadow: 0 10px 24px rgba(2,6,23,0.3);
-      padding: 14px 14px 12px;
-      position: relative;
-      overflow-x: hidden;
-      overflow-y: auto;
-      animation: cco-pop-in 240ms ease-out;
-      max-height: min(76vh, 560px);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color-scheme: dark;
     }
-    #cco-banner .cco-card:before,
-    #cco-banner .cco-card:after {
-      display: none;
+
+    #rewardly-popup .rewardly-card {
+      display: grid;
+      gap: 14px;
+      border: 1px solid rgba(207, 217, 255, 0.16);
+      border-radius: 22px;
+      background:
+        radial-gradient(circle at 88% 10%, rgba(110, 231, 249, 0.18), transparent 30%),
+        linear-gradient(145deg, rgba(255, 255, 255, 0.12), rgba(18, 26, 42, 0.92));
+      box-shadow: 0 28px 80px rgba(2, 6, 23, 0.38);
+      padding: 16px;
+      backdrop-filter: blur(18px);
+      animation: rewardly-in 180ms ease-out both;
     }
-    #cco-banner .cco-header {
+
+    #rewardly-popup .rewardly-topline,
+    #rewardly-popup .rewardly-choice {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 10px;
-      margin-bottom: 10px;
+      gap: 12px;
     }
-    #cco-banner .cco-brand {
-      display: grid;
-      gap: 2px;
-    }
-    #cco-banner .cco-brand-name {
-      font-weight: 700;
-      font-size: 14px;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-    }
-    #cco-banner .cco-brand-sub {
-      font-size: 11px;
-      color: #94a3b8;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-    }
-    #cco-banner .cco-merchant {
-      font-size: 12px;
-      padding: 5px 10px;
-      border-radius: 10px;
-      background: rgba(148,163,184,0.12);
-      border: 1px solid rgba(148,163,184,0.28);
-      text-transform: capitalize;
-      font-weight: 600;
-    }
-    #cco-banner .cco-body {
+
+    #rewardly-popup .rewardly-brand {
       font-size: 13px;
-      display: grid;
-      gap: 10px;
-    }
-    #cco-banner .cco-title {
-      font-size: 14px;
-      font-weight: 600;
-      color: #f1f5f9;
-    }
-    #cco-banner .cco-section-title {
-      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: 0.18em;
       text-transform: uppercase;
-      letter-spacing: 0.14em;
-      color: #94a3b8;
-      margin-top: 8px;
     }
-    #cco-banner .cco-cardline {
-      display: grid;
-      grid-template-columns: 58px minmax(0, 1fr);
-      gap: 10px;
-      align-items: start;
-      padding: 10px;
-      border-radius: 12px;
-      background: rgba(15,23,42,0.65);
-      border: 1px solid rgba(148,163,184,0.16);
+
+    #rewardly-popup .rewardly-subtitle,
+    #rewardly-popup .rewardly-label,
+    #rewardly-popup .rewardly-section span,
+    #rewardly-popup .rewardly-grid span {
+      color: #a8b3c7;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
     }
-    #cco-banner .cco-cardline-compact {
-      padding: 10px;
-    }
-    #cco-banner .cco-icon {
-      box-shadow: 0 10px 20px rgba(2,6,23,0.4);
-    }
-    #cco-banner .cco-text {
-      display: grid;
-      gap: 4px;
-      min-width: 0;
-    }
-    #cco-banner .cco-card-name {
-      font-weight: 600;
+
+    #rewardly-popup .rewardly-merchant {
+      max-width: 112px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      border: 1px solid rgba(207, 217, 255, 0.18);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+      padding: 6px 10px;
+      color: #dbeafe;
       font-size: 12px;
+      font-weight: 800;
+    }
+
+    #rewardly-popup .rewardly-choice {
+      justify-content: flex-start;
+      align-items: center;
+      border-radius: 18px;
+      background: rgba(7, 12, 24, 0.38);
+      padding: 12px;
+    }
+
+    #rewardly-popup .rewardly-logo {
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      width: 72px;
+      height: 46px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.08);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
       color: #f8fafc;
+      font-size: 16px;
+      font-weight: 900;
+    }
+
+    #rewardly-popup .rewardly-logo img {
+      max-width: 64px;
+      max-height: 39px;
+      object-fit: contain;
+    }
+
+    #rewardly-popup .rewardly-card-name {
+      margin-top: 3px;
+      color: #ffffff;
+      font-size: 18px;
+      font-weight: 900;
+      line-height: 1.12;
+    }
+
+    #rewardly-popup .rewardly-section {
+      display: grid;
+      gap: 5px;
+    }
+
+    #rewardly-popup .rewardly-section strong {
+      color: #e5edf9;
+      font-size: 14px;
+      line-height: 1.35;
+    }
+
+    #rewardly-popup .rewardly-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    #rewardly-popup .rewardly-grid div {
+      display: grid;
+      gap: 5px;
+      min-width: 0;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.065);
+      padding: 11px;
+    }
+
+    #rewardly-popup .rewardly-grid strong {
+      color: #f8fafc;
+      font-size: 13px;
       line-height: 1.25;
       overflow-wrap: break-word;
     }
-    #cco-banner .cco-benefit {
-      font-size: 11.5px;
-      color: #cbd5f5;
-      line-height: 1.35;
-      overflow-wrap: break-word;
-    }
-    #cco-banner .cco-cardline > .cco-btn {
-      grid-column: 2;
-      justify-self: start;
-      margin-top: 2px;
-    }
-    #cco-banner .cco-meta {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-top: 10px;
-      font-size: 11px;
-      color: #cbd5e1;
-    }
-    #cco-banner .cco-link {
-      color: #7dd3fc;
-      text-decoration: none;
-      font-weight: 600;
-    }
-    #cco-banner .cco-list {
-      display: grid;
-      gap: 8px;
-      margin-top: 6px;
-      max-height: 220px;
-      overflow-y: auto;
-      padding-right: 2px;
-    }
-    #cco-banner .cco-list.expanded {
-      max-height: 320px;
-      overflow-y: auto;
-    }
-    #cco-banner .cco-toggle {
-      align-self: flex-start;
-      margin-top: 6px;
-    }
-    #cco-banner .cco-summary {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      padding: 10px;
-      border-radius: 12px;
-      background: rgba(56, 189, 248, 0.08);
-      border: 1px solid rgba(56, 189, 248, 0.18);
-      color: #e2e8f0;
-      margin-bottom: 10px;
-    }
-    #cco-banner .cco-summary-text {
-      display: grid;
-      gap: 2px;
-      font-size: 12px;
-      line-height: 1.4;
-    }
-    #cco-banner .cco-summary-text strong {
+
+    #rewardly-popup .rewardly-dismiss {
+      min-height: 38px;
+      border: 1px solid rgba(207, 217, 255, 0.18);
+      border-radius: 13px;
+      background: rgba(255, 255, 255, 0.08);
+      color: #f8fafc;
+      font: inherit;
       font-size: 13px;
-      color: #f8fafc;
-    }
-    #cco-banner .cco-dashboard-btn {
-      white-space: nowrap;
-      padding: 7px 10px;
-      background: #38bdf8;
-      color: #0f172a;
-      border: 1px solid transparent;
-    }
-    #cco-banner .cco-actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      align-items: center;
-      margin-top: 10px;
-    }
-    #cco-banner .cco-btn {
-      font-size: 12px;
-      padding: 7px 10px;
-      border-radius: 10px;
-      border: 1px solid rgba(148,163,184,0.35);
-      color: #f8fafc;
-      background: rgba(148,163,184,0.12);
+      font-weight: 850;
       cursor: pointer;
-      transition: background 120ms ease, border-color 120ms ease;
     }
-    #cco-banner .cco-btn-primary {
-      background: #38bdf8;
-      border-color: #22c2f1;
-      color: #0f172a;
-      font-weight: 700;
+
+    #rewardly-popup .rewardly-dismiss:hover {
+      background: rgba(255, 255, 255, 0.13);
     }
-    #cco-banner .cco-btn:hover {
-      background: rgba(148,163,184,0.18);
-    }
-    #cco-banner .cco-btn-primary:hover {
-      background: #22c2f1;
-    }
-    #cco-banner .cco-btn-ghost {
-      background: transparent;
-    }
-    #cco-banner .cco-toast {
-      position: absolute;
-      left: 50%;
-      bottom: 14px;
-      transform: translateX(-50%) translateY(12px);
-      padding: 10px 14px;
-      border-radius: 999px;
-      background: rgba(15, 23, 42, 0.92);
-      color: #f8fafc;
-      font-size: 12px;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 180ms ease, transform 180ms ease;
-      z-index: 1;
-    }
-    #cco-banner .cco-toast.show {
-      opacity: 1;
-      transform: translateX(-50%) translateY(0);
-    }
-    @keyframes cco-pop-in {
-      from { opacity: 0; transform: translateY(10px) scale(0.98); }
+
+    @keyframes rewardly-in {
+      from { opacity: 0; transform: translateY(8px) scale(0.98); }
       to { opacity: 1; transform: translateY(0) scale(1); }
     }
   `;
   document.head.appendChild(style);
 }
 
-function sanitize(s) {
-  return String(s || "").replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]));
+function readVisibleText() {
+  return String(document.body?.innerText || "").slice(0, 5000);
 }
 
-function removeBanner() {
-  const host = document.getElementById("cco-banner");
-  if (host) host.remove();
+function readCheckoutAmount() {
+  const text = readVisibleText();
+  const match = text.match(
+    /(?:order total|estimated total|total)\D{0,40}\$([0-9,]+(?:\.[0-9]{2})?)/i,
+  );
+  if (!match) return null;
+  const amount = Number(match[1].replace(/,/g, ""));
+  return Number.isFinite(amount) ? amount : null;
 }
 
-function isCheckoutPage() {
-  const path = (location.pathname || "").toLowerCase();
-  const pageKeywords = /checkout|cart|bag|basket|payment|billing|order|confirm|purchase|place order|order summary|payment method/;
-  if (pageKeywords.test(path)) return true;
-  if (document.querySelector("form[action*='checkout'], form[action*='payment'], form[action*='order']")) return true;
-  const bodyText = (document.body.textContent || "").toLowerCase();
-  return pageKeywords.test(bodyText);
+function decisionKey(merchant, checkout) {
+  const host = location.hostname.replace(/^www\./i, "").toLowerCase();
+  return [
+    host,
+    merchant.name || "merchant",
+    checkout.stage || "checkout",
+    location.pathname.replace(/\/+$/, "") || "/",
+  ].join("::");
 }
 
-function inferMerchantFromPage() {
-  const sources = [
-    document.title,
-    document.querySelector("meta[property='og:site_name']")?.getAttribute("content"),
-    document.querySelector("meta[name='application-name']")?.getAttribute("content"),
-    document.querySelector("meta[property='og:title']")?.getAttribute("content"),
-    document.querySelector("meta[name='twitter:title']")?.getAttribute("content"),
-    document.querySelector(".site-name")?.textContent,
-    document.querySelector(".brand")?.textContent,
-    document.querySelector(".merchant-name")?.textContent,
-    document.querySelector("[data-test='merchant-name']")?.textContent,
-    document.querySelector("header a[aria-label]")?.getAttribute("aria-label"),
-    document.querySelector("header img[alt]")?.getAttribute("alt"),
-  ];
-
-  for (const source of sources) {
-    const candidate = cleanMerchantName(String(source || ""));
-    if (candidate) {
-      return { merchantName: candidate, mcc: null };
-    }
-  }
-  return null;
-}
-
-function cleanMerchantName(text) {
-  let normalized = String(text || "").trim().replace(/\s+/g, " ");
-  if (!normalized) return "";
-  normalized = normalized
-    .replace(/\s+\|\s+.*/, "")
-    .replace(/\s*[-|•]\s*(checkout|payment|cart|bag|billing|order summary|shop).*$/i, "")
-    .replace(/\b(checkout|payment|cart|bag|billing|order summary)\b/gi, "")
-    .trim();
-  const lower = normalized.toLowerCase();
-  if (/(shopify|payment gateway)/.test(lower)) return "";
-  if (normalized.length < 3) return "";
-  return normalized;
-}
-
-function buildWalletSummary(benefitStateMap) {
-  const summary = { totalCredits: 0, enrollmentRequired: 0, remindersEnabled: 0 };
-  if (!(benefitStateMap instanceof Map)) return summary;
-  summary.totalCredits = benefitStateMap.size;
-  for (const state of benefitStateMap.values()) {
-    if (!state?.usedAt) {
-      if (!state.enrolled && state.requiresEnrollment) {
-        summary.enrollmentRequired += 1;
-      }
-      if (state.remindEnabled) {
-        summary.remindersEnabled += 1;
-      }
-    }
-  }
-  return summary;
-}
-
-function buildBenefitStateMap(states) {
-  const map = new Map();
-  if (!Array.isArray(states)) return map;
-  states.forEach((state) => {
-    if (!state?.benefitKey) return;
-    map.set(state.benefitKey, state);
-  });
-  return map;
-}
-
-function isSnoozed(host) {
+function isDismissed(key) {
   try {
-    const key = `cco_snooze_${host}`;
-    const value = localStorage.getItem(key);
-    if (!value) return false;
-    if (value === "1") return true;
-    if (value.startsWith("ts:")) {
-      const until = Number(value.slice(3));
-      if (Number.isFinite(until) && Date.now() < until) return true;
-      localStorage.removeItem(key);
-    }
-    return false;
+    const dismissedUntil = Number(
+      localStorage.getItem(`rewardly-dismiss:${key}`),
+    );
+    return Number.isFinite(dismissedUntil) && dismissedUntil > Date.now();
   } catch {
     return false;
   }
 }
 
-function setSnooze(host, ttlMs) {
-  if (!host) return;
+function rememberDismissal(key) {
   try {
-    const key = `cco_snooze_${host}`;
-    if (typeof ttlMs === "number" && Number.isFinite(ttlMs) && ttlMs > 0) {
-      localStorage.setItem(key, `ts:${Date.now() + ttlMs}`);
-      return;
-    }
-    localStorage.setItem(key, "1");
+    localStorage.setItem(
+      `rewardly-dismiss:${key}`,
+      String(Date.now() + REWARDLY_DISMISS_MS),
+    );
+    rewardlyLog("popup-dismissed", {
+      key,
+      dismissedForMs: REWARDLY_DISMISS_MS,
+      url: location.href,
+    });
   } catch {}
 }
 
-function cardIcon(card) {
-  const logoUrl = getCardLogoUrl(card);
-  if (logoUrl) {
-    const img = document.createElement("img");
-    img.src = logoUrl;
-    img.alt = `${card?.name || "Card"} card`;
-    Object.assign(img.style, {
-      width: "56px",
-      height: "36px",
-      borderRadius: "8px",
-      objectFit: "cover",
-      border: "1px solid rgba(255,255,255,.2)",
-      background: "rgba(255,255,255,.08)",
-    });
-    img.onerror = () => {
-      img.replaceWith(makeLabelIcon(card));
-    };
-    return img;
-  }
-  return makeLabelIcon(card);
-}
-
-function getCardLogoUrl(card) {
-  const slug = card?.slug;
-  if (slug && CARD_LOGOS[slug]) {
-    return chrome.runtime.getURL(`assets/card-logos/${CARD_LOGOS[slug]}`);
-  }
-  return null;
-}
-
-function getEnrollUrl(card) {
-  const slug = card?.slug;
-  if (slug && CARD_ENROLL_URLS[slug]) return CARD_ENROLL_URLS[slug];
-  return null;
-}
-
-function pickEnrollCredit(credits, label) {
-  if (!Array.isArray(credits) || !credits.length) return null;
-  const normalized = String(label || "").toLowerCase();
-  const direct = credits.find((c) => c?.label && normalized.includes(String(c.label).toLowerCase()));
-  return direct || credits[0];
-}
-
-function appendBenefitActions(row, credit, card, state) {
-  const enrollBtn = enrollButton(credit, card, state);
-  if (enrollBtn) row.appendChild(enrollBtn);
-  const clearBtn = clearEnrollmentButton(credit, state);
-  if (clearBtn) row.appendChild(clearBtn);
-}
-
-function enrollButton(credit, card, state) {
-  if (!credit?.requiresEnrollment) return null;
-  const url = credit?.enrollmentUrl || credit?.sourceUrl || getEnrollUrl(card);
-  if (state?.enrolled) {
-    const badge = document.createElement("button");
-    badge.textContent = "Enrolled";
-    badge.className = "cco-btn cco-btn-ghost";
-    badge.disabled = true;
-    return badge;
-  }
-  if (!url) return null;
-  const btn = document.createElement("button");
-  btn.textContent = "Enroll";
-  btn.className = "cco-btn cco-btn-primary";
-  btn.onclick = (e) => {
-    e.stopPropagation();
-    window.open(url, "_blank", "noopener");
-  };
-  return btn;
-}
-
-function reminderButton(credit, state) {
-  if (!credit?.benefitKey) return null;
-  const btn = document.createElement("button");
-  if (state?.remindEnabled) {
-    btn.textContent = "Disable reminder";
-    btn.className = "cco-btn cco-btn-ghost";
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      btn.disabled = true;
-      btn.textContent = "Saving…";
-      chrome.storage.sync.get(["USER_ID"], (o) => {
-        const userId = o?.USER_ID || "devUser";
-        chrome.runtime.sendMessage(
-          {
-            type: "CCO_SAVE_BENEFIT_STATE",
-            payload: {
-              userId,
-              benefitKey: credit.benefitKey,
-              remindEnabled: false,
-            },
-          },
-          (resp) => {
-            if (resp?.ok) {
-              btn.textContent = "Set reminder";
-              btn.disabled = false;
-              btn.className = "cco-btn";
-              updateSavedBenefitState(credit.benefitKey, { remindEnabled: false });
-              refreshBanner();
-              showBannerToast("Reminder disabled");
-            } else {
-              btn.textContent = "Disable reminder";
-              btn.disabled = false;
-              console.warn("Failed to disable reminder", resp?.error);
-            }
-          }
-        );
+function loadRewardlyDebugSetting() {
+  try {
+    chrome.storage.sync.get(["DEBUG_LOGS"], (settings) => {
+      rewardlyDebugEnabled = !!settings?.DEBUG_LOGS;
+      rewardlyLog("debug-setting-loaded", {
+        enabled: rewardlyDebugEnabled,
       });
-    };
-  } else {
-    btn.textContent = "Set reminder";
-    btn.className = "cco-btn";
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      btn.disabled = true;
-      btn.textContent = "Saving…";
-      chrome.storage.sync.get(["USER_ID"], (o) => {
-        const userId = o?.USER_ID || "devUser";
-        chrome.runtime.sendMessage(
-          {
-            type: "CCO_SAVE_BENEFIT_STATE",
-            payload: {
-              userId,
-              benefitKey: credit.benefitKey,
-              remindEnabled: true,
-            },
-          },
-          (resp) => {
-            if (resp?.ok) {
-              btn.textContent = "Disable reminder";
-              btn.disabled = false;
-              btn.className = "cco-btn cco-btn-ghost";
-              updateSavedBenefitState(credit.benefitKey, { remindEnabled: true });
-              refreshBanner();
-              showBannerToast("Reminder enabled");
-            } else {
-              btn.textContent = "Set reminder";
-              btn.disabled = false;
-              console.warn("Failed to save reminder state", resp?.error);
-            }
-          }
-        );
+      rewardlyLog("content-script-loaded", {
+        url: location.href,
+        host: location.hostname,
       });
-    };
-  }
-  return btn;
-}
-
-function saveBenefitStateButton(credit, state) {
-  if (!credit?.requiresEnrollment || !credit?.benefitKey || state?.enrolled) return null;
-  const btn = document.createElement("button");
-  btn.textContent = "Mark enrolled";
-  btn.className = "cco-btn";
-  btn.onclick = (e) => {
-    e.stopPropagation();
-    btn.disabled = true;
-    btn.textContent = "Saving…";
-    chrome.storage.sync.get(["USER_ID"], (o) => {
-      const userId = o?.USER_ID || "devUser";
-      chrome.runtime.sendMessage(
-        {
-          type: "CCO_SAVE_BENEFIT_STATE",
-          payload: {
-            userId,
-            benefitKey: credit.benefitKey,
-            enrolled: true,
-            requiresEnrollment: true,
-          },
-        },
-        (resp) => {
-          if (resp?.ok) {
-            btn.textContent = "Enrolled";
-            btn.disabled = true;
-            btn.className = "cco-btn cco-btn-ghost";
-            updateSavedBenefitState(credit.benefitKey, { enrolled: true, requiresEnrollment: true });
-            refreshBanner();
-            showBannerToast("Saved enrollment status");
-          } else {
-            btn.textContent = "Mark enrolled";
-            btn.disabled = false;
-            console.warn("Failed to save benefit state", resp?.error);
-          }
-        }
-      );
     });
-  };
-  return btn;
+  } catch {}
 }
 
-function clearEnrollmentButton(credit, state) {
-  if (!credit?.benefitKey || !state?.enrolled) return null;
-  const btn = document.createElement("button");
-  btn.textContent = "Undo enrolled";
-  btn.className = "cco-btn cco-btn-ghost";
-  btn.onclick = (e) => {
-    e.stopPropagation();
-    btn.disabled = true;
-    btn.textContent = "Saving…";
-    chrome.storage.sync.get(["USER_ID"], (o) => {
-      const userId = o?.USER_ID || "devUser";
-      chrome.runtime.sendMessage(
-        {
-          type: "CCO_SAVE_BENEFIT_STATE",
-          payload: {
-            userId,
-            benefitKey: credit.benefitKey,
-            enrolled: false,
-            requiresEnrollment: true,
-          },
-        },
-        (resp) => {
-          if (resp?.ok) {
-            btn.textContent = "Undo enrolled";
-            btn.disabled = false;
-            btn.className = "cco-btn";
-            updateSavedBenefitState(credit.benefitKey, { enrolled: false });
-            refreshBanner();
-            showBannerToast("Enrollment cleared");
-          } else {
-            btn.textContent = "Undo enrolled";
-            btn.disabled = false;
-            console.warn("Failed to clear enrollment", resp?.error);
-          }
-        }
-      );
+function rewardlyLog(label, data) {
+  if (!rewardlyDebugEnabled) return;
+  console.log(`[Rewardly] ${label}`, data || {});
+}
+
+function handleRewardlyDiagnosticMessage(event) {
+  if (event.source !== window) return;
+  if (event.data?.type !== "REWARDLY_FORCE_RENDER") return;
+  if (!rewardlyDebugEnabled) {
+    console.warn("[Rewardly] forced-render-blocked", {
+      reason: "debug mode is disabled",
+      url: location.href,
     });
-  };
-  return btn;
-}
-
-function markUsedButton(credit, state) {
-  if (!credit?.benefitKey || state?.usedAt) return null;
-  const btn = document.createElement("button");
-  btn.textContent = "Mark used";
-  btn.className = "cco-btn";
-  btn.onclick = (e) => {
-    e.stopPropagation();
-    btn.disabled = true;
-    btn.textContent = "Saving…";
-    chrome.storage.sync.get(["USER_ID"], (o) => {
-      const userId = o?.USER_ID || "devUser";
-      chrome.runtime.sendMessage(
-        {
-          type: "CCO_SAVE_BENEFIT_STATE",
-          payload: {
-            userId,
-            benefitKey: credit.benefitKey,
-            usedAt: new Date().toISOString(),
-          },
-        },
-        (resp) => {
-          if (resp?.ok) {
-            btn.textContent = "Used";
-            btn.disabled = true;
-            btn.className = "cco-btn cco-btn-ghost";
-            updateSavedBenefitState(credit.benefitKey, { usedAt: new Date().toISOString() });
-            refreshBanner();
-            showBannerToast("Marked as used");
-          } else {
-            btn.textContent = "Mark used";
-            btn.disabled = false;
-            console.warn("Failed to save used state", resp?.error);
-          }
-        }
-      );
-    });
-  };
-  return btn;
-}
-
-function refreshBanner() {
-  rerenderBanner();
-}
-
-function rerenderBanner() {
-  if (!lastBannerContext) return;
-  banner({ ...lastBannerContext, benefitStateMap: lastBenefitStateMap });
-}
-
-function updateSavedBenefitState(benefitKey, updates = {}) {
-  if (!benefitKey) return;
-  const existing = lastBenefitStateMap.get(benefitKey) || {};
-  lastBenefitStateMap.set(benefitKey, { ...existing, ...updates });
-}
-
-function showBannerToast(message) {
-  const host = document.getElementById("cco-banner");
-  if (!host) return;
-  let toast = host.querySelector(".cco-toast");
-  if (!toast) {
-    toast = document.createElement("div");
-    toast.className = "cco-toast";
-    host.appendChild(toast);
-  }
-  toast.textContent = message;
-  toast.classList.add("show");
-  window.clearTimeout(toast._timeout);
-  toast._timeout = window.setTimeout(() => {
-    toast.classList.remove("show");
-  }, 2400);
-}
-
-function makeLabelIcon(card) {
-  const name = String(card?.name || "").toLowerCase();
-  const issuer = String(card?.issuer || "").toLowerCase();
-  let label = "CARD";
-  let bg = "#1f2937";
-  let fg = "#fff";
-
-  if (name.includes("platinum")) {
-    label = "PLAT";
-    bg = "#9ca3af";
-    fg = "#111827";
-  } else if (name.includes("gold")) {
-    label = "GOLD";
-    bg = "#b78a2a";
-  } else if (issuer.includes("american express") || name.includes("american express") || name.includes("amex")) {
-    label = "AMEX";
-    bg = "#1d4ed8";
-  } else if (issuer.includes("chase") || name.includes("chase")) {
-    label = "CHASE";
-    bg = "#2563eb";
-  } else if (issuer.includes("citi") || name.includes("citi")) {
-    label = "CITI";
-    bg = "#0f766e";
-  } else if (issuer.includes("capital one") || name.includes("capital one")) {
-    label = "CAP1";
-    bg = "#111827";
+    return;
   }
 
-  const icon = document.createElement("div");
-  icon.textContent = label;
-  Object.assign(icon.style, {
-    minWidth: "42px",
-    padding: "6px 8px",
-    borderRadius: "8px",
-    background: bg,
-    color: fg,
-    fontSize: "10px",
-    fontWeight: "700",
-    letterSpacing: "0.05em",
-    textAlign: "center",
-    textTransform: "uppercase",
+  rewardlyLog("forced-render-requested", {
+    url: location.href,
   });
-  return icon;
+  renderRewardlyPopup(
+    {
+      merchant: detectMerchantFromPage(),
+      recommendedCard: {
+        card: {
+          slug: "debug-card",
+          name: "Rewardly Debug Card",
+        },
+        primaryReason: {
+          detail: "Forced render diagnostic. Recommendation logic was bypassed.",
+        },
+        rewardEstimate: {
+          label: "Debug only",
+        },
+      },
+      primaryReason: {
+        detail: "Forced render diagnostic. Recommendation logic was bypassed.",
+      },
+      rewardEstimate: {
+        label: "Debug only",
+      },
+      unlockedBenefits: [{ summary: "Popup rendering works" }],
+    },
+    `debug-force-render::${location.hostname}::${Date.now()}`,
+  );
 }
 
-function formatVerifiedDate(raw) {
-  const dt = new Date(raw);
-  if (Number.isNaN(dt.valueOf())) return String(raw);
-  const yyyy = dt.getFullYear();
-  const mm = String(dt.getMonth() + 1).padStart(2, "0");
-  const dd = String(dt.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
+function removeRewardlyPopup() {
+  document.getElementById("rewardly-popup")?.remove();
+}
+
+function disconnectAfterDismiss() {
+  if (rewardlyObserver) {
+    rewardlyObserver.disconnect();
+    rewardlyObserver = null;
+  }
+}
+
+function containsAny(value, terms) {
+  return terms.some((term) => value.includes(term));
+}
+
+function isCartPath(value) {
+  return /(?:^|[/-])(?:cart|bag|basket)(?:[./-]|$)|\/gp\/cart/i.test(
+    value || "",
+  );
+}
+
+function isConfirmationPath(value) {
+  return /(?:^|[/-])(?:confirmation|receipt|thank-you|order-complete)(?:[./-]|$)/i.test(
+    value || "",
+  );
+}
+
+function isSignInPath(value) {
+  return /\/(?:ap\/signin|signin|login)(?:[/?#]|$)/i.test(value || "");
+}
+
+function isAmazonAuthPath(value) {
+  return /amazon\.[^/]+\/ap\//i.test(value || "");
+}
+
+function isAmazonCheckoutPath(value) {
+  const input = value || "";
+  return /(?:amazon\.[^/]+)?\/(?:gp\/buy|checkout|buy\/|gp\/buyagain|payselect|gp\/payselect|gp\/buy\/spc|gp\/buy\/payselect|gp\/buy\/addressselect|gp\/buy\/shipoptionselect|gp\/buy\/signin)/i.test(
+    input,
+  );
+}
+
+function normalizeRewardlyHost(value) {
+  return String(value || "")
+    .replace(/^(?:www|m)\./i, "")
+    .toLowerCase();
+}
+
+function findRewardlyMerchant(host, text) {
+  if (host) {
+    const direct = REWARDLY_MERCHANTS[host];
+    if (direct) return direct;
+
+    const parts = host.split(".");
+    for (let index = 1; index < parts.length - 1; index += 1) {
+      const suffix = parts.slice(index).join(".");
+      if (REWARDLY_MERCHANTS[suffix]) return REWARDLY_MERCHANTS[suffix];
+    }
+  }
+
+  return Object.values(REWARDLY_MERCHANTS).find((merchant) =>
+    merchant.aliases.some((alias) => text.includes(alias)),
+  );
+}
+
+function cleanMerchantName(value) {
+  return String(value || "")
+    .replace(/\s+\|\s+.*/, "")
+    .replace(/\s*[-|•]\s*(checkout|payment|cart|order).*$/i, "")
+    .trim();
+}
+
+function titleCase(value) {
+  return String(value || "").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function sanitize(value) {
+  return String(value || "").replace(
+    /[<>&]/g,
+    (char) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" })[char],
+  );
+}
+
+function cardLogo(card) {
+  const file = CARD_LOGOS[card?.slug];
+  if (!file) return null;
+  const image = document.createElement("img");
+  image.src = chrome.runtime.getURL(`assets/card-logos/${file}`);
+  image.alt = "";
+  image.onerror = () => image.remove();
+  return image;
+}
+
+function cardInitials(name) {
+  return String(name || "Card")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
 }

@@ -57,15 +57,6 @@ const BENEFIT_LESSONS = [
   },
 ];
 
-const BENEFIT_ICONS = [
-  { match: /purchase protection/i, icon: "🛡" },
-  { match: /travel|trip|flight/i, icon: "✈" },
-  { match: /cell phone|phone/i, icon: "📱" },
-  { match: /extended warranty|warranty/i, icon: "🔄" },
-  { match: /dining|restaurant/i, icon: "💳" },
-  { match: /rental car|coverage|insurance/i, icon: "✓" },
-];
-
 function primaryUnlock(unlockedBenefits: UnlockBenefit[], topPick: BestCard) {
   return (
     unlockedBenefits.find((benefit) => !/rewards/i.test(benefit.label))
@@ -110,24 +101,46 @@ function specificReason(topPick: BestCard, unlockLabel: string) {
   return `${topPick.card.name} wins because it gives you ${rewards} for this purchase.`;
 }
 
-function benefitIcon(label: string) {
-  return BENEFIT_ICONS.find((item) => item.match.test(label))?.icon || "✓";
+function primaryReason(topPick: BestCard, unlockLabel: string) {
+  if (unlockLabel && unlockLabel !== "Relevant card benefits") {
+    return `This purchase can unlock ${unlockLabel}.`;
+  }
+  return `This card gives you ${rewardPhrase(topPick.effectiveRate)} here.`;
 }
 
-function whyBullets(topPick: BestCard, unlockLabel: string) {
-  const bullets = [
-    `${rewardPhrase(topPick.effectiveRate)} for this purchase`,
-    unlockLabel && unlockLabel !== "Relevant card benefits"
-      ? `Unlocks ${unlockLabel}`
-      : "Strong fit for this purchase",
-    topPick.matchedBenefit
-      ? "Useful card benefit available"
-      : topPick.why?.[0] ||
-        topPick.explainer ||
-        "Best card in your wallet here",
-  ];
+function whyThisMatters(topPick: BestCard, unlockLabel: string) {
+  if (/purchase protection/i.test(unlockLabel)) {
+    return "If your item is damaged or stolen after purchase, this card may help cover it because you paid with the right card.";
+  }
+  if (/extended warranty|warranty/i.test(unlockLabel)) {
+    return "This purchase may activate Extended Warranty when you pay with this card.";
+  }
+  if (/rental car|insurance|coverage/i.test(unlockLabel)) {
+    return "Paying with this card helps keep the protection attached to the purchase or booking.";
+  }
+  if (/travel|trip|flight/i.test(unlockLabel)) {
+    return "Booking with this card can help preserve travel protections if something goes wrong.";
+  }
+  if (/cell phone|phone/i.test(unlockLabel)) {
+    return "Using the right card is what keeps cell phone protection connected to the bill.";
+  }
+  if (/dining|restaurant|credit/i.test(unlockLabel)) {
+    return "Using this card helps you capture the credit instead of leaving card value unused.";
+  }
+  if (typeof topPick.effectiveRate === "number") {
+    return `You get ${rewardPhrase(topPick.effectiveRate)}, so this purchase earns more value than it would on a lower-reward card.`;
+  }
+  return "Rewardly is pointing you to the best mix of rewards and usable benefits in your wallet.";
+}
 
-  return Array.from(new Set(bullets)).slice(0, 3);
+function matterIcon(topPick: BestCard, unlockLabel: string) {
+  if (/protection|insurance|coverage|warranty/i.test(unlockLabel)) {
+    return "🛡";
+  }
+  if (typeof topPick.effectiveRate === "number" && topPick.effectiveRate >= 3) {
+    return "★";
+  }
+  return "💡";
 }
 
 function benefitLesson(
@@ -167,7 +180,9 @@ export default function RecommendationResult({
   const lesson = topPick
     ? benefitLesson(submittedIntent, topPick, unlockedBenefits)
     : BENEFIT_LESSONS[0];
-  const reasons = topPick ? whyBullets(topPick, unlockLabel) : [];
+  const reason = topPick ? primaryReason(topPick, unlockLabel) : "";
+  const matter = topPick ? whyThisMatters(topPick, unlockLabel) : "";
+  const icon = topPick ? matterIcon(topPick, unlockLabel) : "💡";
 
   return (
     <Card className="answer-card primary recommendation-hero" variant="hero">
@@ -228,13 +243,15 @@ export default function RecommendationResult({
             </div>
           </div>
 
-          <section className="why-card">
-            <p className="recommendation-label">Why this card?</p>
-            <ul>
-              {reasons.map((reason) => (
-                <li key={reason}>{reason}</li>
-              ))}
-            </ul>
+          <section className="why-matters">
+            <span className="why-matters-icon" aria-hidden="true">
+              {icon}
+            </span>
+            <div>
+              <p className="recommendation-label">Why this matters</p>
+              <strong>{reason}</strong>
+              <p>{matter}</p>
+            </div>
           </section>
 
           {unlockedBenefits.length > 0 && (
@@ -248,9 +265,6 @@ export default function RecommendationResult({
                   key={benefit.label}
                   style={{ animationDelay: `${index * 70}ms` }}
                 >
-                  <span className="benefit-chip-icon" aria-hidden="true">
-                    {benefitIcon(benefit.label)}
-                  </span>
                   {benefit.label}
                 </span>
               ))}

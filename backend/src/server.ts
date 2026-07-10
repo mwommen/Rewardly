@@ -12,6 +12,7 @@ import merchantRoutes from "./routes/merchantRoutes";
 import qaRoutes from "./routes/qaRoutes";
 import userBenefitRoutes from "./routes/userBenefitRoutes";
 import analyticsRoutes from "./routes/analyticsRoutes";
+import decisionRoutes from "./routes/decisionRoutes";
 
 const app = express();
 
@@ -28,14 +29,19 @@ app.use(
         "http://localhost:5174",
       ];
       const localhostRegex = /^http:\/\/localhost:\d+$/;
-      if (!origin || allowedOrigins.includes(origin) || localhostRegex.test(origin) || /^chrome-extension:\/\//.test(origin)) {
+      if (
+        !origin ||
+        allowedOrigins.includes(origin) ||
+        localhostRegex.test(origin) ||
+        /^chrome-extension:\/\//.test(origin)
+      ) {
         callback(null, true);
       } else {
         callback(new Error(`CORS origin denied: ${origin}`));
       }
     },
     credentials: true,
-  })
+  }),
 );
 app.use(express.json());
 
@@ -46,7 +52,9 @@ app.use((req, res, next) => {
       if (req.path.startsWith("/api/analytics")) return;
       const collection = await getAnalyticsCollection();
       await collection.insertOne({
-        userId: String((req.body as any)?.userId || req.query?.userId || "devUser"),
+        userId: String(
+          (req.body as any)?.userId || req.query?.userId || "devUser",
+        ),
         path: req.path,
         originalUrl: req.originalUrl,
         method: req.method,
@@ -87,17 +95,32 @@ async function checkDbReady(): Promise<boolean> {
 
 app.get("/health", async (_req, res) => {
   const ready = await checkDbReady();
-  res.json({ ok: true, service: "cco-api", dbReady: ready, ts: new Date().toISOString() });
+  res.json({
+    ok: true,
+    service: "cco-api",
+    dbReady: ready,
+    ts: new Date().toISOString(),
+  });
 });
 
 app.get("/", async (_req, res) => {
   const ready = await checkDbReady();
-  res.json({ ok: true, message: "Backend server is running!", dbReady: ready, ts: new Date().toISOString() });
+  res.json({
+    ok: true,
+    message: "Backend server is running!",
+    dbReady: ready,
+    ts: new Date().toISOString(),
+  });
 });
 
 app.get("/api/health", async (_req, res) => {
   const ready = await checkDbReady();
-  res.json({ ok: true, service: "cco-api", dbReady: ready, ts: new Date().toISOString() });
+  res.json({
+    ok: true,
+    service: "cco-api",
+    dbReady: ready,
+    ts: new Date().toISOString(),
+  });
 });
 
 app.get("/api/_env", (_req, res) => {
@@ -111,15 +134,16 @@ app.get("/api/_env", (_req, res) => {
 });
 
 // ---- Routes
-app.use("/api", merchantRoutes);                   // /api/merchant/infer
-app.use("/api/cards", cardRoutes);                 // /api/cards/...
-app.use("/api/plaid", plaidRoutes);                // /api/plaid/...
+app.use("/api", merchantRoutes); // /api/merchant/infer
+app.use("/api/cards", cardRoutes); // /api/cards/...
+app.use("/api/plaid", plaidRoutes); // /api/plaid/...
 app.use("/api/plaid-sandbox", plaidSandboxRoutes); // /api/plaid-sandbox/...
-app.use("/api/scrape", scrapeRoutes);              // /api/scrape/...
+app.use("/api/scrape", scrapeRoutes); // /api/scrape/...
 app.use("/api/recommendations", recommendationRoutes); // /api/recommendations/...
-app.use("/api/analytics", analyticsRoutes);        // /api/analytics/...
-app.use("/api", qaRoutes);                             // /api/qa/...
-app.use("/api", userBenefitRoutes);                    // /api/user-benefits/...
+app.use("/api", decisionRoutes); // /api/decisions/payment
+app.use("/api/analytics", analyticsRoutes); // /api/analytics/...
+app.use("/api", qaRoutes); // /api/qa/...
+app.use("/api", userBenefitRoutes); // /api/user-benefits/...
 
 // ---- Start
 (async () => {

@@ -57,6 +57,15 @@
       .card-option span { font-size: 13px; line-height: 1.25; }
       .quick-picks { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
       .quick-picks button { font-size: 11px; padding: 6px 8px; }
+      .check-row {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 8px;
+        align-items: start;
+        margin: 2px 0 12px;
+      }
+      .check-row input { width: auto; margin: 2px 0 0; }
+      .check-row span { font-size: 12px; line-height: 1.35; color: #cbd5e1; }
     </style>
   </head>
   <body>
@@ -90,6 +99,10 @@
         <input id="apiBase" placeholder="http://localhost:5001" />
         <label>User ID</label>
         <input id="userId" placeholder="devUser" />
+        <label class="check-row">
+          <input id="debugLogs" type="checkbox" />
+          <span>Enable debug logs for merchant detection, checkout stage, and payment decisions.</span>
+        </label>
         <div class="row">
           <button id="saveBtn">Save wallet</button>
           <button id="clearBtn" class="secondary" type="button">Clear cards</button>
