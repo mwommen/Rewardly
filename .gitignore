@@ -13,8 +13,10 @@ pnpm-debug.log*
 !.env.sample
 *.local
 *.zip
+*.textClipping
 Rewardly-latest-*.zip
 test-results/
+artifacts/
 coverage/
 dist/
 build/

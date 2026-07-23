@@ -87,7 +87,13 @@ router.get("/best", async (req, res) => {
   const fields = parseFieldsParam(req.query);
 
   try {
-    const result = await recommendBestCards({ merchant, amount, mcc, includeRotating });
+    const result = await recommendBestCards({
+      merchant,
+      amount,
+      mcc,
+      includeRotating,
+      scoringMode: "strict_production",
+    });
 
     // Apply limit + fields at the edge
     let recs = result.recommendations || [];
@@ -132,6 +138,7 @@ router.get("/offers", async (req, res) => {
       mcc,
       includeRotating,
       minRate,
+      scoringMode: "strict_production",
     });
 
     let offers = (result.offers || []).filter((o: any) => Array.isArray(o?.perks) && o.perks.length);

@@ -3,112 +3,590 @@
   <head>
     <meta charset="utf-8" />
     <style>
-      * { box-sizing: border-box; }
+      :root {
+        color-scheme: dark;
+        --bg: #08111f;
+        --surface: rgba(255, 255, 255, 0.075);
+        --surface-strong: rgba(255, 255, 255, 0.12);
+        --line: rgba(207, 217, 255, 0.16);
+        --line-strong: rgba(207, 217, 255, 0.26);
+        --text: #f8fafc;
+        --muted: #a8b3c7;
+        --soft: #dbeafe;
+        --accent: #67e8f9;
+        --accent-strong: #38bdf8;
+        --success: #86efac;
+        --shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
       body {
-        font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+        width: 382px;
+        min-height: 560px;
         margin: 0;
-        width: 360px;
-        background: #0f172a;
-        color: #f8fafc;
+        background:
+          radial-gradient(circle at 88% -8%, rgba(103, 232, 249, 0.2), transparent 32%),
+          radial-gradient(circle at 18% 8%, rgba(168, 85, 247, 0.14), transparent 34%),
+          linear-gradient(155deg, #101827 0%, #08111f 58%, #050b14 100%);
+        color: var(--text);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
       }
-      .shell { padding: 16px; display: grid; gap: 14px; }
-      .brand { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
-      h1 { font-size: 20px; margin: 0; }
-      h2 { font-size: 13px; margin: 0 0 8px; color: #cbd5e1; text-transform: uppercase; letter-spacing: .08em; }
-      p { margin: 4px 0 0; color: #cbd5e1; font-size: 13px; line-height: 1.4; }
-      label { display:block; font-size:12px; color:#cbd5e1; margin-bottom: 5px; }
-      input {
-        width:100%;
-        padding:8px 10px;
-        border-radius:10px;
-        border:1px solid rgba(203,213,225,.24);
-        margin:0 0 10px;
-        background: rgba(255,255,255,.08);
-        color: #f8fafc;
+
+      button,
+      input,
+      summary {
+        font: inherit;
       }
+
       button {
-        padding:8px 11px;
-        border-radius:10px;
-        border:1px solid rgba(125,211,252,.28);
-        background:#38bdf8;
-        color:#0f172a;
-        font-weight: 700;
-        cursor:pointer;
+        border: 0;
+        cursor: pointer;
       }
-      button.secondary { background: rgba(255,255,255,.08); color: #f8fafc; border-color: rgba(203,213,225,.2); }
-      .card { border: 1px solid rgba(203,213,225,.16); background: rgba(255,255,255,.06); border-radius: 16px; padding: 12px; }
-      .muted { font-size:12px; color:#94a3b8; }
-      .row { display:flex; gap:8px; align-items:center; flex-wrap: wrap; }
-      .status { padding: 8px 10px; border-radius: 12px; background: rgba(34,197,94,.14); color: #bbf7d0; font-size: 12px; }
-      .wallet-count { font-size: 12px; color: #7dd3fc; font-weight: 800; }
-      .card-list { display: grid; gap: 6px; max-height: 220px; overflow: auto; padding-right: 2px; }
-      .card-option {
+
+      button:focus-visible,
+      input:focus-visible,
+      summary:focus-visible {
+        outline: 2px solid rgba(103, 232, 249, 0.75);
+        outline-offset: 3px;
+      }
+
+      .shell {
         display: grid;
-        grid-template-columns: auto 1fr;
-        gap: 9px;
+        gap: 15px;
+        padding: 18px;
+      }
+
+      .hero {
+        display: grid;
+        gap: 16px;
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 28px;
+        background:
+          linear-gradient(150deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.055)),
+          rgba(8, 17, 31, 0.64);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(18px);
+      }
+
+      .brand-row,
+      .status-row,
+      .section-head,
+      .selected-card,
+      .card-option,
+      .dev-row {
+        display: flex;
         align-items: center;
-        padding: 8px;
-        border: 1px solid rgba(203,213,225,.12);
-        border-radius: 12px;
-        background: rgba(15,23,42,.44);
-        color: #f8fafc;
       }
-      .card-option input { width: auto; margin: 0; }
-      .card-option span { font-size: 13px; line-height: 1.25; }
-      .quick-picks { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
-      .quick-picks button { font-size: 11px; padding: 6px 8px; }
-      .check-row {
+
+      .brand-row {
+        justify-content: space-between;
+        gap: 14px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .brand-mark,
+      .card-mark {
         display: grid;
-        grid-template-columns: auto 1fr;
-        gap: 8px;
-        align-items: start;
-        margin: 2px 0 12px;
+        place-items: center;
+        flex: 0 0 auto;
+        font-weight: 900;
       }
-      .check-row input { width: auto; margin: 2px 0 0; }
-      .check-row span { font-size: 12px; line-height: 1.35; color: #cbd5e1; }
+
+      .brand-mark {
+        width: 34px;
+        height: 34px;
+        border-radius: 13px;
+        background:
+          radial-gradient(circle at 72% 20%, rgba(255, 255, 255, 0.48), transparent 30%),
+          linear-gradient(145deg, #67e8f9, #8b5cf6);
+        color: #06101f;
+        box-shadow: 0 12px 26px rgba(56, 189, 248, 0.24);
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 19px;
+        line-height: 1.1;
+        letter-spacing: -0.01em;
+      }
+
+      .eyebrow {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      .status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 7px 10px;
+        border: 1px solid rgba(134, 239, 172, 0.24);
+        border-radius: 999px;
+        background: rgba(34, 197, 94, 0.12);
+        color: #bbf7d0;
+        font-size: 12px;
+        font-weight: 850;
+        white-space: nowrap;
+      }
+
+      .status-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 999px;
+        background: var(--success);
+        box-shadow: 0 0 16px rgba(134, 239, 172, 0.8);
+      }
+
+      .hero-copy {
+        display: grid;
+        gap: 7px;
+      }
+
+      .hero-copy h2 {
+        max-width: 280px;
+        color: #ffffff;
+        font-size: 24px;
+        line-height: 1.05;
+        letter-spacing: -0.035em;
+      }
+
+      .hero-copy p {
+        color: var(--soft);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .status-row {
+        gap: 10px;
+        padding: 11px;
+        border-radius: 18px;
+        background: rgba(5, 12, 24, 0.44);
+      }
+
+      .status-icon {
+        display: grid;
+        place-items: center;
+        width: 32px;
+        height: 32px;
+        border-radius: 12px;
+        background: rgba(103, 232, 249, 0.13);
+        color: var(--accent);
+        font-size: 17px;
+      }
+
+      .status-row strong {
+        display: block;
+        color: #ffffff;
+        font-size: 13px;
+      }
+
+      .status-row span {
+        display: block;
+        margin-top: 2px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.35;
+      }
+
+      .panel {
+        display: grid;
+        gap: 12px;
+        padding: 15px;
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        background: rgba(255, 255, 255, 0.062);
+        box-shadow: 0 14px 38px rgba(0, 0, 0, 0.18);
+      }
+
+      .section-head {
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .section-head h2 {
+        color: #ffffff;
+        font-size: 15px;
+        line-height: 1.15;
+      }
+
+      .section-head p {
+        margin-top: 3px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.35;
+      }
+
+      .count-pill {
+        padding: 6px 9px;
+        border-radius: 999px;
+        background: rgba(103, 232, 249, 0.12);
+        color: #bae6fd;
+        font-size: 12px;
+        font-weight: 850;
+        white-space: nowrap;
+      }
+
+      .selected-wallet {
+        display: grid;
+        gap: 8px;
+      }
+
+      .selected-card {
+        min-height: 56px;
+        gap: 10px;
+        padding: 9px;
+        border-radius: 18px;
+        background:
+          radial-gradient(circle at 88% 10%, rgba(103, 232, 249, 0.16), transparent 28%),
+          linear-gradient(145deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.06));
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.085);
+      }
+
+      .card-mark {
+        width: 44px;
+        height: 32px;
+        border-radius: 10px;
+        background: linear-gradient(145deg, #e2e8f0, #94a3b8);
+        color: #0f172a;
+        font-size: 12px;
+        letter-spacing: -0.02em;
+      }
+
+      .selected-card strong,
+      .card-option strong {
+        display: block;
+        color: #ffffff;
+        font-size: 13px;
+        line-height: 1.2;
+      }
+
+      .selected-card span,
+      .card-option span,
+      .empty-wallet,
+      .saved-note {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.35;
+      }
+
+      .remove-card {
+        display: grid;
+        place-items: center;
+        width: 28px;
+        height: 28px;
+        margin-left: auto;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+        color: var(--soft);
+        transition:
+          background 160ms ease,
+          transform 160ms ease;
+      }
+
+      .remove-card:hover {
+        background: rgba(255, 255, 255, 0.14);
+        transform: translateY(-1px);
+      }
+
+      .saved-note {
+        min-height: 17px;
+        color: #bbf7d0;
+      }
+
+      .quick-picks {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px;
+      }
+
+      .quick-picks button,
+      .clear-button {
+        min-height: 32px;
+        padding: 7px 10px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.075);
+        color: var(--soft);
+        font-size: 12px;
+        font-weight: 800;
+        transition:
+          background 160ms ease,
+          border-color 160ms ease,
+          transform 160ms ease;
+      }
+
+      .quick-picks button:hover,
+      .clear-button:hover {
+        border-color: var(--line-strong);
+        background: rgba(255, 255, 255, 0.12);
+        transform: translateY(-1px);
+      }
+
+      .quick-picks button[aria-pressed="true"] {
+        border-color: rgba(103, 232, 249, 0.4);
+        background: rgba(103, 232, 249, 0.16);
+        color: #cffafe;
+      }
+
+      .search-wrap {
+        position: relative;
+      }
+
+      .search-wrap input,
+      .developer-settings input {
+        width: 100%;
+        min-height: 42px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: rgba(5, 12, 24, 0.45);
+        color: var(--text);
+        padding: 0 12px;
+        outline: none;
+        transition:
+          border-color 160ms ease,
+          background 160ms ease,
+          box-shadow 160ms ease;
+      }
+
+      .search-wrap input::placeholder,
+      .developer-settings input::placeholder {
+        color: #708096;
+      }
+
+      .search-wrap input:focus,
+      .developer-settings input:focus {
+        border-color: rgba(103, 232, 249, 0.5);
+        background: rgba(5, 12, 24, 0.66);
+        box-shadow: 0 0 0 4px rgba(103, 232, 249, 0.09);
+      }
+
+      .card-list {
+        display: grid;
+        gap: 7px;
+        max-height: 214px;
+        overflow: auto;
+        padding-right: 2px;
+      }
+
+      .card-option {
+        width: 100%;
+        gap: 10px;
+        padding: 9px;
+        border: 1px solid transparent;
+        border-radius: 17px;
+        background: rgba(5, 12, 24, 0.35);
+        text-align: left;
+        transition:
+          background 160ms ease,
+          border-color 160ms ease,
+          transform 160ms ease;
+      }
+
+      .card-option:hover {
+        border-color: var(--line);
+        background: rgba(255, 255, 255, 0.085);
+        transform: translateY(-1px);
+      }
+
+      .card-option.selected {
+        border-color: rgba(103, 232, 249, 0.32);
+        background: rgba(103, 232, 249, 0.105);
+      }
+
+      .card-option .add-state {
+        margin-left: auto;
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 850;
+      }
+
+      .developer-settings {
+        border: 1px solid rgba(207, 217, 255, 0.12);
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.035);
+        overflow: hidden;
+      }
+
+      .developer-settings summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 13px;
+        color: var(--muted);
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .developer-settings summary::after {
+        content: "+";
+        color: var(--accent);
+        font-size: 15px;
+      }
+
+      .developer-settings[open] summary::after {
+        content: "-";
+      }
+
+      .developer-body {
+        display: grid;
+        gap: 10px;
+        padding: 0 13px 13px;
+      }
+
+      .developer-body label {
+        display: grid;
+        gap: 5px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .dev-row {
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .dev-row label {
+        display: flex;
+        grid-template-columns: none;
+        align-items: center;
+        gap: 8px;
+        line-height: 1.35;
+      }
+
+      .dev-row input {
+        width: auto;
+        min-height: auto;
+      }
+
+      .clear-button {
+        color: #fecaca;
+      }
     </style>
   </head>
   <body>
     <div class="shell">
-      <div class="brand">
-        <div>
-          <h1>Rewardly</h1>
-          <p>Choose the cards you carry. Rewardly will only alert at checkout when one of these cards has a matching benefit.</p>
+      <section class="hero" aria-labelledby="rewardly-title">
+        <div class="brand-row">
+          <div class="brand">
+            <span class="brand-mark" aria-hidden="true">R</span>
+            <div>
+              <h1 id="rewardly-title">Rewardly</h1>
+              <p class="eyebrow">Wallet assistant</p>
+            </div>
+          </div>
+          <span class="status-pill">
+            <span class="status-dot" aria-hidden="true"></span>
+            Active
+          </span>
         </div>
-        <span id="walletCount" class="wallet-count">0 cards</span>
-      </div>
 
-      <div id="saved" class="status" style="display:none;">Saved. Open the Lululemon demo checkout to see the Platinum benefit alert.</div>
+        <div class="hero-copy">
+          <h2>Best card, right when you pay.</h2>
+          <p>
+            Rewardly watches supported checkout pages and recommends the payment
+            method in your wallet with the most value.
+          </p>
+        </div>
 
-      <div class="card">
-        <h2>Demo wallet</h2>
-        <div class="quick-picks">
-          <button type="button" class="secondary" id="demoAmexGold">Amex Gold</button>
-          <button type="button" class="secondary" id="demoPlatinum">Amex Platinum</button>
-          <button type="button" class="secondary" id="demoVentureX">Venture X</button>
+        <div class="status-row">
+          <span class="status-icon" aria-hidden="true">✓</span>
+          <div>
+            <strong>You're all set for supported checkouts.</strong>
+            <span>Shop normally. Rewardly appears only when it can help.</span>
+          </div>
         </div>
-        <input id="cardSearch" placeholder="Search cards to add" />
-        <div id="cardList" class="card-list">
-          <p class="muted">Loading card catalog…</p>
-        </div>
-      </div>
+      </section>
 
-      <div class="card">
-        <h2>Local setup</h2>
-        <label>API Base</label>
-        <input id="apiBase" placeholder="http://localhost:5001" />
-        <label>User ID</label>
-        <input id="userId" placeholder="devUser" />
-        <label class="check-row">
-          <input id="debugLogs" type="checkbox" />
-          <span>Enable debug logs for merchant detection, checkout stage, and payment decisions.</span>
-        </label>
-        <div class="row">
-          <button id="saveBtn">Save wallet</button>
-          <button id="clearBtn" class="secondary" type="button">Clear cards</button>
+      <section class="panel" aria-labelledby="wallet-heading">
+        <div class="section-head">
+          <div>
+            <h2 id="wallet-heading">Your Wallet</h2>
+            <p>Payment methods Rewardly can recommend.</p>
+          </div>
+          <span id="walletCount" class="count-pill">0 cards</span>
         </div>
-        <p class="muted">For the MVP, add Amex Platinum here or run the demo seed to map it to devUser.</p>
-      </div>
+
+        <div id="selectedWallet" class="selected-wallet" aria-live="polite">
+          <p class="empty-wallet">Add the cards you carry to personalize checkout recommendations.</p>
+        </div>
+        <div id="saved" class="saved-note" role="status" aria-live="polite"></div>
+      </section>
+
+      <section class="panel" aria-labelledby="add-card-heading">
+        <div class="section-head">
+          <div>
+            <h2 id="add-card-heading">Add cards</h2>
+            <p>Search your card or start with a popular option.</p>
+          </div>
+        </div>
+
+        <div class="quick-picks" aria-label="Popular cards">
+          <button type="button" id="demoAmexGold">Amex Gold</button>
+          <button type="button" id="demoPlatinum">Amex Platinum</button>
+          <button type="button" id="demoVentureX">Venture X</button>
+        </div>
+
+        <div class="search-wrap">
+          <input
+            id="cardSearch"
+            aria-label="Search cards to add"
+            placeholder="Search cards to add"
+            autocomplete="off"
+          />
+        </div>
+
+        <div id="cardList" class="card-list" aria-label="Available cards">
+          <p class="empty-wallet">Loading card options...</p>
+        </div>
+      </section>
+
+      <details class="developer-settings">
+        <summary>Developer Settings</summary>
+        <div class="developer-body">
+          <label>
+            API Base
+            <input id="apiBase" placeholder="http://localhost:5001" />
+          </label>
+          <label>
+            User ID
+            <input id="userId" placeholder="devUser" />
+          </label>
+          <label>
+            Beta Session Token
+            <input id="betaSessionToken" placeholder="Private beta token" />
+          </label>
+          <div class="dev-row">
+            <label>
+              <input id="debugLogs" type="checkbox" />
+              Enable debug logs
+            </label>
+            <button id="clearBtn" class="clear-button" type="button">Clear wallet</button>
+          </div>
+        </div>
+      </details>
     </div>
     <script src="popup.js"></script>
   </body>

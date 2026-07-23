@@ -10,11 +10,27 @@ Start with Amazon before adding more merchants.
 3. Load the unpacked extension from the local `extension/` folder.
 4. Open the extension popup.
 5. Set `API Base` to the backend you are testing, for example
-   `http://localhost:5011`.
+   `http://localhost:5001`.
 6. Set `User ID` to a test user, for example `manualTestUser`.
 7. Add one known card to the demo wallet, for example Amex Platinum.
 8. Enable debug logs.
 9. Open DevTools Console on each merchant tab.
+
+For local manual wallet testing, start the backend with:
+
+```bash
+REWARDLY_ALLOW_DEV_OVERRIDES=true npm run dev
+```
+
+For private beta, leave development overrides off and configure:
+
+```text
+REWARDLY_BETA_SESSION_TOKEN=<server issued token>
+REWARDLY_BETA_USER_ID=<server mapped beta user>
+```
+
+Then save the matching beta session token in the extension popup. This is a
+small private-beta identity mechanism, not production authentication.
 
 ## Amazon Cart
 
@@ -41,7 +57,7 @@ from cart to checkout/payment instead of using a copied checkout URL.
 Guided runner:
 
 ```bash
-REWARDLY_API_BASE=http://localhost:5011 \
+REWARDLY_API_BASE=http://localhost:5001 \
 REWARDLY_USER_ID=manualTestUser \
 REWARDLY_WALLET_CARDS=amex-platinum \
 node scripts/natural-amazon-checkout-test.js
@@ -130,50 +146,21 @@ Expected checkout success sequence:
 If the sequence stops, the last log usually identifies the failing stage. Any
 `[Rewardly] pipeline-failed` line should be reported with its full object.
 
-## Forced Render Diagnostic
-
-This bypasses checkout detection and recommendation logic. Use it only with
-debug logs enabled to prove whether the popup can render on the merchant page.
-
-Open DevTools Console on the Amazon or Lululemon checkout tab and run:
-
-```js
-window.postMessage({ type: "REWARDLY_FORCE_RENDER" }, "*");
-```
-
-Expected:
-
-- A debug-only Rewardly popup appears.
-- Console shows:
-
-```text
-[Rewardly] forced-render-requested
-[Rewardly] popup-rendered
-[Rewardly] popup-visible
-```
-
-Interpretation:
-
-- If forced render works but normal checkout does not, the issue is detection,
-  messaging, wallet, recommendation, or dismissal.
-- If forced render does not work, the issue is popup mounting, visibility, or
-  merchant page styling.
-
 ## Manifest Coverage
 
-The extension currently injects the content script with:
+The extension currently injects the content script only for:
 
 ```json
-"matches": ["<all_urls>"]
+"matches": [
+  "http://localhost/*",
+  "https://amazon.com/*",
+  "https://www.amazon.com/*",
+  "https://smile.amazon.com/*",
+  "https://www.lululemon.com/*",
+  "https://shop.lululemon.com/*",
+  "https://checkout.lululemon.com/*"
+]
 ```
-
-This covers Amazon and Lululemon checkout domains and subdomains, including:
-
-- `https://www.amazon.com/*`
-- `https://smile.amazon.com/*`
-- `https://www.lululemon.com/*`
-- `https://shop.lululemon.com/*`
-- `https://checkout.lululemon.com/*`
 
 If `content-script-loaded` is missing on a checkout page, reload the unpacked
 extension, refresh the checkout tab, and confirm the site is not a restricted

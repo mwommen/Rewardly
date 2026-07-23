@@ -5,6 +5,10 @@ import {
   getUserBenefitStatesCollection,
 } from "../db";
 import { CARD_OVERRIDES } from "../scrapers/overrides/cards";
+import {
+  canonicalizeWalletBenefitState,
+  type CanonicalWalletBenefitState,
+} from "./walletIntelligenceService";
 
 export type WalletResolutionInput = {
   userId: string;
@@ -21,7 +25,7 @@ export type WalletBenefitState = {
   enrolled?: boolean;
   usedAt?: string | null;
   remindEnabled?: boolean;
-};
+} & Partial<CanonicalWalletBenefitState>;
 
 export type ResolvedWallet = Wallet & {
   benefitStates: WalletBenefitState[];
@@ -83,7 +87,50 @@ async function loadBenefitStates(
   const col = await getUserBenefitStatesCollection();
   const docs = await col.find({ userId }).toArray();
   return docs.map((doc: any) => ({
-    benefitKey: doc.benefitKey,
+    ...canonicalizeWalletBenefitState({
+      userId,
+      cardId: doc.cardId || doc.cardSlug || null,
+      cardSlug: doc.cardSlug || null,
+      issuer: doc.issuer || null,
+      benefitId: doc.benefitId || doc.benefitKey,
+      status: doc.status || doc.benefitState || null,
+      enrollmentStatus:
+        doc.enrollmentStatus ||
+        (doc.requiresEnrollment ? (doc.enrolled ? "enrolled" : "not_enrolled") : "not_required"),
+      activationStatus: doc.activationStatus || "not_required",
+      remainingValue: Number.isFinite(doc.remainingValue)
+        ? Number(doc.remainingValue)
+        : Number.isFinite(doc.amountUSD) && !doc.usedAt
+          ? Number(doc.amountUSD)
+          : doc.usedAt
+            ? 0
+            : null,
+      remainingSpendCap: Number.isFinite(doc.remainingSpendCap)
+        ? Number(doc.remainingSpendCap)
+        : null,
+      remainingUses: Number.isFinite(doc.remainingUses) ? Number(doc.remainingUses) : null,
+      currentSpend: Number.isFinite(doc.currentSpend) ? Number(doc.currentSpend) : 0,
+      benefitUsageCount: Number.isFinite(doc.benefitUsageCount)
+        ? Number(doc.benefitUsageCount)
+        : doc.usedAt
+          ? 1
+          : 0,
+      currentCycle: doc.currentCycle || null,
+      historicalCycles: Array.isArray(doc.historicalCycles) ? doc.historicalCycles : [],
+      lastUsed: doc.lastUsed || doc.usedAt || null,
+      effectiveDate: doc.effectiveDate || null,
+      resetDate: doc.resetDate || null,
+      expirationDate: doc.expirationDate || null,
+      lastObserved: doc.lastObserved || doc.updatedAt || null,
+      lastVerified: doc.lastVerified || null,
+      confidence: Number.isFinite(doc.confidence) ? Number(doc.confidence) : null,
+      confidenceSource: doc.confidenceSource || (doc.enrolledAt ? "user_verified" : "unknown"),
+      notes: Array.isArray(doc.notes) ? doc.notes : [],
+      events: Array.isArray(doc.events) ? doc.events : [],
+      createdAt: doc.createdAt || doc.updatedAt || null,
+      updatedAt: doc.updatedAt || null,
+    }),
+    benefitKey: doc.benefitKey || doc.benefitId,
     cardSlug: doc.cardSlug || null,
     cardName: doc.cardName || null,
     label: doc.label || null,
@@ -103,6 +150,9 @@ function applyCardOverride(card: any) {
     issuer: override.issuer ?? card.issuer,
     annualFee: override.annualFee ?? card.annualFee,
     sourceUrl: override.sourceUrl ?? card.sourceUrl,
+    sourceType: override.sourceType ?? card.sourceType,
+    lastVerified: override.lastVerified ?? card.lastVerified,
+    productionEligible: override.productionEligible ?? card.productionEligible,
     rewardsByCategory: override.rewardsByCategory ?? card.rewardsByCategory,
     perks: override.perks ?? card.perks,
     signupOffer: override.signupOffer ?? card.signupOffer,
@@ -125,7 +175,7 @@ function toDomainCard(card: any): Card {
     perks: Array.isArray(card?.perks) ? card.perks.map(String) : [],
     sourceUrl: card?.sourceUrl || null,
     lastVerified:
-      card?.benefitsDetail?.lastScraped || card?.lastScraped || null,
+      card?.benefitsDetail?.lastVerified || card?.lastVerified || null,
   };
 }
 

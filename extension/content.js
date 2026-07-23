@@ -4,6 +4,17 @@ const REWARDLY_CHECK_DELAY_MS = 250;
 const REWARDLY_MIN_CHECK_INTERVAL_MS = 750;
 const REWARDLY_DISMISS_MS = 30 * 60 * 1000;
 const REWARDLY_REQUEST_TIMEOUT_MS = 3000;
+const REWARDLY_SUPPORTED_HOSTS = [
+  "localhost",
+  "127.0.0.1",
+  "amazon.com",
+  "www.amazon.com",
+  "smile.amazon.com",
+  "lululemon.com",
+  "www.lululemon.com",
+  "shop.lululemon.com",
+  "checkout.lululemon.com",
+];
 
 const CARD_LOGOS = {
   "amex-gold": "amex-gold.png",
@@ -153,9 +164,17 @@ let rewardlyObserver = null;
 let rewardlyDebugEnabled = false;
 let rewardlyLastUrl = location.href;
 
-initRewardly();
+if (isRewardlySupportedHost(location.hostname)) {
+  initRewardly();
+} else {
+  removeRewardlyPopup();
+}
 
 function initRewardly() {
+  if (!isRewardlySupportedHost(location.hostname)) {
+    removeRewardlyPopup();
+    return;
+  }
   document.documentElement.setAttribute("data-rewardly-extension", "loaded");
   rewardlyLog("content-script-loaded", {
     url: location.href,
@@ -173,7 +192,6 @@ function initRewardly() {
       });
     }
   });
-  window.addEventListener("message", handleRewardlyDiagnosticMessage);
   scheduleRewardlyCheck("initial-load", 50);
   rewardlyObserver = new MutationObserver(() => {
     scheduleRewardlyCheck("dom-mutated");
@@ -202,6 +220,10 @@ function scheduleRewardlyCheck(reason, delay = REWARDLY_CHECK_DELAY_MS) {
 
 function runRewardlyPipeline(triggerReason = "scheduled") {
   try {
+    if (!isRewardlySupportedHost(location.hostname)) {
+      removeRewardlyPopup();
+      return;
+    }
     rewardlyLog("pipeline-started", {
       triggerReason,
       url: location.href,
@@ -234,6 +256,12 @@ function runRewardlyPipeline(triggerReason = "scheduled") {
 
     const merchant = detectMerchantFromPage();
     const key = decisionKey(merchant, checkout);
+    trackRewardlyEvent("merchant_detected", {
+      merchant: merchant.name,
+      hostname: merchant.hostname,
+      category: merchant.category,
+      stage: checkout.stage,
+    });
     rewardlyLog("merchant-detected", {
       merchant: merchant.name,
       hostname: merchant.hostname,
@@ -256,6 +284,22 @@ function runRewardlyPipeline(triggerReason = "scheduled") {
         duplicateContext: rewardlyShownKey === key,
         key,
       });
+      trackRewardlyEvent(
+        rewardlyInFlight || rewardlyShownKey === key
+          ? "popup_hidden"
+          : "merchant_detection_error",
+        {
+          merchant: merchant.name || null,
+          hostname: location.hostname,
+          stage: checkout.stage,
+          duplicateContext: rewardlyShownKey === key,
+          errorType: !merchant.name
+            ? "merchant_missing"
+            : rewardlyInFlight
+              ? "request_in_flight"
+              : "duplicate_checkout_context",
+        },
+      );
       return;
     }
     if (isDismissed(key)) {
@@ -265,6 +309,12 @@ function runRewardlyPipeline(triggerReason = "scheduled") {
         url: location.href,
         reason: "dismissed for checkout context",
         key,
+      });
+      trackRewardlyEvent("popup_hidden", {
+        merchant: merchant.name,
+        hostname: location.hostname,
+        stage: checkout.stage,
+        errorType: "dismissed_context",
       });
       return;
     }
@@ -286,6 +336,7 @@ function runRewardlyPipeline(triggerReason = "scheduled") {
         checkoutDetected: checkout.isCheckout,
         checkoutStage: checkout.stage,
         amount: readCheckoutAmount(),
+        purchase: readPurchaseFromPage(merchant),
         timestamp: new Date().toISOString(),
       },
     };
@@ -294,6 +345,12 @@ function runRewardlyPipeline(triggerReason = "scheduled") {
       merchant: payload.merchant,
       url: payload.url,
       payload,
+    });
+    trackRewardlyEvent("recommendation_requested", {
+      merchant: payload.merchant,
+      hostname: location.hostname,
+      category: payload.category,
+      stage: checkout.stage,
     });
 
     requestPaymentDecision(payload)
@@ -315,8 +372,27 @@ function runRewardlyPipeline(triggerReason = "scheduled") {
             url: payload.url,
             reason: "no recommended card returned",
           });
+          trackRewardlyEvent("recommendation_failed", {
+            merchant: payload.merchant,
+            hostname: location.hostname,
+            stage: checkout.stage,
+            errorType: "no_recommendation",
+            walletCardCount: Array.isArray(decision?.wallet?.cardSlugs)
+              ? decision.wallet.cardSlugs.length
+              : undefined,
+          });
           return;
         }
+        trackRewardlyEvent("recommendation_displayed", {
+          merchant: payload.merchant,
+          hostname: location.hostname,
+          category: payload.category,
+          stage: checkout.stage,
+          hasRecommendation: true,
+          walletCardCount: Array.isArray(decision?.wallet?.cardSlugs)
+            ? decision.wallet.cardSlugs.length
+            : undefined,
+        });
         renderRewardlyPopup(decision, key);
       })
       .catch((error) => {
@@ -328,6 +404,19 @@ function runRewardlyPipeline(triggerReason = "scheduled") {
           url: payload.url,
           message: String(error?.message || error),
         });
+        trackRewardlyEvent(
+          error?.code === "REWARDLY_TIMEOUT" ||
+            /timed out|timeout/i.test(String(error?.message || ""))
+            ? "recommendation_timeout"
+            : "recommendation_failed",
+          {
+            merchant: payload.merchant,
+            hostname: location.hostname,
+            stage: checkout.stage,
+            errorCode: error?.code || "REWARDLY_DECISION_ERROR",
+            errorType: "decision_request_failed",
+          },
+        );
         console.warn("[Rewardly] decision failed", error);
       });
   } catch (error) {
@@ -337,6 +426,10 @@ function runRewardlyPipeline(triggerReason = "scheduled") {
       stage: "content-script",
       url: location.href,
       message: String(error?.message || error),
+    });
+    trackRewardlyEvent("merchant_detection_error", {
+      hostname: location.hostname,
+      errorType: "content_script_error",
     });
     console.warn("[Rewardly] checkout detection failed", error);
   }
@@ -348,7 +441,9 @@ function requestPaymentDecision(payload) {
     const timeout = setTimeout(() => {
       if (settled) return;
       settled = true;
-      reject(new Error("Decision request timed out"));
+      const error = new Error("Decision request timed out");
+      error.code = "REWARDLY_TIMEOUT";
+      reject(error);
     }, REWARDLY_REQUEST_TIMEOUT_MS);
 
     chrome.runtime.sendMessage(
@@ -366,7 +461,11 @@ function requestPaymentDecision(payload) {
           reject(new Error(response?.error || "Decision request failed"));
           return;
         }
-        resolve(response.data?.decision || null);
+        const decision = response.data?.decision || null;
+        if (decision && response.data?.presentation) {
+          decision.presentation = response.data.presentation;
+        }
+        resolve(decision);
       },
     );
   });
@@ -422,6 +521,7 @@ function detectCheckout(input) {
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
+  const route = [input.url, input.pathname].filter(Boolean).join(" ");
   const path = input.pathname || input.url;
 
   if (
@@ -464,7 +564,7 @@ function detectCheckout(input) {
     };
   }
 
-  if (isAmazonCheckoutPath(path)) {
+  if (isAmazonCheckoutPath(route)) {
     return {
       isCheckout: true,
       stage:
@@ -489,6 +589,15 @@ function detectCheckout(input) {
           : "checkout",
       confidence: input.hasPaymentForm ? 0.92 : 0.78,
       shouldTriggerRecommendation: true,
+    };
+  }
+
+  if (isAmazonPage(input.url)) {
+    return {
+      isCheckout: false,
+      stage: "unknown",
+      confidence: 0.88,
+      shouldTriggerRecommendation: false,
     };
   }
 
@@ -611,61 +720,82 @@ function renderRewardlyPopup(decision, dismissKey) {
 
   const recommendation = decision.recommendedCard;
   const card = recommendation.card;
+  const presentation = decision.presentation || null;
   const primaryReason =
+    presentation?.explanation?.primaryReason ||
     decision.primaryReason?.detail ||
     recommendation.primaryReason?.detail ||
     decision.recommendationSummary ||
     "Best card in your wallet for this checkout.";
   const reward =
+    presentation?.estimatedValue?.label ||
     decision.rewardEstimate?.label ||
     recommendation.rewardEstimate?.label ||
     "Strong available rewards";
-  const benefits = (decision.unlockedBenefits || [])
-    .map((match) => match?.benefit?.label || match?.summary)
+  const benefits = (
+    presentation?.opportunitySummary?.benefits?.length
+      ? presentation.opportunitySummary.benefits
+      : (decision.unlockedBenefits || []).map(
+          (match) => match?.benefit?.label || match?.summary,
+        )
+  )
     .filter(Boolean)
     .slice(0, 2);
+  const included = benefits.length
+    ? benefits
+    : ["Best value from your wallet"];
+  const merchantName =
+    presentation?.merchantSummary?.name || decision.merchant?.name || "Checkout";
+  const cardName = presentation?.recommendedCard?.displayName || card.name;
 
   const root = document.createElement("div");
   root.id = "rewardly-popup";
   root.className = "rewardly-root";
   root.setAttribute("role", "dialog");
   root.setAttribute("aria-label", "Rewardly card recommendation");
+  root.setAttribute("aria-describedby", "rewardly-recommendation-summary");
 
   root.innerHTML = `
     <div class="rewardly-card">
       <div class="rewardly-topline">
         <div>
           <div class="rewardly-brand">Rewardly</div>
-          <div class="rewardly-subtitle">Best card before you pay</div>
+          <div class="rewardly-subtitle">Ready before you pay</div>
         </div>
-        <div class="rewardly-merchant">${sanitize(decision.merchant?.name || "Checkout")}</div>
+        <div class="rewardly-merchant">${sanitize(merchantName)}</div>
       </div>
 
       <div class="rewardly-choice">
         <div class="rewardly-logo" aria-hidden="true"></div>
         <div>
-          <div class="rewardly-label">Best Card</div>
-          <div class="rewardly-card-name">${sanitize(card.name)}</div>
+          <div class="rewardly-label">Use this card</div>
+          <div class="rewardly-card-name">${sanitize(cardName)}</div>
         </div>
       </div>
 
-      <div class="rewardly-section">
-        <span>Why</span>
+      <div class="rewardly-value" id="rewardly-recommendation-summary">
+        <span>You'll get</span>
+        <strong>${sanitize(reward)}</strong>
+      </div>
+
+      <div class="rewardly-why">
+        <span>Why this wins</span>
         <strong>${sanitize(primaryReason)}</strong>
       </div>
 
-      <div class="rewardly-grid">
-        <div>
-          <span>Estimated Rewards</span>
-          <strong>${sanitize(reward)}</strong>
-        </div>
-        <div>
-          <span>Benefits</span>
-          <strong>${sanitize(benefits[0] || "No extra benefit found")}</strong>
-        </div>
+      <div class="rewardly-includes" aria-label="Included value">
+        ${included
+          .map(
+            (benefit) =>
+              `<span class="rewardly-chip">${sanitize(benefit)}</span>`,
+          )
+          .join("")}
       </div>
 
-      <button class="rewardly-dismiss" type="button" aria-label="Dismiss Rewardly recommendation">Dismiss</button>
+      <div class="rewardly-actions">
+        <span>Continue checkout with confidence.</span>
+        <button class="rewardly-dismiss" type="button" aria-label="Dismiss Rewardly recommendation">Got it</button>
+      </div>
     </div>
   `;
 
@@ -676,6 +806,15 @@ function renderRewardlyPopup(decision, dismissKey) {
 
   root.querySelector(".rewardly-dismiss").addEventListener("click", () => {
     rememberDismissal(dismissKey);
+    trackRewardlyEvent("recommendation_dismissed", {
+      merchant: decision.merchant?.name || null,
+      hostname: location.hostname,
+      dismissedForMs: REWARDLY_DISMISS_MS,
+    });
+    trackRewardlyEvent("continue_checkout_clicked", {
+      merchant: decision.merchant?.name || null,
+      hostname: location.hostname,
+    });
     root.remove();
     disconnectAfterDismiss();
   });
@@ -707,6 +846,11 @@ function renderRewardlyPopup(decision, dismissKey) {
       zIndex: getComputedStyle(root).zIndex,
       url: location.href,
     });
+    trackRewardlyEvent(visible ? "popup_visible" : "popup_hidden", {
+      merchant: decision.merchant?.name || null,
+      hostname: location.hostname,
+      popupVisible: visible,
+    });
   });
 }
 
@@ -717,10 +861,10 @@ function ensureRewardlyStyles() {
   style.textContent = `
     #rewardly-popup.rewardly-root {
       position: fixed;
-      right: 18px;
-      bottom: 18px;
+      right: 20px;
+      bottom: 20px;
       z-index: 2147483647;
-      width: min(342px, calc(100vw - 28px));
+      width: min(356px, calc(100vw - 28px));
       color: #f8fafc;
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       color-scheme: dark;
@@ -728,28 +872,37 @@ function ensureRewardlyStyles() {
 
     #rewardly-popup .rewardly-card {
       display: grid;
-      gap: 14px;
-      border: 1px solid rgba(207, 217, 255, 0.16);
-      border-radius: 22px;
+      gap: 15px;
+      border: 1px solid rgba(207, 217, 255, 0.14);
+      border-radius: 26px;
       background:
-        radial-gradient(circle at 88% 10%, rgba(110, 231, 249, 0.18), transparent 30%),
-        linear-gradient(145deg, rgba(255, 255, 255, 0.12), rgba(18, 26, 42, 0.92));
-      box-shadow: 0 28px 80px rgba(2, 6, 23, 0.38);
-      padding: 16px;
-      backdrop-filter: blur(18px);
-      animation: rewardly-in 180ms ease-out both;
+        radial-gradient(circle at 84% 0%, rgba(103, 232, 249, 0.16), transparent 34%),
+        radial-gradient(circle at 8% 12%, rgba(139, 92, 246, 0.12), transparent 32%),
+        linear-gradient(150deg, rgba(30, 41, 59, 0.98), rgba(15, 23, 42, 0.985) 54%, rgba(3, 7, 18, 0.99));
+      box-shadow:
+        0 30px 90px rgba(2, 6, 23, 0.45),
+        inset 0 1px 0 rgba(255, 255, 255, 0.12);
+      padding: 17px;
+      backdrop-filter: blur(20px);
+      animation: rewardly-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
     }
 
     #rewardly-popup .rewardly-topline,
-    #rewardly-popup .rewardly-choice {
+    #rewardly-popup .rewardly-choice,
+    #rewardly-popup .rewardly-actions {
       display: flex;
       align-items: center;
-      justify-content: space-between;
       gap: 12px;
     }
 
+    #rewardly-popup .rewardly-topline,
+    #rewardly-popup .rewardly-actions {
+      justify-content: space-between;
+    }
+
     #rewardly-popup .rewardly-brand {
-      font-size: 13px;
+      color: #ffffff;
+      font-size: 12px;
       font-weight: 900;
       letter-spacing: 0.18em;
       text-transform: uppercase;
@@ -757,9 +910,9 @@ function ensureRewardlyStyles() {
 
     #rewardly-popup .rewardly-subtitle,
     #rewardly-popup .rewardly-label,
-    #rewardly-popup .rewardly-section span,
-    #rewardly-popup .rewardly-grid span {
-      color: #a8b3c7;
+    #rewardly-popup .rewardly-value span,
+    #rewardly-popup .rewardly-why span {
+      color: #b7c3d7;
       font-size: 11px;
       font-weight: 800;
       letter-spacing: 0.08em;
@@ -781,92 +934,175 @@ function ensureRewardlyStyles() {
     }
 
     #rewardly-popup .rewardly-choice {
-      justify-content: flex-start;
       align-items: center;
-      border-radius: 18px;
-      background: rgba(7, 12, 24, 0.38);
-      padding: 12px;
+      justify-content: flex-start;
+      gap: 14px;
+      border-radius: 21px;
+      background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.055)),
+        rgba(7, 12, 24, 0.38);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+      padding: 13px;
+    }
+
+    #rewardly-popup .rewardly-choice > div:last-child {
+      min-width: 0;
     }
 
     #rewardly-popup .rewardly-logo {
       display: grid;
       place-items: center;
       flex: 0 0 auto;
-      width: 72px;
-      height: 46px;
-      border-radius: 12px;
-      background: rgba(255, 255, 255, 0.08);
-      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
-      color: #f8fafc;
-      font-size: 16px;
+      width: 86px;
+      height: 55px;
+      border-radius: 15px;
+      background:
+        radial-gradient(circle at 72% 10%, rgba(255, 255, 255, 0.34), transparent 30%),
+        linear-gradient(145deg, rgba(226, 232, 240, 0.95), rgba(148, 163, 184, 0.82));
+      box-shadow:
+        0 16px 34px rgba(0, 0, 0, 0.28),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.24);
+      color: #0f172a;
+      font-size: 17px;
       font-weight: 900;
+      overflow: hidden;
     }
 
     #rewardly-popup .rewardly-logo img {
-      max-width: 64px;
-      max-height: 39px;
+      max-width: 78px;
+      max-height: 48px;
       object-fit: contain;
     }
 
     #rewardly-popup .rewardly-card-name {
-      margin-top: 3px;
+      margin-top: 4px;
       color: #ffffff;
-      font-size: 18px;
+      font-size: 19px;
       font-weight: 900;
-      line-height: 1.12;
+      line-height: 1.08;
+      letter-spacing: -0.02em;
+      overflow-wrap: anywhere;
     }
 
-    #rewardly-popup .rewardly-section {
+    #rewardly-popup .rewardly-value {
+      display: grid;
+      gap: 4px;
+      padding: 2px 2px 0;
+    }
+
+    #rewardly-popup .rewardly-value strong {
+      color: #ffffff;
+      font-size: 28px;
+      font-weight: 950;
+      line-height: 1;
+      letter-spacing: -0.04em;
+      overflow-wrap: anywhere;
+    }
+
+    #rewardly-popup .rewardly-why {
       display: grid;
       gap: 5px;
+      border-radius: 18px;
+      background: rgba(5, 12, 24, 0.34);
+      padding: 12px;
     }
 
-    #rewardly-popup .rewardly-section strong {
+    #rewardly-popup .rewardly-why strong {
       color: #e5edf9;
       font-size: 14px;
+      font-weight: 780;
       line-height: 1.35;
+      overflow-wrap: anywhere;
     }
 
-    #rewardly-popup .rewardly-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-
-    #rewardly-popup .rewardly-grid div {
-      display: grid;
-      gap: 5px;
+    #rewardly-popup .rewardly-includes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
       min-width: 0;
-      border-radius: 16px;
-      background: rgba(255, 255, 255, 0.065);
-      padding: 11px;
     }
 
-    #rewardly-popup .rewardly-grid strong {
-      color: #f8fafc;
-      font-size: 13px;
-      line-height: 1.25;
-      overflow-wrap: break-word;
+    #rewardly-popup .rewardly-chip {
+      display: block;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      border: 1px solid rgba(103, 232, 249, 0.2);
+      border-radius: 999px;
+      background: rgba(103, 232, 249, 0.1);
+      color: #cffafe;
+      padding: 7px 10px;
+      font-size: 12px;
+      font-weight: 820;
+    }
+
+    #rewardly-popup .rewardly-actions {
+      gap: 10px;
+      padding-top: 1px;
+    }
+
+    #rewardly-popup .rewardly-actions span {
+      min-width: 0;
+      color: #a8b3c7;
+      font-size: 12px;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
     }
 
     #rewardly-popup .rewardly-dismiss {
+      flex: 0 0 auto;
       min-height: 38px;
-      border: 1px solid rgba(207, 217, 255, 0.18);
-      border-radius: 13px;
-      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(207, 217, 255, 0.2);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.095);
       color: #f8fafc;
       font: inherit;
       font-size: 13px;
       font-weight: 850;
       cursor: pointer;
+      padding: 0 15px;
+      transition:
+        background 160ms ease,
+        border-color 160ms ease,
+        transform 160ms ease;
     }
 
     #rewardly-popup .rewardly-dismiss:hover {
-      background: rgba(255, 255, 255, 0.13);
+      border-color: rgba(207, 217, 255, 0.32);
+      background: rgba(255, 255, 255, 0.15);
+      transform: translateY(-1px);
+    }
+
+    #rewardly-popup .rewardly-dismiss:focus-visible {
+      outline: 2px solid rgba(103, 232, 249, 0.85);
+      outline-offset: 3px;
+    }
+
+    @media (max-width: 420px) {
+      #rewardly-popup.rewardly-root {
+        right: 14px;
+        bottom: 14px;
+        width: calc(100vw - 28px);
+      }
+
+      #rewardly-popup .rewardly-card {
+        border-radius: 23px;
+        padding: 15px;
+      }
+
+      #rewardly-popup .rewardly-logo {
+        width: 78px;
+        height: 50px;
+      }
+
+      #rewardly-popup .rewardly-value strong {
+        font-size: 25px;
+      }
     }
 
     @keyframes rewardly-in {
-      from { opacity: 0; transform: translateY(8px) scale(0.98); }
+      from { opacity: 0; transform: translateY(10px) scale(0.985); }
       to { opacity: 1; transform: translateY(0) scale(1); }
     }
   `;
@@ -885,6 +1121,87 @@ function readCheckoutAmount() {
   if (!match) return null;
   const amount = Number(match[1].replace(/,/g, ""));
   return Number.isFinite(amount) ? amount : null;
+}
+
+function readPurchaseFromPage(merchant) {
+  const text = readVisibleText();
+  const total = readCheckoutAmount();
+  const subtotal = readMoneyNear(text, "subtotal");
+  const tax = readMoneyNear(text, "tax");
+  const shipping = readMoneyNear(text, "shipping");
+  const discounts =
+    readMoneyNear(text, "discount") || readMoneyNear(text, "coupon");
+  const items = readCheckoutItems();
+  return {
+    merchantId: merchant?.name || null,
+    merchantName: merchant?.name || null,
+    hostname: location.hostname,
+    url: location.href,
+    title: document.title,
+    subtotal,
+    tax,
+    shipping,
+    discounts,
+    total,
+    currency: "USD",
+    checkoutProvider: merchant?.name || location.hostname,
+    items,
+  };
+}
+
+function readCheckoutItems() {
+  const selectors = [
+    "[data-testid*='item' i]",
+    "[data-testid*='product' i]",
+    "[class*='item' i]",
+    "[class*='product' i]",
+    "[id*='item' i]",
+    "[id*='product' i]",
+  ];
+  const nodes = Array.from(document.querySelectorAll(selectors.join(",")))
+    .slice(0, 30);
+  const seen = new Set();
+  const items = [];
+  nodes.forEach((node) => {
+    const raw = String(node.innerText || node.textContent || "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (raw.length < 8 || raw.length > 260) return;
+    const priceMatch = raw.match(/\$([0-9,]+(?:\.[0-9]{2})?)/);
+    const name = raw
+      .replace(/\$[0-9,]+(?:\.[0-9]{2})?.*$/, "")
+      .replace(/\b(qty|quantity)\b.*$/i, "")
+      .trim();
+    if (name.length < 4 || /subtotal|shipping|tax|total|payment/i.test(name)) {
+      return;
+    }
+    const key = name.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    items.push({
+      name,
+      quantity: readQuantity(raw),
+      price: priceMatch ? Number(priceMatch[1].replace(/,/g, "")) : null,
+    });
+  });
+  return items.slice(0, 12);
+}
+
+function readMoneyNear(text, label) {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = text.match(
+    new RegExp(`${escaped}\\D{0,40}\\$([0-9,]+(?:\\.[0-9]{2})?)`, "i"),
+  );
+  if (!match) return null;
+  const amount = Number(match[1].replace(/,/g, ""));
+  return Number.isFinite(amount) ? amount : null;
+}
+
+function readQuantity(text) {
+  const match = text.match(/\b(?:qty|quantity)\D{0,8}([0-9]+)/i);
+  if (!match) return 1;
+  const quantity = Number(match[1]);
+  return Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
 }
 
 function decisionKey(merchant, checkout) {
@@ -942,45 +1259,19 @@ function rewardlyLog(label, data) {
   console.log(`[Rewardly] ${label}`, data || {});
 }
 
-function handleRewardlyDiagnosticMessage(event) {
-  if (event.source !== window) return;
-  if (event.data?.type !== "REWARDLY_FORCE_RENDER") return;
-  if (!rewardlyDebugEnabled) {
-    console.warn("[Rewardly] forced-render-blocked", {
-      reason: "debug mode is disabled",
-      url: location.href,
+function trackRewardlyEvent(event, metadata = {}) {
+  try {
+    chrome.runtime.sendMessage({
+      type: "REWARDLY_ANALYTICS_EVENT",
+      event,
+      metadata,
     });
-    return;
+  } catch (error) {
+    rewardlyLog("analytics-send-failed", {
+      event,
+      message: String(error?.message || error),
+    });
   }
-
-  rewardlyLog("forced-render-requested", {
-    url: location.href,
-  });
-  renderRewardlyPopup(
-    {
-      merchant: detectMerchantFromPage(),
-      recommendedCard: {
-        card: {
-          slug: "debug-card",
-          name: "Rewardly Debug Card",
-        },
-        primaryReason: {
-          detail: "Forced render diagnostic. Recommendation logic was bypassed.",
-        },
-        rewardEstimate: {
-          label: "Debug only",
-        },
-      },
-      primaryReason: {
-        detail: "Forced render diagnostic. Recommendation logic was bypassed.",
-      },
-      rewardEstimate: {
-        label: "Debug only",
-      },
-      unlockedBenefits: [{ summary: "Popup rendering works" }],
-    },
-    `debug-force-render::${location.hostname}::${Date.now()}`,
-  );
 }
 
 function removeRewardlyPopup() {
@@ -1018,6 +1309,14 @@ function isAmazonAuthPath(value) {
   return /amazon\.[^/]+\/ap\//i.test(value || "");
 }
 
+function isAmazonPage(value) {
+  try {
+    return /(?:^|\.)amazon\.[^.]+$/i.test(new URL(value || "").hostname);
+  } catch {
+    return false;
+  }
+}
+
 function isAmazonCheckoutPath(value) {
   const input = value || "";
   return /(?:amazon\.[^/]+)?\/(?:gp\/buy|checkout|buy\/|gp\/buyagain|payselect|gp\/payselect|gp\/buy\/spc|gp\/buy\/payselect|gp\/buy\/addressselect|gp\/buy\/shipoptionselect|gp\/buy\/signin)/i.test(
@@ -1029,6 +1328,11 @@ function normalizeRewardlyHost(value) {
   return String(value || "")
     .replace(/^(?:www|m)\./i, "")
     .toLowerCase();
+}
+
+function isRewardlySupportedHost(value) {
+  const host = normalizeRewardlyHost(value);
+  return REWARDLY_SUPPORTED_HOSTS.includes(host);
 }
 
 function findRewardlyMerchant(host, text) {

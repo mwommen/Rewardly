@@ -70,6 +70,51 @@ describe("checkout detection", () => {
     expect(result.shouldTriggerRecommendation).toBe(true);
   });
 
+  test("keeps local Amazon checkout harness enabled", () => {
+    const result = detectCheckout({
+      url: "http://localhost:5173/demo-checkout-amazon.html",
+      pathname: "/demo-checkout-amazon.html",
+      title: "Amazon Checkout - Payment",
+      visibleText:
+        "Choose a payment method. Use this payment method. Review your order.",
+      hasPaymentForm: true,
+      hasOrderSummary: true,
+    });
+
+    expect(result.stage).toBe("payment");
+    expect(result.shouldTriggerRecommendation).toBe(true);
+  });
+
+  test("suppresses Amazon product pages even when generic payment text exists", () => {
+    const result = detectCheckout({
+      url: "https://www.amazon.com/dp/B0TEST1234",
+      pathname: "/dp/B0TEST1234",
+      title: "Amazon.com: Example Product",
+      visibleText:
+        "Add to Cart Buy Now Secure transaction Payment options Returns and support",
+      hasPaymentForm: true,
+      hasOrderSummary: false,
+    });
+
+    expect(result.stage).toBe("unknown");
+    expect(result.shouldTriggerRecommendation).toBe(false);
+  });
+
+  test("suppresses Amazon home and search pages with checkout-like footer text", () => {
+    const result = detectCheckout({
+      url: "https://www.amazon.com/s?k=water+bottle",
+      pathname: "/s",
+      title: "Amazon Search",
+      visibleText:
+        "Results Add to cart Your payment information Shipping rates Conditions of use",
+      hasPaymentForm: false,
+      hasOrderSummary: false,
+    });
+
+    expect(result.stage).toBe("unknown");
+    expect(result.shouldTriggerRecommendation).toBe(false);
+  });
+
   test("suppresses Amazon sign-in pages during checkout redirect", () => {
     const result = detectCheckout({
       url: "https://www.amazon.com/ap/signin?openid.return_to=https%3A%2F%2Fwww.amazon.com%2Fgp%2Fbuy%2Fspc",

@@ -60,6 +60,7 @@ export function detectCheckout(
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
+  const route = [input.url, input.pathname].filter(Boolean).join(" ");
   const path = input.pathname || input.url;
 
   if (
@@ -95,7 +96,7 @@ export function detectCheckout(
     };
   }
 
-  if (isAmazonCheckoutPath(path)) {
+  if (isAmazonCheckoutPath(route)) {
     return {
       isCheckout: true,
       stage:
@@ -104,6 +105,15 @@ export function detectCheckout(
           : "checkout",
       confidence: input.hasPaymentForm ? 0.92 : 0.78,
       shouldTriggerRecommendation: true,
+    };
+  }
+
+  if (isAmazonPage(input.url)) {
+    return {
+      isCheckout: false,
+      stage: "unknown",
+      confidence: 0.88,
+      shouldTriggerRecommendation: false,
     };
   }
 
@@ -164,6 +174,14 @@ function isSignInPath(value?: string | null) {
 
 function isAmazonAuthPath(value?: string | null) {
   return /amazon\.[^/]+\/ap\//i.test(value || "");
+}
+
+function isAmazonPage(value?: string | null) {
+  try {
+    return /(?:^|\.)amazon\.[^.]+$/i.test(new URL(value || "").hostname);
+  } catch {
+    return false;
+  }
 }
 
 function isAmazonCheckoutPath(value?: string | null) {

@@ -7,6 +7,9 @@ type CardOverride = {
   annualFee?: number | null;
   apr?: string | null;
   sourceUrl?: string;
+  sourceType?: BenefitsPayload["sourceType"];
+  lastVerified?: string;
+  productionEligible?: boolean;
   rewardsByCategory?: Record<string, number>;
   perks?: string[];
   signupOffer?: string | null;

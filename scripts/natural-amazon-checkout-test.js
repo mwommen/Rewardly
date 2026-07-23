@@ -13,7 +13,7 @@ const outputPath = path.join(
   "natural-amazon-checkout-result.json",
 );
 
-const apiBase = process.env.REWARDLY_API_BASE || "http://localhost:5011";
+const apiBase = process.env.REWARDLY_API_BASE || "http://localhost:5001";
 const userId = process.env.REWARDLY_USER_ID || "manualTestUser";
 const walletCardSlugs = (
   process.env.REWARDLY_WALLET_CARDS || "amex-platinum"

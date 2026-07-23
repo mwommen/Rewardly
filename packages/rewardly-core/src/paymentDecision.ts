@@ -81,12 +81,14 @@ export function buildRecommendation(params: {
   card: Card;
   primaryReason: DecisionReason;
   rewardEstimate?: Recommendation["rewardEstimate"];
+  confidence?: Recommendation["confidence"];
   unlockedBenefits?: BenefitMatch[];
 }): Recommendation {
   return {
     card: params.card,
     primaryReason: params.primaryReason,
     rewardEstimate: params.rewardEstimate,
+    confidence: params.confidence,
     unlockedBenefits: params.unlockedBenefits || [],
   };
 }
@@ -103,6 +105,12 @@ export function benefitFromLabel(
 }
 
 function confidenceFromRecommendation(recommendation: Recommendation) {
+  if (recommendation.confidence) {
+    return {
+      score: recommendation.confidence.score,
+      label: recommendation.confidence.label,
+    };
+  }
   const hasBenefit = recommendation.unlockedBenefits.length > 0;
   const hasRewardRate = Boolean(recommendation.rewardEstimate?.effectiveRate);
   if (hasBenefit && hasRewardRate)

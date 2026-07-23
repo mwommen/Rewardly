@@ -73,7 +73,86 @@ export type PurchaseContext = {
   checkoutStage?: CheckoutStage;
   amount?: number | null;
   currency?: string;
+  purchase?: Purchase | null;
   timestamp?: string;
+};
+
+export type PurchaseConfidenceLabel = "high" | "medium" | "low" | "unknown";
+
+export type PurchaseCategory =
+  | "apparel"
+  | "digital_goods"
+  | "electronics"
+  | "fuel"
+  | "gift_card"
+  | "groceries"
+  | "home_improvement"
+  | "pharmacy"
+  | "restaurant"
+  | "subscription"
+  | "technology_purchase"
+  | "travel"
+  | "unknown";
+
+export type PurchaseItem = {
+  itemId: string;
+  name: string;
+  quantity: number;
+  price: number | null;
+  category: string | null;
+  merchantCategory: string | null;
+  normalizedCategory: PurchaseCategory;
+  recommendationCategory: string;
+  brand: string | null;
+  digitalOrPhysical: "digital" | "physical" | "mixed" | "unknown";
+  exclusions: string[];
+  confidence: number;
+};
+
+export type Purchase = {
+  purchaseId: string;
+  merchantId: string | null;
+  subtotal: number | null;
+  tax: number | null;
+  shipping: number | null;
+  discounts: number | null;
+  total: number | null;
+  currency: string;
+  checkoutProvider: string | null;
+  confidence: {
+    score: number;
+    label: PurchaseConfidenceLabel;
+  };
+  items: PurchaseItem[];
+  categoryDistribution: Array<{
+    normalizedCategory: PurchaseCategory;
+    itemCount: number;
+    estimatedAmount: number | null;
+    share: number;
+  }>;
+  exclusions: string[];
+  extractedAt: string;
+};
+
+export type RecommendationPurchaseContext = {
+  dominantCategory: PurchaseCategory | null;
+  categoryDistribution: Array<{
+    normalizedCategory: PurchaseCategory;
+    estimatedAmount: number | null;
+    share: number;
+  }>;
+  exclusions: string[];
+  confidenceScore: number;
+  confidenceLabel: PurchaseConfidenceLabel;
+  hasGiftCard: boolean;
+  hasCashEquivalent: boolean;
+  hasDigitalGoods: boolean;
+  hasSubscription: boolean;
+  total: number | null;
+  eligibleAmount: number | null;
+  materiallyMixed: boolean;
+  mixedCartThreshold: number;
+  refinement: "purchase_refined" | "merchant_based" | "low_confidence_fallback" | "mixed_cart_fallback";
 };
 
 export type PaymentContext = {
@@ -105,6 +184,12 @@ export type Recommendation = {
     effectiveRate?: number;
     estimatedValueUSD?: number;
   };
+  confidence?: {
+    score: number;
+    label: "high" | "medium" | "low";
+    factors?: Record<string, number>;
+    reasons?: string[];
+  };
   unlockedBenefits: BenefitMatch[];
 };
 
@@ -123,4 +208,7 @@ export type PaymentDecision = {
   merchant: Merchant;
   wallet: Pick<Wallet, "userId" | "source" | "cardSlugs">;
   generatedAt: string;
+  purchase?: Purchase | null;
+  recommendationPurchaseContext?: RecommendationPurchaseContext | null;
+  decisionExplanation?: unknown;
 };

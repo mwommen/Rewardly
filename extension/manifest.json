@@ -6,7 +6,13 @@
   "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": [
     "http://localhost:5001/*",
-    "<all_urls>"
+    "http://localhost/*",
+    "https://amazon.com/*",
+    "https://www.amazon.com/*",
+    "https://smile.amazon.com/*",
+    "https://www.lululemon.com/*",
+    "https://shop.lululemon.com/*",
+    "https://checkout.lululemon.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -14,7 +20,13 @@
   "content_scripts": [
     {
       "matches": [
-        "<all_urls>"
+        "http://localhost/*",
+        "https://amazon.com/*",
+        "https://www.amazon.com/*",
+        "https://smile.amazon.com/*",
+        "https://www.lululemon.com/*",
+        "https://shop.lululemon.com/*",
+        "https://checkout.lululemon.com/*"
       ],
       "js": ["content.js"],
       "run_at": "document_idle"
@@ -27,7 +39,15 @@
   "web_accessible_resources": [
     {
       "resources": ["assets/card-logos/*"],
-      "matches": ["<all_urls>"]
+      "matches": [
+        "http://localhost/*",
+        "https://amazon.com/*",
+        "https://www.amazon.com/*",
+        "https://smile.amazon.com/*",
+        "https://www.lululemon.com/*",
+        "https://shop.lululemon.com/*",
+        "https://checkout.lululemon.com/*"
+      ]
     }
   ]
 }

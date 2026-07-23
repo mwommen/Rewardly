@@ -1,6 +1,6 @@
 import {
-  recommendAllBenefits,
-  recommendBestCards,
+  recommendAllBenefits as recommendAllBenefitsRaw,
+  recommendBestCards as recommendBestCardsRaw,
 } from "../src/services/recommendationService";
 
 // --- Correct mocks for your current structure ---
@@ -25,6 +25,7 @@ jest.mock("../src/utils/valuation", () => ({
 }));
 
 import { getDb } from "../src/db";
+import { canonicalizeWalletBenefitState } from "../src/services/walletIntelligenceService";
 import { inferCategories } from "../src/utils/category";
 
 const mockedGetDb = getDb as jest.MockedFunction<typeof getDb>;
@@ -33,6 +34,17 @@ const mockedInferCategories = inferCategories as jest.MockedFunction<
 >;
 
 type Card = any;
+const recommendAllBenefits = (opts: any) =>
+  recommendAllBenefitsRaw({
+    ...opts,
+    scoringMode: opts.scoringMode || "compatibility",
+  });
+const recommendBestCards = (opts: any) =>
+  recommendBestCardsRaw({
+    ...opts,
+    scoringMode: opts.scoringMode || "compatibility",
+  });
+
 function makeDb(cards: Card[]) {
   return {
     collection: () => ({
@@ -133,7 +145,7 @@ describe("recommendationService", () => {
     const out = await recommendAllBenefits({ merchant: "Cafe", amount: 50 });
     const offer = out.offers[0];
     expect(offer.effectiveRate).toBeCloseTo(0.06, 5); // 4x * 1.5cpp
-    expect(offer.reason).toMatch(/array match/i);
+    expect(offer.reason).toMatch(/4x on restaurants/i);
   });
 
   test("applies rotating categories only when active and adjusts confidence", async () => {
@@ -144,6 +156,9 @@ describe("recommendationService", () => {
           name: "Card C",
           issuer: "Discover",
           annualFee: 0,
+          sourceUrl: "https://issuer.example/card-c",
+          lastVerified: "2025-01-01T00:00:00.000Z",
+          productionEligible: true,
           rewardsRotating: [
             {
               start: "2025-01-01",
@@ -163,11 +178,27 @@ describe("recommendationService", () => {
     const out = await recommendAllBenefits({
       merchant: "Supermarket",
       amount: 100,
+      scoringMode: "strict_production",
+      activatedBenefitIds: ["card-c:rotating:groceries:5"],
+      knownActivationBenefitIds: ["card-c:rotating:groceries:5"],
+      walletBenefitStates: [
+        canonicalizeWalletBenefitState({
+          userId: "u1",
+          cardSlug: "card-c",
+          benefitId: "card-c:rotating:groceries:5",
+          enrollmentStatus: "not_required",
+          activationStatus: "activated",
+          remainingSpendCap: 1500,
+          cycleSpendLimit: 1500,
+          cycleFrequency: "quarterly",
+          confidenceSource: "user_verified",
+        }),
+      ],
     });
     const offer = out.offers[0];
     expect(offer.effectiveRate).toBeCloseTo(0.05, 5);
     expect(offer.reason).toMatch(/rotating/i);
-    expect(offer.confidence).toBeLessThan(0.6);
+    expect(offer.confidence).toBeGreaterThan(0.6);
   });
 
   test("filters out zero-rate cards unless they include perks or signup offer", async () => {
@@ -267,12 +298,18 @@ describe("recommendationService", () => {
           name: "Amex Platinum",
           issuer: "American Express",
           annualFee: 695,
+          sourceUrl: "https://issuer.example/platinum",
+          lastVerified: "2025-01-01T00:00:00.000Z",
+          productionEligible: true,
           merchantCredits: [
             {
+              id: "lululemon-credit",
               label: "$75 statement credit at lululemon each quarter",
               amountUSD: 75,
               period: "quarter",
               eligibleWhen: { merchantPatterns: ["lululemon"] },
+              sourceUrl: "https://issuer.example/platinum/lululemon",
+              confidence: 0.95,
             },
           ],
         },
@@ -434,7 +471,11 @@ describe("recommendationService", () => {
       allowedCardSlugs: [],
     });
 
-    expect(out.recommendations).toEqual([]);
+    expect(
+      out.recommendations.some(
+        (recommendation: any) => recommendation.matchTier === "exact_benefit",
+      ),
+    ).toBe(false);
   });
 
   test("omitting allowedCardSlugs still scores the full catalog for demo/search flows", async () => {
@@ -466,6 +507,544 @@ describe("recommendationService", () => {
     );
     expect(out.recommendations.map((card: any) => card.slug)).toContain(
       "chase-sapphire-reserve",
+    );
+  });
+
+  test("expired merchant benefit cannot create an exact-benefit recommendation", async () => {
+    mockedGetDb.mockResolvedValueOnce(
+      makeDb([
+        {
+          slug: "expired-credit-card",
+          name: "Expired Credit Card",
+          issuer: "Issuer",
+          sourceUrl: "https://issuer.example/card",
+          lastVerified: "2025-01-01T00:00:00.000Z",
+          productionEligible: true,
+          merchantCredits: [
+            {
+              id: "expired-lululemon",
+              label: "$75 statement credit at lululemon",
+              amountUSD: 75,
+              period: "quarter",
+              eligibleWhen: { merchantPatterns: ["lululemon"] },
+              expiresAt: "2024-12-31T00:00:00.000Z",
+              sourceUrl: "https://issuer.example/card",
+              confidence: 0.95,
+            },
+          ],
+        },
+        {
+          slug: "flat-2",
+          name: "Flat 2",
+          issuer: "Other",
+          rewardsFlat: [{ rate: 2, unit: "cash" }],
+        },
+      ] as Card[]),
+    );
+    mockedInferCategories.mockReturnValue(["apparel"]);
+
+    const out = await recommendBestCards({
+      merchant: "lululemon",
+      amount: 100,
+      scoringMode: "strict_production",
+    });
+
+    expect(out.recommendations).toEqual([]);
+    expect(
+      out.recommendations.some(
+        (recommendation: any) =>
+          recommendation.slug === "expired-credit-card" &&
+          recommendation.matchTier === "exact_benefit",
+      ),
+    ).toBe(false);
+  });
+
+  test("unapproved merchant benefit cannot create a fabricated special-benefit match", async () => {
+    mockedGetDb.mockResolvedValueOnce(
+      makeDb([
+        {
+          slug: "review-card",
+          name: "Review Card",
+          issuer: "Issuer",
+          merchantCredits: [
+            {
+              id: "review-lululemon",
+              label: "$75 statement credit at lululemon",
+              amountUSD: 75,
+              period: "quarter",
+              eligibleWhen: { merchantPatterns: ["lululemon"] },
+              confidence: 0.95,
+            },
+          ],
+        },
+      ] as Card[]),
+    );
+    mockedInferCategories.mockReturnValue(["apparel"]);
+
+    const out = await recommendBestCards({
+      merchant: "lululemon",
+      amount: 100,
+      scoringMode: "strict_production",
+    });
+
+    expect(
+      out.recommendations.some(
+        (recommendation: any) => recommendation.matchTier === "exact_benefit",
+      ),
+    ).toBe(false);
+  });
+
+  test("recommendation explanation references the benefit that won scoring", async () => {
+    mockedGetDb.mockResolvedValueOnce(
+      makeDb([
+        {
+          slug: "approved-credit-card",
+          name: "Approved Credit Card",
+          issuer: "Issuer",
+          sourceUrl: "https://issuer.example/card",
+          lastVerified: "2025-01-01T00:00:00.000Z",
+          productionEligible: true,
+          merchantCredits: [
+            {
+              id: "lululemon-credit",
+              label: "$75 statement credit at lululemon",
+              amountUSD: 75,
+              period: "quarter",
+              eligibleWhen: { merchantPatterns: ["lululemon"] },
+              sourceUrl: "https://issuer.example/card",
+              confidence: 0.95,
+            },
+          ],
+        },
+      ] as Card[]),
+    );
+    mockedInferCategories.mockReturnValue(["apparel"]);
+
+    const out = await recommendBestCards({
+      merchant: "lululemon",
+      amount: 100,
+    });
+
+    expect(out.recommendations[0]).toEqual(
+      expect.objectContaining({
+        matchTier: "exact_benefit",
+        matchedBenefit: "$75 statement credit at lululemon",
+      }),
+    );
+    expect(out.recommendations[0].why).toEqual(
+      expect.arrayContaining([
+        "Benefit: $75 statement credit at lululemon",
+      ]),
+    );
+  });
+
+  test("unverified flat reward cannot win in strict production mode", async () => {
+    mockedGetDb.mockResolvedValueOnce(
+      makeDb([
+        {
+          slug: "unverified-flat",
+          name: "Unverified Flat",
+          issuer: "Other",
+          rewardsFlat: [{ rate: 10, unit: "cash" }],
+          sourceUrl: "https://issuer.example/unverified",
+          lastScraped: "2025-01-01T00:00:00.000Z",
+        },
+        {
+          slug: "verified-flat",
+          name: "Verified Flat",
+          issuer: "Other",
+          rewardsFlat: [{ rate: 1, unit: "cash" }],
+          sourceUrl: "https://issuer.example/verified",
+          lastVerified: "2025-01-01T00:00:00.000Z",
+          productionEligible: true,
+        },
+      ] as Card[]),
+    );
+    mockedInferCategories.mockReturnValue(["other"]);
+
+    const out = await recommendBestCards({
+      merchant: "Amazon",
+      amount: 100,
+      scoringMode: "strict_production",
+    });
+
+    expect(out.recommendations.map((card: any) => card.slug)).toEqual([
+      "verified-flat",
+    ]);
+  });
+
+  test("unverified category reward cannot win in strict production mode", async () => {
+    mockedGetDb.mockResolvedValueOnce(
+      makeDb([
+        {
+          slug: "unverified-category",
+          name: "Unverified Category",
+          issuer: "Other",
+          rewardsByCategory: { restaurants: "10%" },
+          sourceUrl: "https://issuer.example/unverified",
+          lastScraped: "2025-01-01T00:00:00.000Z",
+        },
+        {
+          slug: "verified-category",
+          name: "Verified Category",
+          issuer: "Other",
+          rewardsByCategory: { restaurants: "3%" },
+          sourceUrl: "https://issuer.example/verified",
+          lastVerified: "2025-01-01T00:00:00.000Z",
+          productionEligible: true,
+        },
+      ] as Card[]),
+    );
+    mockedInferCategories.mockReturnValue(["restaurants"]);
+
+    const out = await recommendBestCards({
+      merchant: "Diner",
+      amount: 100,
+      scoringMode: "strict_production",
+    });
+
+    expect(out.recommendations[0]).toEqual(
+      expect.objectContaining({
+        slug: "verified-category",
+        matchTier: "category_match",
+        lastVerified: "2025-01-01T00:00:00.000Z",
+        sourceUrl: "https://issuer.example/verified",
+      }),
+    );
+  });
+
+  test("unverified rotating reward cannot win in strict production mode", async () => {
+    mockedGetDb.mockResolvedValueOnce(
+      makeDb([
+        {
+          slug: "unverified-rotating",
+          name: "Unverified Rotating",
+          issuer: "Other",
+          rewardsRotating: [
+            {
+              start: "2025-01-01",
+              end: "2025-03-31",
+              categories: [{ keys: ["groceries"], rate: "10%", unit: "cash" }],
+            },
+          ],
+          sourceUrl: "https://issuer.example/unverified",
+          lastScraped: "2025-01-01T00:00:00.000Z",
+        },
+        {
+          slug: "verified-rotating",
+          name: "Verified Rotating",
+          issuer: "Other",
+          rewardsRotating: [
+            {
+              start: "2025-01-01",
+              end: "2025-03-31",
+              categories: [{ keys: ["groceries"], rate: "5%", unit: "cash" }],
+            },
+          ],
+          sourceUrl: "https://issuer.example/verified",
+          lastVerified: "2025-01-01T00:00:00.000Z",
+          productionEligible: true,
+        },
+      ] as Card[]),
+    );
+    mockedInferCategories.mockReturnValue(["groceries"]);
+
+    const out = await recommendBestCards({
+      merchant: "Supermarket",
+      amount: 100,
+      scoringMode: "strict_production",
+    });
+
+    expect(out.recommendations[0].slug).toBe("verified-rotating");
+  });
+
+  test("recently observed but unverified benefit remains ineligible in strict production mode", async () => {
+    mockedGetDb.mockResolvedValueOnce(
+      makeDb([
+        {
+          slug: "observed-card",
+          name: "Observed Card",
+          issuer: "Other",
+          rewardsByCategory: { restaurants: "10%" },
+          sourceUrl: "https://issuer.example/observed",
+          lastScraped: "2025-01-15T00:00:00.000Z",
+          productionEligible: true,
+        },
+      ] as Card[]),
+    );
+    mockedInferCategories.mockReturnValue(["restaurants"]);
+
+    const out = await recommendBestCards({
+      merchant: "Diner",
+      amount: 100,
+      scoringMode: "strict_production",
+    });
+
+    expect(out.recommendations).toEqual([]);
+  });
+
+  test("strict Lululemon exact benefit requires known enrolled state", async () => {
+    mockedGetDb.mockResolvedValueOnce(
+      makeDb([
+        {
+          slug: "amex-platinum",
+          name: "Amex Platinum",
+          issuer: "American Express",
+          sourceUrl: "https://issuer.example/platinum",
+          lastVerified: "2025-01-01T00:00:00.000Z",
+          productionEligible: true,
+          merchantCredits: [
+            {
+              id: "lululemon-credit",
+              label: "$75 statement credit at lululemon",
+              amountUSD: 75,
+              period: "quarter",
+              eligibleWhen: { merchantPatterns: ["lululemon"] },
+              requiresEnrollment: true,
+              sourceUrl: "https://issuer.example/platinum/lululemon",
+              confidence: 0.95,
+            },
+          ],
+        },
+      ] as Card[]),
+    );
+    mockedInferCategories.mockReturnValue(["apparel"]);
+
+    const benefitId = "amex-platinum:merchant-credit:lululemon-credit";
+    const out = await recommendBestCards({
+      merchant: "lululemon",
+      amount: 100,
+      scoringMode: "strict_production",
+      enrolledBenefitIds: [benefitId],
+      knownEnrollmentBenefitIds: [benefitId],
+      walletBenefitStates: [
+        canonicalizeWalletBenefitState({
+          userId: "u1",
+          cardSlug: "amex-platinum",
+          benefitId,
+          enrollmentStatus: "enrolled",
+          activationStatus: "not_required",
+          remainingValue: 75,
+          cycleValueLimit: 75,
+          cycleFrequency: "quarterly",
+          confidenceSource: "user_verified",
+        }),
+      ],
+    });
+
+    expect(out.recommendations[0]).toEqual(
+      expect.objectContaining({
+        slug: "amex-platinum",
+        matchTier: "exact_benefit",
+        matchedBenefitId: benefitId,
+        sourceUrl: "https://issuer.example/platinum/lululemon",
+        lastVerified: "2025-01-01T00:00:00.000Z",
+      }),
+    );
+  });
+
+  test("high-confidence purchase context can refine recommendation categories", async () => {
+    mockedGetDb.mockResolvedValueOnce(
+      makeDb([
+        {
+          slug: "flat-card",
+          name: "Flat Card",
+          issuer: "Other",
+          rewardsFlat: [{ rate: 2, unit: "cash" }],
+        },
+        {
+          slug: "grocery-card",
+          name: "Grocery Card",
+          issuer: "Other",
+          rewardsByCategory: { groceries: "5%" },
+        },
+      ] as Card[]),
+    );
+    mockedInferCategories.mockReturnValue(["online_shopping"]);
+
+    const out = await recommendBestCards({
+      merchant: "Amazon",
+      amount: 100,
+      recommendationPurchaseContext: {
+        dominantCategory: "groceries",
+        categoryDistribution: [
+          { normalizedCategory: "groceries", estimatedAmount: 100, share: 1 },
+        ],
+        exclusions: [],
+        confidenceScore: 0.9,
+        confidenceLabel: "high",
+        hasGiftCard: false,
+        hasCashEquivalent: false,
+        hasDigitalGoods: false,
+        hasSubscription: false,
+        total: 100,
+        eligibleAmount: 100,
+        materiallyMixed: false,
+        mixedCartThreshold: 0.2,
+        refinement: "purchase_refined",
+      },
+    });
+
+    expect(out.recommendations[0].slug).toBe("grocery-card");
+    expect(out.categoriesUsed).toEqual(expect.arrayContaining(["groceries"]));
+    expect(out.recommendations[0].explanationEvidence.scoring).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "purchase_context" }),
+      ]),
+    );
+  });
+
+  test("low-confidence purchase context does not alter merchant-based ranking", async () => {
+    mockedGetDb.mockResolvedValueOnce(
+      makeDb([
+        {
+          slug: "flat-card",
+          name: "Flat Card",
+          issuer: "Other",
+          rewardsFlat: [{ rate: 2, unit: "cash" }],
+        },
+        {
+          slug: "grocery-card",
+          name: "Grocery Card",
+          issuer: "Other",
+          rewardsByCategory: { groceries: "5%" },
+        },
+      ] as Card[]),
+    );
+    mockedInferCategories.mockReturnValue(["online_shopping"]);
+
+    const out = await recommendBestCards({
+      merchant: "Amazon",
+      amount: 100,
+      recommendationPurchaseContext: {
+        dominantCategory: "groceries",
+        categoryDistribution: [
+          { normalizedCategory: "groceries", estimatedAmount: 100, share: 1 },
+        ],
+        exclusions: [],
+        confidenceScore: 0.35,
+        confidenceLabel: "low",
+        hasGiftCard: false,
+        hasCashEquivalent: false,
+        hasDigitalGoods: false,
+        hasSubscription: false,
+        total: 100,
+        eligibleAmount: 100,
+        materiallyMixed: false,
+        mixedCartThreshold: 0.2,
+        refinement: "low_confidence_fallback",
+      },
+    });
+
+    expect(out.recommendations[0].slug).toBe("flat-card");
+    expect(out.categoriesUsed).not.toContain("groceries");
+    expect(out.recommendations[0].explanationEvidence.missingInformation).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "LOW_PURCHASE_CONFIDENCE" }),
+      ]),
+    );
+  });
+
+  test("mixed carts preserve merchant ranking and surface a warning", async () => {
+    mockedGetDb.mockResolvedValueOnce(
+      makeDb([
+        {
+          slug: "online-card",
+          name: "Online Card",
+          issuer: "Other",
+          rewardsByCategory: { online_shopping: "4%" },
+        },
+        {
+          slug: "grocery-card",
+          name: "Grocery Card",
+          issuer: "Other",
+          rewardsByCategory: { groceries: "5%" },
+        },
+      ] as Card[]),
+    );
+    mockedInferCategories.mockReturnValue(["online_shopping"]);
+
+    const out = await recommendBestCards({
+      merchant: "Amazon",
+      amount: 100,
+      recommendationPurchaseContext: {
+        dominantCategory: "groceries",
+        categoryDistribution: [
+          { normalizedCategory: "groceries", estimatedAmount: 60, share: 0.6 },
+          { normalizedCategory: "electronics", estimatedAmount: 40, share: 0.4 },
+        ],
+        exclusions: [],
+        confidenceScore: 0.88,
+        confidenceLabel: "high",
+        hasGiftCard: false,
+        hasCashEquivalent: false,
+        hasDigitalGoods: false,
+        hasSubscription: false,
+        total: 100,
+        eligibleAmount: 100,
+        materiallyMixed: true,
+        mixedCartThreshold: 0.2,
+        refinement: "mixed_cart_fallback",
+      },
+    });
+
+    expect(out.recommendations[0].slug).toBe("online-card");
+    expect(out.categoriesUsed).not.toContain("groceries");
+    expect(out.recommendations[0].explanationEvidence.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "MIXED_CART_LIMITATION" }),
+      ]),
+    );
+  });
+
+  test("excluded gift-card spend cannot create bonus-category value", async () => {
+    mockedGetDb.mockResolvedValueOnce(
+      makeDb([
+        {
+          slug: "online-card",
+          name: "Online Card",
+          issuer: "Other",
+          rewardsByCategory: { online_shopping: "5%" },
+        },
+        {
+          slug: "flat-card",
+          name: "Flat Card",
+          issuer: "Other",
+          rewardsFlat: [{ rate: 2, unit: "cash" }],
+        },
+      ] as Card[]),
+    );
+    mockedInferCategories.mockReturnValue(["online_shopping"]);
+
+    const out = await recommendBestCards({
+      merchant: "Amazon",
+      amount: 100,
+      recommendationPurchaseContext: {
+        dominantCategory: "gift_card",
+        categoryDistribution: [
+          { normalizedCategory: "gift_card", estimatedAmount: 100, share: 1 },
+        ],
+        exclusions: ["gift_card"],
+        confidenceScore: 0.95,
+        confidenceLabel: "high",
+        hasGiftCard: true,
+        hasCashEquivalent: false,
+        hasDigitalGoods: false,
+        hasSubscription: false,
+        total: 100,
+        eligibleAmount: 0,
+        materiallyMixed: true,
+        mixedCartThreshold: 0.2,
+        refinement: "mixed_cart_fallback",
+      },
+    });
+
+    expect(out.recommendations[0].slug).toBe("flat-card");
+    expect(out.recommendations[0].estValueUSD).toBe(0);
+    expect(out.recommendations[0].explanationEvidence.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "PURCHASE_EXCLUSIONS_APPLIED" }),
+      ]),
     );
   });
 });

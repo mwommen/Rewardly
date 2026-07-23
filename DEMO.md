@@ -27,6 +27,7 @@ Start the API:
 
 ```bash
 cd backend
+REWARDLY_ALLOW_DEV_OVERRIDES=true \
 npm run dev
 ```
 
@@ -79,6 +80,11 @@ Add cards for local testing. Recommended:
 - Capital One Venture X
 
 Click Save wallet.
+
+Local manual wallet selection is intentionally gated by
+`REWARDLY_ALLOW_DEV_OVERRIDES=true`. Private beta builds should use a
+server-issued beta session token and a server-side saved wallet instead of
+trusting client-provided wallet slugs.
 
 ## Open Demo Checkout
 
@@ -176,6 +182,21 @@ http://localhost:5173/demo-checkout-lululemon.html
 ```
 
 Use this when testing the Amex Platinum Lululemon credit. The Amazon harness is the primary local test for the extension-first checkout moment.
+
+## Phase 1 Extension Match Patterns
+
+The unpacked extension is intentionally limited to the current Phase 1 test
+surface:
+
+- `http://localhost/*`
+- `https://amazon.com/*`
+- `https://www.amazon.com/*`
+- `https://smile.amazon.com/*`
+- `https://www.lululemon.com/*`
+- `https://shop.lululemon.com/*`
+- `https://checkout.lululemon.com/*`
+
+It should not inject on unrelated websites during beta testing.
 
 ## Troubleshooting
 

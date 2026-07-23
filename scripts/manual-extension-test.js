@@ -27,7 +27,7 @@ async function main() {
       new Promise((resolve) => {
         chrome.storage.sync.set(
           {
-            API_BASE: "http://localhost:5011",
+            API_BASE: "http://localhost:5001",
             USER_ID: "manualTestUser",
             MANUAL_CARD_SLUGS: ["amex-platinum"],
             DEBUG_LOGS: true,

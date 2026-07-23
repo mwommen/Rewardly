@@ -7,6 +7,7 @@ import {
   type Card,
   type DecisionReason,
   type PaymentDecision,
+  type RecommendationPurchaseContext,
   type PurchaseContext,
   type Recommendation,
 } from "../../../packages/rewardly-core/src";
@@ -19,6 +20,14 @@ import {
   type ResolveMerchantInput,
 } from "./merchantDetectionService";
 import { resolveUserWallet } from "./walletService";
+import {
+  explainRecommendationDecision,
+  persistDecisionAuditRecord,
+  type DecisionEvidenceItem,
+  type DecisionWarning,
+  type MissingInformation,
+} from "./decisionIntelligenceService";
+import { toRecommendationPurchaseContext } from "./purchaseIntelligenceService";
 
 export type PaymentDecisionRequest = ResolveMerchantInput & {
   userId?: string;
@@ -39,6 +48,24 @@ type ExistingRecommendation = {
   matchedBenefit?: string | null;
   annualFee?: number;
   lastVerified?: string | null;
+  intelligenceConfidence?: {
+    score: number;
+    label: "high" | "medium" | "low";
+    factors?: Record<string, number>;
+    reasons?: string[];
+  };
+  matchedBenefitId?: string | null;
+  walletEvidence?: unknown[];
+  purchaseRefinement?: RecommendationPurchaseContext["refinement"] | "none";
+  recommendationPurchaseContext?: RecommendationPurchaseContext | null;
+  explanationEvidence?: {
+    merchant?: DecisionEvidenceItem[];
+    benefit?: DecisionEvidenceItem[];
+    wallet?: DecisionEvidenceItem[];
+    scoring?: DecisionEvidenceItem[];
+    missingInformation?: MissingInformation[];
+    warnings?: DecisionWarning[];
+  };
 };
 
 type ExistingOffer = {
@@ -60,29 +87,73 @@ export async function decidePayment(
   });
 
   if (!wallet.cards.length) {
-    return createEmptyPaymentDecision(
+    const purchase = request.purchaseContext?.purchase || null;
+    const recommendationPurchaseContext = purchase
+      ? toRecommendationPurchaseContext(purchase)
+      : null;
+    const decision = createEmptyPaymentDecision(
       wallet,
       merchant,
       "Add cards to your wallet to get personalized recommendations.",
     );
+    const explanation = explainRecommendationDecision({
+      userId,
+      merchant,
+      wallet: {
+        source: wallet.source,
+        cardSlugs: wallet.cardSlugs,
+        benefitStates: wallet.benefitStates as any,
+      },
+      recommendations: [],
+      generatedAt: decision.generatedAt,
+    });
+    persistDecisionAuditRecord(explanation);
+    return {
+      ...decision,
+      purchase,
+      recommendationPurchaseContext,
+      decisionExplanation: explanation,
+    };
   }
 
   const restrictToWallet = request.restrictToWallet ?? true;
   const allowedCardSlugs = restrictToWallet ? wallet.cardSlugs : undefined;
+  const enrollmentState = benefitEnrollmentState(wallet.benefitStates);
+  const purchase = request.purchaseContext?.purchase || null;
+  const recommendationPurchaseContext = purchase
+    ? toRecommendationPurchaseContext(purchase)
+    : null;
+  const amount = request.amount ?? recommendationPurchaseContext?.total ?? undefined;
 
   const [bestResult, offerResult] = await Promise.all([
     recommendBestCards({
       merchant: merchant.name,
-      amount: request.amount,
+      amount,
       mcc: merchant.mcc || request.mcc || undefined,
       allowedCardSlugs,
+      merchantConfidence: merchant.confidence,
+      scoringMode: "strict_production",
+      enrolledBenefitIds: enrollmentState.enrolledBenefitIds,
+      activatedBenefitIds: enrollmentState.activatedBenefitIds,
+      knownEnrollmentBenefitIds: enrollmentState.knownEnrollmentBenefitIds,
+      knownActivationBenefitIds: enrollmentState.knownActivationBenefitIds,
+      walletBenefitStates: wallet.benefitStates as any,
+      recommendationPurchaseContext,
     }),
     recommendAllBenefits({
       merchant: merchant.name,
-      amount: request.amount,
+      amount,
       mcc: merchant.mcc || request.mcc || undefined,
       minRate: -1,
       allowedCardSlugs,
+      merchantConfidence: merchant.confidence,
+      scoringMode: "strict_production",
+      enrolledBenefitIds: enrollmentState.enrolledBenefitIds,
+      activatedBenefitIds: enrollmentState.activatedBenefitIds,
+      knownEnrollmentBenefitIds: enrollmentState.knownEnrollmentBenefitIds,
+      knownActivationBenefitIds: enrollmentState.knownActivationBenefitIds,
+      walletBenefitStates: wallet.benefitStates as any,
+      recommendationPurchaseContext,
     }),
   ]);
 
@@ -98,11 +169,74 @@ export async function decidePayment(
       toDecisionRecommendation(item, wallet.cards, offers),
     );
 
-  return createPaymentDecision({
+  const decision = createPaymentDecision({
     wallet,
     merchant,
     recommendations,
   });
+  const explanation = explainRecommendationDecision({
+    userId,
+    merchant,
+    wallet: {
+      source: wallet.source,
+      cardSlugs: wallet.cardSlugs,
+      benefitStates: wallet.benefitStates as any,
+    },
+    recommendations: bestResult.recommendations || [],
+    generatedAt: decision.generatedAt,
+  });
+  persistDecisionAuditRecord(explanation);
+  return {
+    ...decision,
+    purchase,
+    recommendationPurchaseContext,
+    decisionExplanation: explanation,
+  };
+}
+
+function benefitEnrollmentState(
+  states: Array<{
+    benefitKey?: string;
+    benefitId?: string;
+    enrolled?: boolean;
+    enrollmentStatus?: string;
+    activationStatus?: string;
+  }> = [],
+) {
+  const knownEnrollmentBenefitIds: string[] = [];
+  const enrolledBenefitIds: string[] = [];
+  const knownActivationBenefitIds: string[] = [];
+  const activatedBenefitIds: string[] = [];
+
+  for (const state of states) {
+    const key = String(state?.benefitId || state?.benefitKey || "").trim();
+    if (!key) continue;
+    if (
+      state.enrollmentStatus &&
+      !["unknown", "not_required"].includes(state.enrollmentStatus)
+    ) {
+      knownEnrollmentBenefitIds.push(key);
+    } else if (state.benefitKey) {
+      knownEnrollmentBenefitIds.push(key);
+    }
+    if (state.enrolled || state.enrollmentStatus === "enrolled") {
+      enrolledBenefitIds.push(key);
+    }
+    if (
+      state.activationStatus &&
+      !["unknown", "not_required"].includes(state.activationStatus)
+    ) {
+      knownActivationBenefitIds.push(key);
+    }
+    if (state.activationStatus === "activated") activatedBenefitIds.push(key);
+  }
+
+  return {
+    knownEnrollmentBenefitIds,
+    enrolledBenefitIds,
+    knownActivationBenefitIds,
+    activatedBenefitIds,
+  };
 }
 
 function toDecisionRecommendation(
@@ -127,6 +261,7 @@ function toDecisionRecommendation(
       effectiveRate: item.effectiveRate,
       estimatedValueUSD: item.estValueUSD,
     },
+    confidence: item.intelligenceConfidence,
     unlockedBenefits: benefitLabels
       .slice(0, 4)
       .map((label) => toBenefitMatch(label, card)),

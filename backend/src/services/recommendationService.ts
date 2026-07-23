@@ -3,8 +3,37 @@ import { inferCategories } from "../utils/category";
 import { toCashEquivalent } from "../utils/valuation";
 import { collectCreditMatches } from "../utils/merchantMatching";
 import { isLikelyJunkBenefitText } from "../scrapers/benefitsQuality";
+import {
+  canonicalizeCardBenefits,
+  type CanonicalBenefitRecord,
+  type PurchaseChannel,
+} from "./benefitIntelligenceService";
+import { isBenefitEligibleForRecommendation } from "./benefitEligibilityService";
+import { scoreRecommendationConfidence } from "./recommendationConfidenceService";
+import {
+  inheritedCategoryTokens,
+  inheritedMerchantTokens,
+  resolveMerchant as resolveMerchantIdentity,
+  type MerchantResolutionResult,
+} from "./merchantIntelligenceService";
+import {
+  applyWalletUsageToBenefitValue,
+  findWalletStateForBenefit,
+  type CanonicalWalletBenefitState,
+  type WalletBenefitUsageEvidence,
+} from "./walletIntelligenceService";
+import type {
+  DecisionEvidenceItem,
+  DecisionWarning,
+  MissingInformation,
+} from "./decisionIntelligenceService";
+import type {
+  PurchaseCategory,
+  RecommendationPurchaseContext,
+} from "../../../packages/rewardly-core/src";
 
 type MatchTier = "exact_benefit" | "category_match" | "base_rate";
+export type RecommendationScoringMode = "strict_production" | "compatibility";
 
 // ---------- Perk cleaning (strong version) ----------
 // ---------- Perk cleaning (strong version) ----------
@@ -437,6 +466,16 @@ export async function recommendAllBenefits(opts: {
   includeRotating?: boolean;
   minRate?: number; // filter out true zeros by default
   allowedCardSlugs?: string[];
+  merchantConfidence?: number;
+  scoringMode?: RecommendationScoringMode;
+  purchaseChannel?: PurchaseChannel;
+  enrolledBenefitIds?: string[];
+  activatedBenefitIds?: string[];
+  knownEnrollmentBenefitIds?: string[];
+  knownActivationBenefitIds?: string[];
+  walletBenefitStates?: CanonicalWalletBenefitState[];
+  cardsOverride?: any[];
+  recommendationPurchaseContext?: RecommendationPurchaseContext | null;
 }) {
   const {
     merchant,
@@ -445,16 +484,42 @@ export async function recommendAllBenefits(opts: {
     includeRotating = true,
     minRate = 0,
     allowedCardSlugs,
+    merchantConfidence,
+    scoringMode = "strict_production",
+    purchaseChannel = "online",
+    enrolledBenefitIds,
+    activatedBenefitIds,
+    knownEnrollmentBenefitIds,
+    knownActivationBenefitIds,
+    walletBenefitStates = [],
+    cardsOverride,
+    recommendationPurchaseContext,
   } = opts;
 
-  const db = await getDb();
-  const allCards = await db.collection("cards").find({}).toArray();
+  const allCards = cardsOverride || (await (await getDb()).collection("cards").find({}).toArray());
   const cards = filterAllowedCards(allCards, allowedCardSlugs);
 
   const baseCats = normalizeArray<string>(inferCategories(merchant, mcc)).map(
     (c) => String(c).toLowerCase(),
   );
-  const cats = expandCategories(baseCats.length ? baseCats : ["other"]);
+  const merchantResolution = resolveMerchantIdentity({
+    merchant,
+    mcc,
+    purchaseChannel,
+  });
+  const merchantCategoryTokens = inheritedCategoryTokens(merchantResolution.merchant);
+  const merchantMatchText = merchantSearchText(merchant, merchantResolution);
+  const purchaseImpact = purchaseImpactFor(recommendationPurchaseContext);
+  const cats = expandCategories(
+    Array.from(
+      new Set([
+        ...(baseCats.length ? baseCats : ["other"]),
+        ...merchantCategoryTokens,
+        ...purchaseImpact.categoryTokens,
+      ]),
+    ),
+  );
+  const scoringAmount = purchaseImpact.scoringAmount ?? amount;
   const now = new Date();
   const broadCategoryQuery = isBroadCategoryQuery(merchant);
 
@@ -464,121 +529,131 @@ export async function recommendAllBenefits(opts: {
     let notes: string[] = [];
     let conf = typeof c.confidence === "number" ? c.confidence : 0.6;
     const unitHint = issuerDefaultsToPoints(c.issuer) ? "points" : "cash";
-
+    const canonicalBenefits = canonicalizeCardBenefits(c);
+    const baseFlatRate = Math.max(
+      0,
+      ...canonicalBenefits
+        .filter((benefit) => benefit.sourceKind === "reward_flat")
+        .map((benefit) => rateFromCanonicalBenefit(benefit, c, unitHint)),
+    );
+    const walletEvidenceByBenefitId = new Map<string, WalletBenefitUsageEvidence[]>();
+    const missingInformation: MissingInformation[] = [];
+    const warnings: DecisionWarning[] = [];
+    const eligibleCanonicalBenefits = canonicalBenefits.flatMap((benefit) => {
+      const walletAdjusted = applyWalletUsageToBenefitValue(
+        benefit,
+        walletBenefitStates,
+        {
+          statePolicy: scoringMode,
+        },
+      );
+      if (!walletAdjusted.walletDecision.eligible) {
+        missingInformation.push({
+          code: walletAdjusted.walletDecision.reason.toUpperCase(),
+          label: walletAdjusted.walletDecision.explanation,
+          impact:
+            walletAdjusted.walletDecision.reason === "wallet_state_required"
+              ? "high"
+              : "medium",
+        });
+        return [];
+      }
+      if (walletAdjusted.evidence.length) {
+        walletEvidenceByBenefitId.set(benefit.id, walletAdjusted.evidence);
+      }
+      return benefitEligibleForScoring(walletAdjusted.benefit, cats, {
+        merchant: merchantMatchText,
+        purchaseChannel,
+        productionOnly: scoringMode === "strict_production",
+        minimumConfidence: scoringMode === "strict_production" ? undefined : 0,
+        enrolledBenefitIds,
+        activatedBenefitIds,
+        knownEnrollmentBenefitIds,
+        knownActivationBenefitIds,
+      })
+        ? [walletAdjusted.benefit]
+        : [];
+    });
     const seenMatches = new Set<string>();
+    let winningRewardBenefit: CanonicalBenefitRecord | null = null;
+    let winningExactBenefit: CanonicalBenefitRecord | null = null;
 
-    // 1) flat rewards
-    for (const e of normalizeArray<RewardEntry>(c.rewardsFlat)) {
-      const r =
-        typeof e.rate === "string"
-          ? parseRateUnknown(e.rate, c.issuer, e.unit ?? unitHint)
-          : toCashEquivalent(e.unit ?? "cash", e.rate, c.issuer ?? "other");
+    for (const benefit of eligibleCanonicalBenefits) {
+      if (benefit.benefitType !== "reward_multiplier") continue;
+      if (!includeRotating && benefit.sourceKind === "reward_rotating") continue;
+      if (!purchaseImpact.bonusEligible && benefit.sourceKind !== "reward_flat") continue;
+      if (!canonicalRewardMatchesContext(benefit, cats, merchantMatchText, merchantResolution)) continue;
+
+      const walletRate = walletAdjustedRewardRate({
+        benefit,
+        card: c,
+        unitHint,
+        amount: scoringAmount,
+        baseFlatRate,
+        walletBenefitStates,
+      });
+      const r = walletRate.rate;
+      if (walletRate.evidence) {
+        walletEvidenceByBenefitId.set(benefit.id, [
+          ...(walletEvidenceByBenefitId.get(benefit.id) || []),
+          walletRate.evidence,
+        ]);
+      }
       if (r > bestRate) {
         bestRate = r;
-        src = "flat";
-        notes = ["flat rate"];
+        winningRewardBenefit = benefit;
+        src = sourceForCanonicalReward(benefit);
+        notes = [benefit.label];
       }
-    }
-
-    // 2) category map object
-    if (c.rewardsByCategory && !Array.isArray(c.rewardsByCategory)) {
-      const map = c.rewardsByCategory as Record<string, number | string>;
-      for (const key of cats) {
-        if (map[key] !== undefined) {
-          const r = parseRateUnknown(map[key], c.issuer, unitHint);
-          if (r > bestRate) {
-            bestRate = r;
-            src = `category:${key}`;
-            notes = ["object map"];
-          }
-          seenMatches.add(key);
-        }
-      }
-      if (map["other"] !== undefined) {
-        const r = parseRateUnknown(map["other"], c.issuer, unitHint);
-        if (r > bestRate) {
-          bestRate = r;
-          src = "category:other";
-          notes = ["object map fallback"];
-        }
-        seenMatches.add("other");
-      }
-    }
-
-    // 3) category array entries
-    if (Array.isArray(c.rewardsByCategory)) {
-      for (const e of normalizeArray<RewardEntry>(c.rewardsByCategory)) {
-        if (!keysMatch(e.keys, cats)) continue;
-        const r =
-          typeof e.rate === "string"
-            ? parseRateUnknown(e.rate, c.issuer, e.unit ?? unitHint)
-            : toCashEquivalent(e.unit ?? "cash", e.rate, c.issuer ?? "other");
-        if (r > bestRate) {
-          bestRate = r;
-          src = `category:${normalizeArray(e.keys).map(String).join("|")}`;
-          notes = ["array match"];
-        }
-        normalizeArray(e.keys).forEach((k) =>
-          seenMatches.add(String(k).toLowerCase()),
-        );
-      }
-    }
-
-    // 4) rotating categories
-    if (includeRotating) {
-      for (const q of normalizeArray<RotatingQuarter>(c.rewardsRotating)) {
-        const active =
-          q.start && q.end
-            ? now >= new Date(q.start) && now <= new Date(q.end)
-            : true;
-        const confPenalty = q.start && q.end ? 0 : 0.05;
-
-        for (const e of normalizeArray<RewardEntry>(q.categories)) {
-          if (!keysMatch(e.keys, cats)) continue;
-          const r =
-            typeof e.rate === "string"
-              ? parseRateUnknown(e.rate, c.issuer, e.unit ?? unitHint)
-              : toCashEquivalent(e.unit ?? "cash", e.rate, c.issuer ?? "other");
-          const rEff = active ? r : r * 0.9;
-          if (rEff > bestRate) {
-            bestRate = rEff;
-            src = `rotating:${normalizeArray(e.keys).map(String).join("|")}${active ? "" : ":inactive"}`;
-            notes = [
-              active ? "rotating (active)" : "rotating (uncertain window)",
-            ];
-          }
-          normalizeArray(e.keys).forEach((k) =>
-            seenMatches.add(String(k).toLowerCase()),
-          );
-          conf = Math.max(
-            0,
-            conf - confPenalty - (q.activationRequired ? 0.05 : 0),
-          );
-        }
+      if (benefit.merchantCategory) {
+        seenMatches.add(benefit.merchantCategory.toLowerCase());
       }
     }
 
     if (!bestRate || bestRate < 0) bestRate = 0;
 
-    const creditMatches = broadCategoryQuery
+    const creditBenefits = broadCategoryQuery
       ? []
-      : collectCreditMatches(c, merchant);
-    const creditMatchCount = creditMatches.length;
-    const creditPerks = cleanPerks(formatCreditPerks(creditMatches), 140, 6);
-    const cleanedCardPerks = cleanPerks(
-      normalizeArray<string>(c.perks),
+      : eligibleCanonicalBenefits.filter((benefit) =>
+          canonicalCreditMatchesMerchant(benefit, merchantMatchText, merchantResolution),
+        );
+    winningExactBenefit = creditBenefits[0] || null;
+    const creditMatchCount = creditBenefits.length;
+    const creditPerks = cleanPerks(
+      creditBenefits.map((benefit) => benefit.label),
       140,
       6,
     );
+    const cleanedCardPerks =
+      scoringMode === "compatibility"
+        ? cleanPerks(normalizeArray<string>(c.perks), 140, 6)
+        : [];
     const displayPerks = Array.from(
       new Set([...creditPerks, ...cleanedCardPerks]),
     ).slice(0, 8);
-    const perkMatches = broadCategoryQuery
+    const rawPerkMatches = broadCategoryQuery
       ? []
       : collectPerkMatches(c.perks, merchant);
-    const creditValueUSD = creditMatches.reduce((sum, credit: any) => {
-      const val = Number.isFinite(credit?.amountUSD)
-        ? Number(credit.amountUSD)
+    const perkMatches = rawPerkMatches.filter((perk) =>
+      eligibleCanonicalBenefits.some(
+        (benefit) =>
+          benefit.label.toLowerCase() === perk.toLowerCase() ||
+          benefit.benefitDescription.toLowerCase() === perk.toLowerCase(),
+      ),
+    );
+    if (!winningExactBenefit && perkMatches.length) {
+      winningExactBenefit =
+        eligibleCanonicalBenefits.find((benefit) =>
+          perkMatches.some(
+            (perk) =>
+              benefit.label.toLowerCase() === perk.toLowerCase() ||
+              benefit.benefitDescription.toLowerCase() === perk.toLowerCase(),
+          ),
+        ) || null;
+    }
+    const creditValueUSD = creditBenefits.reduce((sum, benefit) => {
+      const val = Number.isFinite(benefit.statementCredit?.amountUSD)
+        ? Number(benefit.statementCredit?.amountUSD)
         : 0;
       return sum + val;
     }, 0);
@@ -606,7 +681,25 @@ export async function recommendAllBenefits(opts: {
           : "Base earn only";
     const primaryBenefit = creditPerks[0] || perkMatches[0] || null;
     const lastVerified =
-      c?.benefitsDetail?.lastScraped || c?.lastScraped || null;
+      winningExactBenefit?.lastVerified ||
+      winningRewardBenefit?.lastVerified ||
+      null;
+    const matchedCanonicalBenefit = winningExactBenefit || winningRewardBenefit;
+    const eligibleSignupOffer =
+      eligibleCanonicalBenefits.find(
+        (benefit) => benefit.sourceKind === "signup_offer",
+      ) || null;
+    const intelligenceConfidence = scoreRecommendationConfidence({
+      matchTier,
+      merchantConfidence:
+        merchantConfidence ?? merchantConfidenceForScoring(merchantResolution),
+      benefitConfidence:
+        matchedCanonicalBenefit?.confidenceScore ?? c?.benefitsDetail?.confidence,
+      lastVerified,
+      walletCardCount: allowedCardSlugs?.length,
+      hasMatchedBenefit: Boolean(primaryBenefit),
+    });
+    conf = intelligenceConfidence.score;
 
     const why: string[] = [];
     if (primaryBenefit) why.push(`Benefit: ${primaryBenefit}`);
@@ -617,13 +710,20 @@ export async function recommendAllBenefits(opts: {
     );
     if (lastVerified) why.push(`Last verified: ${lastVerified}`);
 
+    const purchaseEvidence = purchaseImpact.evidence.length
+      ? purchaseEvidenceForExplanation(purchaseImpact)
+      : [];
+    missingInformation.push(...purchaseImpact.missingInformation);
+    warnings.push(...purchaseImpact.warnings);
+
     return {
       slug: c.slug,
       name: c.name,
       issuer: c.issuer,
       effectiveRate: round(bestRate, 4),
-      estValueUSD: round(amount * bestRate + creditValueUSD, 2),
+      estValueUSD: round(scoringAmount * bestRate + creditValueUSD, 2),
       confidence: conf,
+      intelligenceConfidence,
       reason: `${src}; ${notes.join(", ") || "baseline"}`,
       matchingCategories: [...seenMatches],
       annualFee: typeof c.annualFee === "number" ? c.annualFee : 0,
@@ -635,16 +735,54 @@ export async function recommendAllBenefits(opts: {
       matchTier,
       why,
       lastVerified,
-      signupOffer: c.signupOffer ?? null,
-      sourceUrl: c.sourceUrl ?? null,
+      matchedBenefitId: matchedCanonicalBenefit?.id ?? null,
+      walletEvidence:
+        matchedCanonicalBenefit === null
+          ? []
+          : walletEvidenceByBenefitId.get(matchedCanonicalBenefit.id) || [],
+      explanationEvidence: {
+        merchant: merchantEvidenceForExplanation(merchantResolution),
+        benefit: benefitEvidenceForExplanation(matchedCanonicalBenefit),
+        wallet: walletEvidenceForExplanation(
+          matchedCanonicalBenefit,
+          walletBenefitStates,
+        ),
+        scoring: scoringEvidenceForExplanation({
+          amount: scoringAmount,
+          bestRate: round(bestRate, 4),
+          creditValueUSD: round(creditValueUSD, 2),
+          estimatedValueUSD: round(scoringAmount * bestRate + creditValueUSD, 2),
+          source: src,
+          notes,
+        }).concat(purchaseEvidence),
+        missingInformation,
+        warnings,
+      },
+      purchaseRefinement: purchaseImpact.refinement,
+      recommendationPurchaseContext: recommendationPurchaseContext || null,
+      sourceUrl: matchedCanonicalBenefit?.sourceUrl ?? c.sourceUrl ?? null,
+      signupOffer:
+        scoringMode === "compatibility"
+          ? c.signupOffer ?? eligibleSignupOffer?.label ?? null
+          : eligibleSignupOffer?.label ?? null,
+      scoringMode,
     };
   });
 
   // filter out zeros unless perks/signup
-  const filtered = results.filter(
-    (r) =>
-      r.effectiveRate > minRate || (r.perks && r.perks.length) || r.signupOffer,
-  );
+  const filtered = results.filter((r) => {
+    if (scoringMode === "compatibility") {
+      return (
+        r.effectiveRate > minRate ||
+        (r.perks && r.perks.length) ||
+        r.signupOffer
+      );
+    }
+    return (
+      r.effectiveRate > minRate &&
+      (r.effectiveRate > 0 || r.matchTier === "exact_benefit" || r.signupOffer)
+    );
+  });
 
   filtered.sort((a, b) => {
     const tierWeight = (t: MatchTier) =>
@@ -663,8 +801,468 @@ export async function recommendAllBenefits(opts: {
     merchant,
     amount,
     categoriesUsed: cats,
+    recommendationPurchaseContext: recommendationPurchaseContext || null,
     offers: filtered,
   };
+}
+
+type PurchaseImpact = {
+  categoryTokens: string[];
+  scoringAmount: number | null;
+  evidence: DecisionEvidenceItem[];
+  missingInformation: MissingInformation[];
+  warnings: DecisionWarning[];
+  bonusEligible: boolean;
+  refinement:
+    | "none"
+    | RecommendationPurchaseContext["refinement"];
+};
+
+function purchaseImpactFor(
+  context?: RecommendationPurchaseContext | null,
+): PurchaseImpact {
+  if (!context) {
+    return {
+      categoryTokens: [],
+      scoringAmount: null,
+      evidence: [],
+      missingInformation: [],
+      warnings: [],
+      bonusEligible: true,
+      refinement: "none",
+    };
+  }
+
+  const warnings: DecisionWarning[] = [];
+  const missingInformation: MissingInformation[] = [];
+  const categoryTokens: string[] = [];
+  const hasExclusion =
+    context.hasGiftCard || context.hasCashEquivalent || context.exclusions.length > 0;
+  const scoringAmount =
+    hasExclusion && typeof context.eligibleAmount === "number"
+      ? context.eligibleAmount
+      : null;
+  const bonusEligible = !(hasExclusion && scoringAmount === 0);
+
+  if (
+    context.refinement === "purchase_refined" &&
+    context.confidenceLabel === "high" &&
+    context.dominantCategory
+  ) {
+    categoryTokens.push(...recommendationCategoriesForPurchase(context.dominantCategory));
+  }
+
+  if (context.refinement === "low_confidence_fallback") {
+    missingInformation.push({
+      code: "LOW_PURCHASE_CONFIDENCE",
+      label:
+        "Purchase details were not confident enough to change the card ranking.",
+      impact: "medium",
+    });
+  }
+
+  if (context.materiallyMixed) {
+    warnings.push({
+      code: "MIXED_CART_LIMITATION",
+      severity: "medium",
+      message:
+        "This cart contains multiple meaningful purchase categories, so Rewardly kept the recommendation merchant-based.",
+    });
+  }
+
+  if (hasExclusion) {
+    warnings.push({
+      code: "PURCHASE_EXCLUSIONS_APPLIED",
+      severity: "medium",
+      message:
+        "Gift cards or cash-equivalent items were excluded from bonus-category value when detected.",
+    });
+  }
+
+  const evidence: DecisionEvidenceItem[] = [
+    {
+      type: "purchase_context",
+      label: purchaseContextEvidenceLabel(context),
+      value: {
+        dominantCategory: context.dominantCategory,
+        confidenceLabel: context.confidenceLabel,
+        confidenceScore: context.confidenceScore,
+        refinement: context.refinement,
+        materiallyMixed: context.materiallyMixed,
+        eligibleAmount: context.eligibleAmount,
+        total: context.total,
+      },
+      source: "purchase_intelligence",
+      confidence: context.confidenceScore,
+    },
+  ];
+
+  return {
+    categoryTokens,
+    scoringAmount,
+    evidence,
+    missingInformation,
+    warnings,
+    bonusEligible,
+    refinement: context.refinement,
+  };
+}
+
+function recommendationCategoriesForPurchase(category: PurchaseCategory): string[] {
+  const mapping: Partial<Record<PurchaseCategory, string[]>> = {
+    apparel: ["apparel", "departmentstores"],
+    digital_goods: ["online_shopping", "online"],
+    electronics: ["online_shopping", "online"],
+    fuel: ["gas", "fuel"],
+    groceries: ["groceries"],
+    home_improvement: ["other"],
+    pharmacy: ["drugstores", "pharmacy"],
+    restaurant: ["restaurants", "dining"],
+    subscription: ["streaming"],
+    technology_purchase: ["online_shopping", "online"],
+    travel: ["travel"],
+  };
+  return mapping[category] || [];
+}
+
+function purchaseEvidenceForExplanation(impact: PurchaseImpact) {
+  return impact.evidence.map((item) => ({
+    ...item,
+    label:
+      impact.refinement === "purchase_refined"
+        ? "Purchase details refined this recommendation."
+        : impact.refinement === "mixed_cart_fallback"
+          ? "Purchase details were captured, but the cart was mixed or included exclusions."
+          : impact.refinement === "low_confidence_fallback"
+            ? "Purchase details were captured with low confidence and were not used for ranking."
+            : "Purchase details supported the merchant-based recommendation.",
+  }));
+}
+
+function purchaseContextEvidenceLabel(context: RecommendationPurchaseContext) {
+  if (context.refinement === "purchase_refined") {
+    return `High-confidence ${context.dominantCategory || "purchase"} context refined scoring.`;
+  }
+  if (context.refinement === "mixed_cart_fallback") {
+    return "Mixed-cart purchase context preserved merchant-level scoring.";
+  }
+  if (context.refinement === "low_confidence_fallback") {
+    return "Low-confidence purchase context did not affect scoring.";
+  }
+  return "Purchase context supported the recommendation without changing ranking.";
+}
+
+function benefitEligibleForScoring(
+  benefit: CanonicalBenefitRecord,
+  cats: string[],
+  context: {
+    merchant: string;
+    purchaseChannel: PurchaseChannel;
+    productionOnly: boolean;
+    minimumConfidence?: number;
+    enrolledBenefitIds?: string[];
+    activatedBenefitIds?: string[];
+    knownEnrollmentBenefitIds?: string[];
+    knownActivationBenefitIds?: string[];
+  },
+) {
+  const categories = benefit.sourceKind === "reward_flat" ? [""] : cats;
+  return categories.some(
+    (category) =>
+      isBenefitEligibleForRecommendation(benefit, {
+        merchant: context.merchant,
+        merchantCategory: category,
+        purchaseChannel: context.purchaseChannel,
+        productionOnly: context.productionOnly,
+        minimumConfidence: context.minimumConfidence,
+        enrolledBenefitIds: context.enrolledBenefitIds,
+        activatedBenefitIds: context.activatedBenefitIds,
+        knownEnrollmentBenefitIds: context.knownEnrollmentBenefitIds,
+        knownActivationBenefitIds: context.knownActivationBenefitIds,
+      }).eligible,
+  );
+}
+
+function canonicalRewardMatchesContext(
+  benefit: CanonicalBenefitRecord,
+  cats: string[],
+  merchant: string,
+  merchantResolution?: MerchantResolutionResult,
+) {
+  if (benefit.sourceKind === "reward_flat") return true;
+  if (
+    benefit.specificMerchant ||
+    benefit.specificMerchantIds.some((item) => item)
+  ) {
+    return canonicalMerchantMatches(benefit, merchant, merchantResolution);
+  }
+  return Boolean(
+    benefit.merchantCategory &&
+      cats.includes(benefit.merchantCategory.toLowerCase()),
+  );
+}
+
+function canonicalCreditMatchesMerchant(
+  benefit: CanonicalBenefitRecord,
+  merchant: string,
+  merchantResolution?: MerchantResolutionResult,
+) {
+  return (
+    (benefit.sourceKind === "merchant_credit" ||
+      benefit.sourceKind === "recurring_credit") &&
+    canonicalMerchantMatches(benefit, merchant, merchantResolution)
+  );
+}
+
+function canonicalMerchantMatches(
+  benefit: CanonicalBenefitRecord,
+  merchant: string,
+  merchantResolution?: MerchantResolutionResult,
+) {
+  const normalizedMerchant = normalizeComparable(merchantSearchText(merchant, merchantResolution));
+  const merchants = [
+    benefit.specificMerchant,
+    ...benefit.specificMerchantIds,
+  ].map(normalizeComparable);
+  return merchants.some(
+    (item) =>
+      item &&
+      (normalizedMerchant.includes(item) || item.includes(normalizedMerchant)),
+  );
+}
+
+function merchantSearchText(
+  merchant: string,
+  merchantResolution?: MerchantResolutionResult,
+) {
+  return [
+    merchant,
+    merchantResolution?.merchant?.merchantId,
+    merchantResolution?.merchant?.displayName,
+    merchantResolution?.merchant?.canonicalName,
+    merchantResolution?.merchant?.merchantGroup,
+    merchantResolution?.merchant?.parentCompany,
+    merchantResolution?.merchant?.brand,
+    ...(merchantResolution?.inheritedMerchantIds || []),
+    ...(merchantResolution?.merchant?.supportedBenefitMappings || []),
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function merchantConfidenceForScoring(merchantResolution: MerchantResolutionResult) {
+  if (
+    merchantResolution.matchingStrategy === "category_inference" ||
+    merchantResolution.matchingStrategy === "weak_fuzzy" ||
+    merchantResolution.matchingStrategy === "unknown"
+  ) {
+    return undefined;
+  }
+  return merchantResolution.confidence || undefined;
+}
+
+function merchantEvidenceForExplanation(
+  merchantResolution: MerchantResolutionResult,
+): DecisionEvidenceItem[] {
+  return [
+    {
+      type: "merchant_resolution",
+      label: "Merchant resolution",
+      value: {
+        merchantId: merchantResolution.merchant?.merchantId || null,
+        displayName: merchantResolution.merchant?.displayName || null,
+        matchingStrategy: merchantResolution.matchingStrategy,
+        aliasUsed: merchantResolution.aliasUsed,
+        inheritedMerchantIds: merchantResolution.inheritedMerchantIds,
+        inheritedCategoryIds: merchantResolution.inheritedCategoryIds,
+        normalizationSteps: merchantResolution.normalizationSteps,
+      },
+      source: "merchant_intelligence",
+      confidence: merchantResolution.confidence,
+    },
+  ];
+}
+
+function benefitEvidenceForExplanation(
+  benefit: CanonicalBenefitRecord | null,
+): DecisionEvidenceItem[] {
+  if (!benefit) return [];
+  return [
+    {
+      type: "benefit_selected",
+      label: "Benefit selected",
+      value: {
+        benefitId: benefit.id,
+        label: benefit.label,
+        benefitType: benefit.benefitType,
+        sourceKind: benefit.sourceKind,
+        verificationStatus: benefit.verificationStatus,
+        lastVerified: benefit.lastVerified,
+        productionEligible: benefit.productionEligible,
+      },
+      source: benefit.sourceUrl || benefit.verificationSource || "benefit_intelligence",
+      confidence: benefit.confidenceScore,
+    },
+  ];
+}
+
+function walletEvidenceForExplanation(
+  benefit: CanonicalBenefitRecord | null,
+  states: CanonicalWalletBenefitState[],
+): DecisionEvidenceItem[] {
+  if (!benefit) return [];
+  const state = findWalletStateForBenefit(benefit, states);
+  if (!state) return [];
+  return [
+    {
+      type: "wallet_state",
+      label: "Wallet benefit state",
+      value: {
+        walletBenefitStateId: state.walletBenefitStateId,
+        status: state.status,
+        enrollmentStatus: state.enrollmentStatus,
+        activationStatus: state.activationStatus,
+        remainingValue: state.remainingValue,
+        remainingSpendCap: state.remainingSpendCap,
+        remainingUses: state.remainingUses,
+        cycleValueLimit: state.cycleValueLimit,
+        cycleSpendLimit: state.cycleSpendLimit,
+        cycleUsageLimit: state.cycleUsageLimit,
+        confidenceSource: state.confidenceSource,
+        version: state.version,
+      },
+      source: "wallet_intelligence",
+      confidence: state.confidence,
+    },
+  ];
+}
+
+function scoringEvidenceForExplanation(input: {
+  amount: number;
+  bestRate: number;
+  creditValueUSD: number;
+  estimatedValueUSD: number;
+  source: string;
+  notes: string[];
+}): DecisionEvidenceItem[] {
+  return [
+    {
+      type: "scoring_result",
+      label: "Scoring result",
+      value: input,
+      source: "recommendation_service",
+      confidence: null,
+    },
+  ];
+}
+
+function rateFromCanonicalBenefit(
+  benefit: CanonicalBenefitRecord,
+  card: any,
+  unitHint: "cash" | "points" | "miles",
+) {
+  const multiplier = benefit.multiplier ?? parseMultiplierFromLabel(benefit.label);
+  if (!multiplier) return 0;
+  if (benefit.rewardMechanism === "cash_back") {
+    if (/%/.test(benefit.label)) return multiplier / 100;
+    return multiplier >= 1 ? multiplier / 100 : multiplier;
+  }
+  if (benefit.rewardMechanism === "points" || benefit.rewardMechanism === "miles") {
+    return toCashEquivalent(benefit.rewardMechanism, multiplier, card.issuer ?? "other");
+  }
+  return parseRateUnknown(multiplier, card.issuer, unitHint);
+}
+
+function walletAdjustedRewardRate(input: {
+  benefit: CanonicalBenefitRecord;
+  card: any;
+  unitHint: "cash" | "points" | "miles";
+  amount: number;
+  baseFlatRate: number;
+  walletBenefitStates: CanonicalWalletBenefitState[];
+}): { rate: number; evidence: WalletBenefitUsageEvidence | null } {
+  const rate = rateFromCanonicalBenefit(input.benefit, input.card, input.unitHint);
+  const state = findWalletStateForBenefit(input.benefit, input.walletBenefitStates);
+  const remainingCap = state?.remainingSpendCap ?? null;
+  if (
+    input.benefit.benefitType !== "reward_multiplier" ||
+    remainingCap === null ||
+    input.amount <= 0
+  ) {
+    return { rate, evidence: null };
+  }
+  if (remainingCap <= 0) {
+    return {
+      rate: input.baseFlatRate,
+      evidence: {
+        kind: "spend_cap_split",
+        purchaseAmount: input.amount,
+        cappedAmount: 0,
+        uncappedAmount: input.amount,
+        bonusRate: rate,
+        baseRate: input.baseFlatRate,
+        effectiveRate: input.baseFlatRate,
+        remainingSpendCap: 0,
+        explanation: "No bonus spend cap remains, so only the base rate applies.",
+      },
+    };
+  }
+  const cappedAmount = Math.min(input.amount, remainingCap);
+  const uncappedAmount = Math.max(0, input.amount - cappedAmount);
+  if (uncappedAmount === 0) {
+    return {
+      rate,
+      evidence: {
+        kind: "spend_cap_split",
+        purchaseAmount: input.amount,
+        cappedAmount,
+        uncappedAmount,
+        bonusRate: rate,
+        baseRate: input.baseFlatRate,
+        effectiveRate: rate,
+        remainingSpendCap: remainingCap,
+        explanation: "The full purchase fits inside the remaining bonus spend cap.",
+      },
+    };
+  }
+  const blendedRate =
+    (cappedAmount * rate + uncappedAmount * input.baseFlatRate) / input.amount;
+  return {
+    rate: blendedRate,
+    evidence: {
+      kind: "spend_cap_split",
+      purchaseAmount: input.amount,
+      cappedAmount,
+      uncappedAmount,
+      bonusRate: rate,
+      baseRate: input.baseFlatRate,
+      effectiveRate: blendedRate,
+      remainingSpendCap: remainingCap,
+      explanation: `$${cappedAmount} earns the bonus rate; $${uncappedAmount} falls back to the base rate.`,
+    },
+  };
+}
+
+function sourceForCanonicalReward(benefit: CanonicalBenefitRecord) {
+  if (benefit.sourceKind === "reward_flat") return "flat";
+  if (benefit.sourceKind === "reward_rotating") {
+    const category = benefit.merchantCategory || "unknown";
+    return `rotating:${category}`;
+  }
+  return `category:${benefit.merchantCategory || "unknown"}`;
+}
+
+function parseMultiplierFromLabel(label: string) {
+  const match = label.match(/([\d.]+)\s*(x|%)/i);
+  return match ? Number(match[1]) : 0;
+}
+
+function normalizeComparable(value: unknown) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 // --- Minimal wrapper to keep /best working using the same core logic ---
@@ -674,6 +1272,16 @@ export async function recommendBestCards(opts: {
   mcc?: string;
   includeRotating?: boolean;
   allowedCardSlugs?: string[];
+  merchantConfidence?: number;
+  scoringMode?: RecommendationScoringMode;
+  purchaseChannel?: PurchaseChannel;
+  enrolledBenefitIds?: string[];
+  activatedBenefitIds?: string[];
+  knownEnrollmentBenefitIds?: string[];
+  knownActivationBenefitIds?: string[];
+  walletBenefitStates?: CanonicalWalletBenefitState[];
+  cardsOverride?: any[];
+  recommendationPurchaseContext?: RecommendationPurchaseContext | null;
 }) {
   const {
     merchant,
@@ -681,6 +1289,16 @@ export async function recommendBestCards(opts: {
     mcc,
     includeRotating = true,
     allowedCardSlugs,
+    merchantConfidence,
+    scoringMode,
+    purchaseChannel,
+    enrolledBenefitIds,
+    activatedBenefitIds,
+    knownEnrollmentBenefitIds,
+    knownActivationBenefitIds,
+    walletBenefitStates,
+    cardsOverride,
+    recommendationPurchaseContext,
   } = opts;
 
   const { categoriesUsed, offers } = await recommendAllBenefits({
@@ -690,6 +1308,16 @@ export async function recommendBestCards(opts: {
     includeRotating,
     minRate: -1,
     allowedCardSlugs,
+    merchantConfidence,
+    scoringMode,
+    purchaseChannel,
+    enrolledBenefitIds,
+    activatedBenefitIds,
+    knownEnrollmentBenefitIds,
+    knownActivationBenefitIds,
+    walletBenefitStates,
+    cardsOverride,
+    recommendationPurchaseContext,
   });
 
   const sorted = [...offers].sort((a, b) => {
@@ -713,14 +1341,20 @@ export async function recommendBestCards(opts: {
     effectiveRate: o.effectiveRate,
     estValueUSD: o.estValueUSD,
     confidence: o.confidence,
+    intelligenceConfidence: o.intelligenceConfidence,
     confidenceLabel: o.confidenceLabel,
     matchTier: o.matchTier,
     matchedBenefit: o.matchedBenefit,
+    matchedBenefitId: o.matchedBenefitId,
+    walletEvidence: o.walletEvidence,
+    explanationEvidence: o.explanationEvidence,
     why: o.why,
     lastVerified: o.lastVerified,
     reason: o.reason,
     annualFee: o.annualFee,
     sourceUrl: o.sourceUrl,
+    purchaseRefinement: o.purchaseRefinement,
+    recommendationPurchaseContext: o.recommendationPurchaseContext,
   }));
 
   return { merchant, amount, categoriesUsed, recommendations: top };
