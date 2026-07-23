@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta property="og:site_name" content="Amazon" />
+    <title>Amazon Cart</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: Arial, sans-serif;
+        background: #eaeded;
+        color: #111827;
+      }
+
+      header {
+        background: #131921;
+        color: #fff;
+        padding: 16px 24px;
+        font-size: 24px;
+        font-weight: 800;
+      }
+
+      main {
+        width: min(980px, calc(100% - 32px));
+        margin: 28px auto;
+        display: grid;
+        gap: 18px;
+        border: 1px solid #d5d9d9;
+        border-radius: 10px;
+        background: #fff;
+        padding: 24px;
+      }
+
+      h1 {
+        margin: 0;
+        font-weight: 500;
+      }
+
+      .item {
+        display: grid;
+        grid-template-columns: 82px 1fr;
+        gap: 16px;
+        align-items: center;
+        border-top: 1px solid #eaeded;
+        padding-top: 18px;
+      }
+
+      .image {
+        height: 82px;
+        border-radius: 10px;
+        background: linear-gradient(135deg, #d5d9d9, #6b7280);
+      }
+
+      a {
+        color: #007185;
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body>
+    <header>amazon</header>
+    <main>
+      <h1>Shopping Cart</h1>
+      <p>
+        This page intentionally contains cart language but no payment form or
+        order summary. Rewardly should stay hidden here.
+      </p>
+      <div class="item">
+        <div class="image" aria-hidden="true"></div>
+        <div>
+          <strong>Echo Dot Smart Speaker</strong>
+          <p>$49.99</p>
+        </div>
+      </div>
+      <a href="/demo-checkout-amazon.html">Go to payment test page</a>
+    </main>
+  </body>
+</html>

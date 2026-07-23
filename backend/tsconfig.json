@@ -11,12 +11,13 @@
     "moduleResolution": "node",
     "outDir": "./dist",
     "noImplicitAny": true,
-    "rootDir": "."
+    "rootDir": ".."
   },
   "include": [
     "src/**/*",
     "scrapers/**/*",
-    "types/**/*"
+    "types/**/*",
+    "../packages/rewardly-core/src/**/*"
   ],
   "exclude": [
     "node_modules",

@@ -5,12 +5,36 @@ const router = express.Router();
 
 router.post("/event", async (req, res) => {
   try {
-    const { userId = "devUser", event, metadata = {} } = req.body as { userId?: string; event?: string; metadata?: Record<string, unknown> };
+    const {
+      userId,
+      installationId,
+      source = "unknown",
+      event,
+      metadata = {},
+    } = req.body as {
+      userId?: string;
+      installationId?: string;
+      source?: string;
+      event?: string;
+      metadata?: Record<string, unknown>;
+    };
     if (!event || typeof event !== "string") {
       return res.status(400).json({ error: "Event name is required" });
     }
+    if (!installationId && !userId) {
+      return res
+        .status(400)
+        .json({ error: "Anonymous installation id is required" });
+    }
     const col = await getAnalyticsCollection();
-    await col.insertOne({ userId, event, metadata, createdAt: new Date() });
+    await col.insertOne({
+      userId: userId || null,
+      installationId: installationId || null,
+      source,
+      event,
+      metadata,
+      createdAt: new Date(),
+    });
     res.json({ ok: true });
   } catch (e: any) {
     res.status(500).json({ error: e?.message || "Failed to log analytics event" });

@@ -73,6 +73,9 @@ export interface Card {
   annualFee?: number;
   confidence?: number;
   sourceUrl?: string;
+  sourceType?: string;
+  lastVerified?: string;
+  productionEligible?: boolean;
 }
 
 export interface LinkedAccount {
@@ -96,6 +99,31 @@ export interface LinkedAccount {
 export interface UserBenefitState {
   userId: string;
   benefitKey: string;
+  walletBenefitStateId?: string;
+  cardId?: string;
+  benefitId?: string;
+  issuer?: string;
+  status?: string;
+  enrollmentStatus?: string;
+  activationStatus?: string;
+  benefitState?: string;
+  remainingValue?: number;
+  remainingSpendCap?: number;
+  remainingUses?: number;
+  currentSpend?: number;
+  benefitUsageCount?: number;
+  currentCycle?: string;
+  historicalCycles?: unknown[];
+  lastUsed?: Date | null;
+  effectiveDate?: Date | null;
+  resetDate?: Date | null;
+  expirationDate?: Date | null;
+  lastObserved?: Date | null;
+  lastVerified?: Date | null;
+  confidence?: number;
+  confidenceSource?: string;
+  notes?: string[];
+  events?: unknown[];
   cardSlug?: string;
   cardName?: string;
   label?: string;

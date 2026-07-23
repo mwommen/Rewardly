@@ -25,6 +25,9 @@ async function run() {
       issuer: "American Express",
       annualFee: 895,
       sourceUrl: "https://www.americanexpress.com/us/credit-cards/card/platinum/",
+      sourceType: "issuer_official",
+      lastVerified: "2026-07-01T00:00:00.000Z",
+      productionEligible: true,
       rewardsByCategory: { travel: 5, default: 1 },
       merchantCredits: [
         {
@@ -180,6 +183,9 @@ async function run() {
       issuer: "Capital One",
       annualFee: 395,
       sourceUrl: "https://www.capitalone.com/credit-cards/venture-x/",
+      sourceType: "issuer_official",
+      lastVerified: "2026-07-01T00:00:00.000Z",
+      productionEligible: true,
       rewardsByCategory: { travel: 10, default: 2 },
       recurringCredits: [
         {

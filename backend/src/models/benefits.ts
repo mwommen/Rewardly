@@ -1,5 +1,12 @@
 export type Period = "month" | "quarter" | "semi-annual" | "year";
 export type RewardUnit = "cash" | "points" | "miles";
+export type BenefitSourceType =
+  | "issuer_official"
+  | "issuer_terms"
+  | "network_official"
+  | "manually_entered"
+  | "third_party_reference"
+  | "missing";
 
 export type RewardsArrayEntry = {
   keys: string[];
@@ -7,8 +14,9 @@ export type RewardsArrayEntry = {
   unit: RewardUnit;
   capPerPeriodUSD?: number;
   period?: Period;
-  eligibleWhen?: { merchantPatterns?: string[]; mcc?: string[] };
+  eligibleWhen?: { merchantPatterns?: string[]; mcc?: string[]; channels?: string[] };
   sourceUrl?: string;
+  sourceType?: BenefitSourceType;
   confidence?: number;
 };
 
@@ -25,13 +33,13 @@ export type MerchantCredit = {
   eligibleWhen?: { merchantPatterns?: string[]; mcc?: string[] };
   requiresEnrollment?: boolean;
   expiresAt?: string | null;
-  sourceUrl?: string; enrollmentUrl?: string; confidence?: number;
+  sourceUrl?: string; sourceType?: BenefitSourceType; enrollmentUrl?: string; confidence?: number;
 };
 
 export type RecurringCredit = {
   id: string; label: string; amountUSD: number; period: Period;
   partner?: string; requiresEnrollment?: boolean;
-  sourceUrl?: string; enrollmentUrl?: string; confidence?: number;
+  sourceUrl?: string; sourceType?: BenefitSourceType; enrollmentUrl?: string; confidence?: number;
 };
 
 export type BenefitsPayload = {
@@ -41,8 +49,10 @@ export type BenefitsPayload = {
   merchantCredits?: MerchantCredit[];
   recurringCredits?: RecurringCredit[];
   perks?: string[];
-  access?: { id: string; label: string; details?: string; sourceUrl?: string }[];
-  insurances?: { id: string; label: string; details?: string; sourceUrl?: string }[];
+  access?: { id: string; label: string; details?: string; sourceUrl?: string; sourceType?: BenefitSourceType }[];
+  insurances?: { id: string; label: string; details?: string; sourceUrl?: string; sourceType?: BenefitSourceType }[];
   signupOffer?: string | null;
-  sourceUrl?: string; lastScraped?: string; confidence?: number;
+  sourceUrl?: string; sourceType?: BenefitSourceType; sourceTitle?: string;
+  lastScraped?: string; lastVerified?: string; confidence?: number;
+  productionEligible?: boolean;
 };

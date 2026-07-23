@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import type { Card as WalletCard } from "./cardModules";
 import { type DebugState } from "./components/AdvancedInputs";
+import BenefitSearchResult from "./components/BenefitSearchResult";
 import HeroAskRewardly from "./components/HeroAskRewardly";
 import HowRewardlyWorks from "./components/HowRewardlyWorks";
 import RecommendationResult from "./components/RecommendationResult";
@@ -13,7 +14,11 @@ import { useRecommendations } from "./hooks/useRecommendations";
 import { API_BASE } from "./lib/api";
 import { getBenefitLogo } from "./lib/benefitLogos";
 import { normalizeUnlockLabel, rewardChip } from "./lib/formatters";
-import { isBenefitIntent, parseIntent } from "./lib/intent";
+import {
+  detectBenefitIntent,
+  isBenefitIntent,
+  parseIntent,
+} from "./lib/intent";
 import { WALLET_FALLBACKS } from "./lib/walletSections";
 import "./App.css";
 
@@ -71,6 +76,10 @@ export default function App() {
   );
   const benefitIntent = useMemo(
     () => isBenefitIntent(submittedIntent),
+    [submittedIntent],
+  );
+  const benefitMatch = useMemo(
+    () => detectBenefitIntent(submittedIntent),
     [submittedIntent],
   );
   const query = useMemo(() => {
@@ -171,21 +180,42 @@ export default function App() {
         <SmartMoves moves={SMART_MOVES} onSelect={useExample} />
       </section>
 
-      <section className="answer-grid" aria-live="polite">
-        <RecommendationResult
-          merchant={merchant}
-          submittedIntent={submittedIntent}
-          loading={loading}
-          error={error}
-          topPick={topPick}
-          alternatives={otherBest}
-          unlockedBenefits={unlockedBenefits}
-          onRetry={refetch}
-          onSuggestion={useExample}
-        />
+      <section
+        className={`answer-grid ${benefitIntent ? "benefit-mode" : ""}`}
+        aria-live="polite"
+      >
+        {benefitIntent ? (
+          <BenefitSearchResult
+            benefit={benefitMatch}
+            submittedIntent={submittedIntent}
+            loading={loading}
+            error={error}
+            walletCards={walletCards}
+            offers={offers}
+            onRetry={refetch}
+            onSuggestion={useExample}
+          />
+        ) : (
+          <>
+            <RecommendationResult
+              merchant={merchant}
+              submittedIntent={submittedIntent}
+              loading={loading}
+              error={error}
+              topPick={topPick}
+              alternatives={otherBest}
+              unlockedBenefits={unlockedBenefits}
+              onRetry={refetch}
+              onSuggestion={useExample}
+            />
 
-        <UnlocksSection unlockedBenefits={unlockedBenefits} />
-        <RelatedPerksSection offers={offers} benefitIntent={benefitIntent} />
+            <UnlocksSection unlockedBenefits={unlockedBenefits} />
+            <RelatedPerksSection
+              offers={offers}
+              benefitIntent={benefitIntent}
+            />
+          </>
+        )}
       </section>
 
       <TrustSection />
