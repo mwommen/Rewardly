@@ -3,6 +3,7 @@ import { inferCategories } from "../utils/category";
 import { toCashEquivalent } from "../utils/valuation";
 import { collectCreditMatches } from "../utils/merchantMatching";
 import { isLikelyJunkBenefitText } from "../scrapers/benefitsQuality";
+import { CARD_OVERRIDES } from "../scrapers/overrides/cards";
 import {
   canonicalizeCardBenefits,
   type CanonicalBenefitRecord,
@@ -294,13 +295,38 @@ function filterAllowedCards(cards: any[], allowedCardSlugs?: string[]): any[] {
       .filter(Boolean),
   );
   if (!allowed.size) return [];
-  return cards.filter((card) =>
-    allowed.has(
-      String(card?.slug || "")
-        .trim()
-        .toLowerCase(),
-    ),
+  const hydratedCards = hydrateAllowedOverrideCards(cards, allowed);
+  return hydratedCards.filter((card) =>
+    allowed.has(normalizeCardSlug(card?.slug)),
   );
+}
+
+function hydrateAllowedOverrideCards(cards: any[], allowed: Set<string>) {
+  const bySlug = new Map<string, any>();
+  cards.forEach((card) => {
+    const slug = normalizeCardSlug(card?.slug);
+    if (!slug) return;
+    const plainCard =
+      card && typeof card.toObject === "function" ? card.toObject() : card;
+    bySlug.set(
+      slug,
+      CARD_OVERRIDES[slug]
+        ? { ...plainCard, ...CARD_OVERRIDES[slug] }
+        : plainCard,
+    );
+  });
+  allowed.forEach((slug) => {
+    if (!bySlug.has(slug) && CARD_OVERRIDES[slug]) {
+      bySlug.set(slug, CARD_OVERRIDES[slug]);
+    }
+  });
+  return Array.from(bySlug.values());
+}
+
+function normalizeCardSlug(value: unknown) {
+  return String(value || "")
+    .trim()
+    .toLowerCase();
 }
 
 // ---------- Categories / matching ----------

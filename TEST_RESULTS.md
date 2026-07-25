@@ -1,5 +1,129 @@
 # Rewardly Extension Manual Test Results
 
+## Sprint 8.2 Polish Product Intelligence Hardening
+
+Date: 2026-07-24
+
+This polish sprint strengthened the analytics/product intelligence layer. It did not change recommendation scoring, merchant detection, checkout timing, or popup UX.
+
+Validation summary:
+
+- Analytics service tests: PASS. Covered merchant health calculation, recommendation value aggregation, version metadata, environment metadata, time-to-first-recommendation, analytics health metrics, privacy rejection, and retention cleanup.
+- Analytics route tests: PASS. Covered ingestion plus summary, merchants, confidence, errors, funnel, value, and health endpoints.
+- Backend Jest: PASS, 47/47 suites and 370/370 tests.
+- Backend build: PASS.
+- Frontend build: PASS.
+- Frontend lint: PASS.
+- Shared core compile: PASS.
+- Extension syntax checks: PASS for `content.js` and `background.js`.
+- Performance sanity check: PASS. 1,000 in-memory analytics events ingested in 28ms; dashboard aggregate queries completed in 4ms.
+
+Manual QA:
+
+- Live dashboard API verification was not run against a deployed beta environment.
+- No recommendation, merchant, checkout, or popup UX behavior changed in this sprint.
+
+## Sprint 8.2 Beta Analytics & Product Intelligence
+
+Date: 2026-07-24
+
+This sprint added privacy-first beta analytics and product intelligence. It did not change recommendation scoring, merchant intelligence, checkout detection, or popup recommendation logic.
+
+Validation summary:
+
+- Analytics service tests: PASS. Covered typed event validation, session lifecycle, funnel aggregation, merchant aggregation, confidence aggregation, error aggregation, retention cleanup, and privacy rejection.
+- Analytics route tests: PASS. Covered event ingestion, sensitive metadata rejection, summary, merchants, confidence, errors, and funnel endpoints.
+- Backend Jest: PASS, 47/47 suites and 366/366 tests.
+- Recommendation validation: PASS, 1104/1104 scenarios.
+- Merchant Intelligence validation: PASS, 1041/1041 scenarios.
+- Backend build, frontend build, frontend lint, shared-core compile, and extension syntax checks: PASS.
+
+Manual dashboard QA was not run against a live browser session in this pass. `docs/BETA_ANALYTICS.md` documents the endpoints and privacy constraints for beta testing.
+
+## Sprint 8.1 Recommendation Trust Layer
+
+Date: 2026-07-24
+
+This sprint changed recommendation presentation only. It did not change recommendation scoring, selection, merchant intelligence, wallet filtering, or benefit registry behavior.
+
+Validation summary:
+
+- Presentation model tests: PASS. Covered trust copy, confidence labels, reward formatting, alternative comparison, unknown merchant fallback, and no-wallet empty state.
+- Popup rendering checks: PASS by static screenshot artifact at `artifacts/rewardly-sprint-8-1-popup.png` and extension syntax validation.
+- Accessibility checks: PASS for implemented keyboard details toggle, screen-reader dialog labels, focus management, visible focus styles, and reduced-motion CSS. Full live screen-reader QA still requires manual browser testing.
+- Backend Jest: PASS, 46/46 suites and 359/359 tests.
+- Recommendation validation: PASS, 1104/1104 scenarios.
+- Merchant Intelligence validation: PASS, 1041/1041 scenarios.
+- Backend build, frontend build, frontend lint, shared-core compile, and extension syntax checks: PASS.
+
+Manual merchant QA for Amazon, Target, Starbucks, Lululemon, Hilton, DoorDash, unknown merchant, API failure, no wallet, low confidence, and high confidence was not rerun in a live browser during this code pass. The popup states and presentation logic were validated through automated tests and static rendering.
+
+## Sprint 7 Merchant Intelligence and Recommendation Accuracy
+
+Date: 2026-07-24
+
+This sprint did not redesign the extension popup or change recommendation ranking. It added a deterministic Merchant Intelligence layer between checkout detection and the Wallet Decision Engine.
+
+Validation summary:
+
+- Backend Jest: PASS, 46/46 suites and 359/359 tests.
+- Backend build: PASS.
+- Merchant Intelligence curated/full gate: PASS, 1041/1041 scenarios, registry PASS, invariants PASS, metamorphic PASS, coverage PASS.
+- Merchant Intelligence generated stress suite: PASS, 10000/10000 scenarios using seed `20260724`.
+- Recommendation full gate: PASS, 1104/1104 scenarios, 12135/12135 invariants, 383/383 metamorphic checks, 10/10 mutations killed.
+- Recommendation generated stress suite: PASS, 10000/10000 scenarios using seed `20260724`.
+- Frontend build: PASS.
+- Frontend lint: PASS.
+- Shared core compile: PASS using `../../backend/node_modules/.bin/tsc -p tsconfig.json`.
+- Extension syntax checks: PASS for `extension/background.js` and `extension/content.js`.
+- Intentional Merchant Intelligence CLI failures: PASS, no-match scenario and generated `--count 0` both exited nonzero.
+
+Manual live merchant QA was not rerun in this sprint; `REAL_MERCHANT_QA.md` now contains the focused merchant-intelligence QA matrix.
+
+## Sprint 6.5 Recommendation Validation Release Hardening
+
+Date: 2026-07-24
+
+This sprint did not change extension UX or checkout timing. It added release-gate validation for recommendation correctness.
+
+Final cleanup update:
+
+- Backend Jest: PASS, 45/45 suites and 346/346 tests.
+- Full PR gate command: PASS, 1104/1104 scenarios, 12135/12135 invariants, 383/383 metamorphic checks, 10/10 mutations killed.
+- Generated stress suite: PASS, 10000/10000 scenarios using seed `20260724`.
+- CI summary script: PASS, renders actual report values.
+- Frontend build/lint, backend build, shared-core compile, and extension syntax checks: PASS.
+
+Final validation summary:
+
+- Policy-level mutation suite: PASS, 10/10 required mutations killed.
+- Semantic coverage gate: PASS, 0 threshold failures.
+- Full recommendation validation: PASS, 1104/1104 scenarios.
+- Invariants: PASS, 12135/12135.
+- Metamorphic checks: PASS, 383/383.
+- Generated stress suite: PASS, 10000/10000 scenarios using seed `20260724`.
+- Manual extension harness: PASS, 17/17 checks.
+
+Manual harness note: the current backend must run with `REWARDLY_ALLOW_DEV_OVERRIDES=true` for local manual wallet overrides. Beta/runtime identity remains token-gated.
+
+## Sprint 6 Recommendation Validation Framework
+
+Date: 2026-07-24
+
+This sprint did not change extension UX or checkout timing. It hardened recommendation correctness validation.
+
+Validation summary:
+
+- Full backend Jest suite: PASS, 40/40 suites and 325/325 tests.
+- Recommendation validation full suite: PASS, 1101/1101 scenarios.
+- Invariants: PASS, 12102/12102.
+- Metamorphic checks: PASS, 371/371.
+- Mutation smoke: PASS, 10/10 representative defects detected.
+- Generated stress suite: PASS, 10000/10000 scenarios using seed `20260724`.
+- Frontend build/lint, backend build, shared-core compile, and extension syntax checks: PASS.
+
+Manual checkout browser testing was not rerun for this validation-only sprint.
+
 Date: 2026-07-08
 
 ## Environment

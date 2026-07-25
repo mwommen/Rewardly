@@ -1,0 +1,30 @@
+{
+  "metrics": {
+    "registryCount": 30,
+    "registryLoadMs": 0,
+    "medianEvaluationMs": 0.1085,
+    "p95EvaluationMs": 0.3071,
+    "p99EvaluationMs": 0.6821,
+    "maxEvaluationMs": 0.9474172592163086,
+    "generated1000RuntimeMs": 122,
+    "generated10000RuntimeMs": null,
+    "memoryDeltaBytes": 35067616
+  },
+  "total": 3,
+  "passed": 3,
+  "failed": 0,
+  "checks": [
+    {
+      "check": "p99_under_25ms",
+      "passed": true
+    },
+    {
+      "check": "generated_1000_under_5000ms",
+      "passed": true
+    },
+    {
+      "check": "registry_load_under_100ms",
+      "passed": true
+    }
+  ]
+}

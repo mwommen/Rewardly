@@ -22,6 +22,17 @@ Make the credit card optimizer a practical wallet coach and checkout companion: 
    - Track enrollments, reminders, and card usage triggers.
    - Remind users before benefits expire or annual fees become due.
 
+5. **Recommendation correctness infrastructure**
+   - Treat every recommendation explanation as earned by a tested rule.
+   - Block merges when curated scenarios, generated scenarios, semantic coverage, invariants, metamorphic checks, or policy-level mutation tests fail.
+   - Keep fixture correctness, engine correctness, issuer-term factual correctness, merchant classification, and checkout detection as separate validation concerns.
+
+6. **Merchant Intelligence**
+   - Resolve merchant identity separately from purchase context.
+   - Keep merchant families, marketplace context, and checkout providers explicit.
+   - Feed the Wallet Decision Engine normalized merchant context instead of raw page strings.
+   - Validate merchant classification with deterministic scenarios, invariants, metamorphic checks, registry-quality checks, and semantic coverage.
+
 ## Sprint 1: Foundation + higher-value UX
 
 ### Goals

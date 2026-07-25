@@ -47,9 +47,10 @@ export async function resolveUserWallet({
     .filter(Boolean);
   const ownedSlugs = new Set([...linkedSlugs, ...manualSlugs]);
 
+  const hydratedCards = hydrateManualOverrideCards(allCards, ownedSlugs);
   const cards = restrictToWallet
-    ? allCards.filter((card) => ownedSlugs.has(card.slug))
-    : allCards;
+    ? hydratedCards.filter((card) => ownedSlugs.has(card.slug))
+    : hydratedCards;
 
   return {
     userId,
@@ -183,6 +184,17 @@ function dedupeCards(cards: Card[]) {
   const bySlug = new Map<string, Card>();
   cards.forEach((card) => {
     if (!bySlug.has(card.slug)) bySlug.set(card.slug, card);
+  });
+  return Array.from(bySlug.values());
+}
+
+function hydrateManualOverrideCards(cards: Card[], ownedSlugs: Set<string>) {
+  const bySlug = new Map<string, Card>();
+  cards.forEach((card) => bySlug.set(card.slug, card));
+  ownedSlugs.forEach((slug) => {
+    if (!bySlug.has(slug) && CARD_OVERRIDES[slug]) {
+      bySlug.set(slug, toDomainCard(CARD_OVERRIDES[slug]));
+    }
   });
   return Array.from(bySlug.values());
 }

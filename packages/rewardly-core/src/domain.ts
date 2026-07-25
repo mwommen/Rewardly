@@ -176,6 +176,139 @@ export type DecisionReason = {
   kind: "reward" | "benefit" | "protection" | "fallback";
 };
 
+export type RecommendationWinningReason = {
+  type:
+    | "merchant_reward"
+    | "merchant_offer"
+    | "merchant_credit"
+    | "category_reward"
+    | "rotating_category"
+    | "portal_reward"
+    | "catch_all_reward"
+    | "threshold_offer"
+    | "other";
+  merchantId?: string;
+  merchantName?: string;
+  title: string;
+  explanation: string;
+  rewardRate?: number;
+  rewardUnit?: "percent" | "points" | "miles" | "cash";
+  estimatedValue?: number;
+  estimatedIncrementalValue?: number;
+  applicableToPurchase: boolean;
+  influencedRecommendation: boolean;
+  sourceBenefitId?: string;
+  sourceRuleId?: string;
+};
+
+export type DecisionNarrativeReasonType =
+  | "merchant_offer"
+  | "merchant_reward"
+  | "category_bonus"
+  | "rotating_category"
+  | "statement_credit"
+  | "portal_reward"
+  | "catch_all_reward"
+  | "threshold_offer"
+  | "fallback";
+
+export type DecisionRewardDetails = {
+  rate?: number | null;
+  unit?:
+    | "miles_per_dollar"
+    | "points_per_dollar"
+    | "cash_back_percent"
+    | "statement_credit"
+    | "unknown";
+  programName?: string | null;
+  estimatedQuantity?: number | null;
+  displayQuantity?: string | null;
+  purchaseAmount?: number | null;
+  estimatedCashBack?: number | null;
+  displayCashBack?: string | null;
+  creditAmount?: number | null;
+  applicableCreditAmount?: number | null;
+  estimatedDisplay?: string | null;
+};
+
+export type DecisionNormalizedReward = {
+  type:
+    | "cash_back"
+    | "points"
+    | "miles"
+    | "statement_credit"
+    | "certificate"
+    | "free_night"
+    | "travel_credit"
+    | "unknown";
+  programName?: string | null;
+  earningRate?: number | null;
+  earningUnit?:
+    | "points_per_dollar"
+    | "miles_per_dollar"
+    | "percent_back"
+    | "flat_credit"
+    | "unknown";
+  estimatedRewardQuantity?: number | null;
+  estimatedRewardCashValue?: number | null;
+  purchaseAmount?: number | null;
+};
+
+export type DecisionNarrative = {
+  merchant: string;
+  purchaseAmount?: number | null;
+  recommendedCard: {
+    slug: string;
+    name: string;
+    issuer?: string | null;
+  };
+  reasonType: DecisionNarrativeReasonType;
+  headline: string;
+  summary: string;
+  estimatedReward?: string | null;
+  estimatedRewardUnit?: "dollars" | "points" | "miles" | "cash" | "unknown" | null;
+  estimatedRewardValue?: number | null;
+  rewardDetails?: DecisionRewardDetails | null;
+  reward?: DecisionNormalizedReward | null;
+  earningText?: string | null;
+  estimatedRewardText?: string | null;
+  comparisonText?: string | null;
+  reasonText?: string | null;
+  incrementalValue?: number | null;
+  comparison?: string | null;
+  confidence: "HIGH" | "MEDIUM" | "LOW";
+  primaryReason: {
+    type: DecisionNarrativeReasonType;
+    headline: string;
+    summary: string;
+    ruleId?: string | null;
+    benefitId?: string | null;
+    scoreContribution?: number | null;
+  };
+  supportingReasons: Array<{
+    type: DecisionNarrativeReasonType;
+    headline: string;
+    summary: string;
+    ruleId?: string | null;
+    benefitId?: string | null;
+    scoreContribution?: number | null;
+  }>;
+  scoringEvidence: Array<{
+    label: string;
+    value: string | number | boolean | null;
+    source?: string | null;
+  }>;
+};
+
+export type RecommendationIntegrityValidation = {
+  valid: boolean;
+  fallbackApplied: boolean;
+  reason: string | null;
+  expectedRuleId?: string | null;
+  expectedBenefitId?: string | null;
+  expectedReasonType?: DecisionNarrativeReasonType | null;
+};
+
 export type Recommendation = {
   card: Card;
   primaryReason: DecisionReason;
@@ -191,6 +324,8 @@ export type Recommendation = {
     reasons?: string[];
   };
   unlockedBenefits: BenefitMatch[];
+  winningReason?: RecommendationWinningReason | null;
+  relevantBenefits?: BenefitMatch[];
 };
 
 export type PaymentDecision = {
@@ -199,6 +334,8 @@ export type PaymentDecision = {
   primaryReason: DecisionReason | null;
   rewardEstimate?: Recommendation["rewardEstimate"];
   unlockedBenefits: BenefitMatch[];
+  winningReason?: RecommendationWinningReason | null;
+  relevantBenefits?: BenefitMatch[];
   confidence: {
     score?: number;
     label: "high" | "medium" | "low" | "unknown";
@@ -211,4 +348,7 @@ export type PaymentDecision = {
   purchase?: Purchase | null;
   recommendationPurchaseContext?: RecommendationPurchaseContext | null;
   decisionExplanation?: unknown;
+  merchantIntelligence?: unknown;
+  decisionNarrative?: DecisionNarrative | null;
+  recommendationIntegrity?: RecommendationIntegrityValidation | null;
 };

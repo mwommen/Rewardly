@@ -219,4 +219,61 @@ describe("decisionRoutes", () => {
     expect(res.body.purchase.items[0].normalizedCategory).toBe("electronics");
     expect(res.body.purchasePerformance.withinTargets).toBe(true);
   });
+
+  test("POST /decisions/payment forwards allowlisted merchant intelligence signals", async () => {
+    mockedDecidePayment.mockResolvedValueOnce({
+      recommendedCard: null,
+      wallet: {
+        userId: "manualTestUser",
+        source: "manual",
+        cardSlugs: ["capital-one-venture"],
+      },
+      merchant: { name: "Best Buy" },
+      merchantIntelligence: {
+        identity: { merchantId: "best-buy", displayName: "Best Buy" },
+        classification: { primaryCategory: "online_shopping" },
+        confidence: { score: 0.92, band: "high" },
+        context: {
+          purchaseChannel: "online_direct",
+          commerceModel: "direct",
+          marketplace: { isMarketplace: false },
+          checkoutProvider: "merchant_native",
+        },
+        resolutionStatus: "resolved",
+        registryVersion: "test",
+        trace: { warnings: [] },
+      },
+    } as any);
+
+    const res = await invokeRoute("POST", "/decisions/payment", {
+      hostname: "www.bestbuy.com",
+      url: "https://www.bestbuy.com/checkout/r/payment?token=secret",
+      merchantSignals: {
+        hostname: "www.bestbuy.com",
+        pageTitle: "Best Buy Checkout",
+        detectedMerchantLabel: "Best Buy",
+        documentTextSignals: ["payment method", "4111 1111 1111 1111"],
+        checkoutProviderSignals: ["merchant native checkout"],
+        checkoutStage: "payment",
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mockedDecidePayment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        merchantSignals: expect.objectContaining({
+          hostname: "www.bestbuy.com",
+          detectedMerchantLabel: "Best Buy",
+          documentTextSignals: expect.arrayContaining(["payment method"]),
+        }),
+      }),
+    );
+    expect(res.body.merchant).toEqual(
+      expect.objectContaining({
+        merchantId: "best-buy",
+        confidenceBand: "high",
+        resolutionStatus: "resolved",
+      }),
+    );
+  });
 });

@@ -8,11 +8,22 @@
     "http://localhost:5001/*",
     "http://localhost/*",
     "https://amazon.com/*",
-    "https://www.amazon.com/*",
-    "https://smile.amazon.com/*",
+    "https://*.amazon.com/*",
+    "https://lululemon.com/*",
     "https://www.lululemon.com/*",
-    "https://shop.lululemon.com/*",
-    "https://checkout.lululemon.com/*"
+    "https://*.lululemon.com/*",
+    "https://apple.com/*",
+    "https://www.apple.com/*",
+    "https://*.apple.com/*",
+    "https://target.com/*",
+    "https://www.target.com/*",
+    "https://*.target.com/*",
+    "https://bestbuy.com/*",
+    "https://www.bestbuy.com/*",
+    "https://*.bestbuy.com/*",
+    "https://walmart.com/*",
+    "https://www.walmart.com/*",
+    "https://*.walmart.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -22,11 +33,22 @@
       "matches": [
         "http://localhost/*",
         "https://amazon.com/*",
-        "https://www.amazon.com/*",
-        "https://smile.amazon.com/*",
+        "https://*.amazon.com/*",
+        "https://lululemon.com/*",
         "https://www.lululemon.com/*",
-        "https://shop.lululemon.com/*",
-        "https://checkout.lululemon.com/*"
+        "https://*.lululemon.com/*",
+        "https://apple.com/*",
+        "https://www.apple.com/*",
+        "https://*.apple.com/*",
+        "https://target.com/*",
+        "https://www.target.com/*",
+        "https://*.target.com/*",
+        "https://bestbuy.com/*",
+        "https://www.bestbuy.com/*",
+        "https://*.bestbuy.com/*",
+        "https://walmart.com/*",
+        "https://www.walmart.com/*",
+        "https://*.walmart.com/*"
       ],
       "js": ["content.js"],
       "run_at": "document_idle"
@@ -42,11 +64,22 @@
       "matches": [
         "http://localhost/*",
         "https://amazon.com/*",
-        "https://www.amazon.com/*",
-        "https://smile.amazon.com/*",
+        "https://*.amazon.com/*",
+        "https://lululemon.com/*",
         "https://www.lululemon.com/*",
-        "https://shop.lululemon.com/*",
-        "https://checkout.lululemon.com/*"
+        "https://*.lululemon.com/*",
+        "https://apple.com/*",
+        "https://www.apple.com/*",
+        "https://*.apple.com/*",
+        "https://target.com/*",
+        "https://www.target.com/*",
+        "https://*.target.com/*",
+        "https://bestbuy.com/*",
+        "https://www.bestbuy.com/*",
+        "https://*.bestbuy.com/*",
+        "https://walmart.com/*",
+        "https://www.walmart.com/*",
+        "https://*.walmart.com/*"
       ]
     }
   ]

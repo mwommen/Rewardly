@@ -27,14 +27,207 @@ export type MerchantRelationshipType =
 
 export type MerchantPurchaseChannel =
   | "online"
+  | "online_direct"
+  | "issuer_portal"
+  | "travel_portal"
   | "in_store"
+  | "mobile_web"
   | "mobile_app"
   | "subscription"
+  | "delivery"
+  | "pickup"
   | "gift_card"
   | "marketplace"
   | "third_party_checkout"
   | "international"
-  | "airport_location";
+  | "airport_location"
+  | "unknown";
+
+export type CommerceModel =
+  | "direct"
+  | "marketplace"
+  | "subscription"
+  | "delivery"
+  | "pickup"
+  | "third_party_checkout"
+  | "unknown";
+
+export type CheckoutProvider =
+  | "merchant_native"
+  | "shopify"
+  | "stripe_checkout"
+  | "paypal"
+  | "shop_pay"
+  | "amazon_pay"
+  | "unknown";
+
+export type MerchantResolutionStatus = "resolved" | "ambiguous" | "unknown";
+
+export type MerchantConfidenceBand = "high" | "medium" | "low" | "unknown";
+
+export type MerchantEvidenceType =
+  | "exact_canonical_domain"
+  | "known_subdomain"
+  | "exact_merchant_alias"
+  | "billing_descriptor"
+  | "structured_data_merchant_name"
+  | "checkout_provider_signal"
+  | "merchant_specific_dom_marker"
+  | "page_metadata"
+  | "hostname_keyword"
+  | "extension_merchant_hint"
+  | "category_only_signal"
+  | "mcc"
+  | "conflicting_evidence"
+  | "ambiguous_alias"
+  | "untrusted_text_only_evidence";
+
+export type MerchantEvidence = {
+  evidenceId: string;
+  type: MerchantEvidenceType;
+  source: string;
+  matchedValue?: string;
+  candidateMerchantId?: string;
+  weight: number;
+  reliability: "verified" | "strong" | "medium" | "weak" | "untrusted";
+  effect: "supporting" | "conflicting" | "neutral";
+  explanation: string;
+};
+
+export type MerchantIdentity = {
+  merchantId: string;
+  canonicalName: string;
+  displayName: string;
+  merchantFamilyId?: string;
+};
+
+export type MarketplaceContext = {
+  isMarketplace: boolean;
+  platformMerchantId?: string;
+  sellerName?: string;
+  sellerId?: string;
+  sellerConfidence?: number;
+  fulfillmentType?: string;
+};
+
+export type MerchantContext = {
+  category: MerchantCategory | string | "unknown";
+  subcategory?: string | null;
+  purchaseChannel: MerchantPurchaseChannel;
+  commerceModel: CommerceModel;
+  marketplace: MarketplaceContext;
+  checkoutProvider: CheckoutProvider;
+};
+
+export type MerchantClassification = {
+  primaryCategory: MerchantCategory | string | "unknown";
+  secondaryCategories: Array<MerchantCategory | string>;
+  subcategory?: string | null;
+  source:
+    | "verified_registry_mapping"
+    | "exact_domain_mapping"
+    | "exact_merchant_alias"
+    | "structured_data"
+    | "checkout_provider"
+    | "dom_evidence"
+    | "title_or_metadata"
+    | "inferred_fallback"
+    | "unknown";
+  classificationConfidence: number;
+};
+
+export type MerchantCandidate = {
+  merchantId: string;
+  canonicalName: string;
+  score: number;
+  confidence: number;
+  supportingEvidenceIds: string[];
+  conflictingEvidenceIds: string[];
+  category?: MerchantCategory | string;
+};
+
+export type StructuredMerchantSignal = {
+  type: "merchant_name" | "organization" | "checkout_provider" | "category";
+  value: string;
+  source?: string;
+};
+
+export type MerchantDomSignal = {
+  type: "merchant_marker" | "payment_provider" | "checkout_marker" | "category_marker";
+  value: string;
+  source?: string;
+};
+
+export type MerchantIntelligenceInput = {
+  url: string;
+  hostname?: string;
+  pageTitle?: string;
+  documentTextSignals?: string[];
+  structuredData?: StructuredMerchantSignal[];
+  detectedMerchantLabel?: string;
+  checkoutProviderSignals?: string[];
+  domSignals?: MerchantDomSignal[];
+  purchaseChannelHint?: MerchantPurchaseChannel;
+  checkoutStage?: string;
+  transactionDate: string;
+};
+
+export type MerchantIntelligenceTrace = {
+  inputSummary: {
+    hasUrl: boolean;
+    hostname?: string;
+    pageTitle?: string;
+    documentTextSignalCount: number;
+    structuredDataCount: number;
+    domSignalCount: number;
+    checkoutProviderSignalCount: number;
+    checkoutStage?: string;
+  };
+  normalizedHostname?: string;
+  registryCandidates: MerchantCandidate[];
+  aliasMatches: Array<{ merchantId: string; alias: string; evidenceId: string }>;
+  categoryResolution: {
+    category: string;
+    source: MerchantClassification["source"];
+    confidence: number;
+  };
+  channelResolution: {
+    purchaseChannel: MerchantPurchaseChannel;
+    commerceModel: CommerceModel;
+  };
+  marketplaceResolution: MarketplaceContext;
+  confidenceCalculation: {
+    topScore: number;
+    secondScore: number;
+    conflictPenalty: number;
+    ambiguityPenalty: number;
+    finalConfidence: number;
+    band: MerchantConfidenceBand;
+  };
+  finalResolution: {
+    status: MerchantResolutionStatus;
+    merchantId?: string;
+    reason: string;
+  };
+  warnings: string[];
+};
+
+export type MerchantIntelligenceResult = {
+  identity: MerchantIdentity | null;
+  context: MerchantContext;
+  classification: MerchantClassification;
+  confidence: {
+    score: number;
+    band: MerchantConfidenceBand;
+  };
+  evidence: MerchantEvidence[];
+  alternatives: MerchantCandidate[];
+  trace: MerchantIntelligenceTrace;
+  registryVersion: string;
+  resolutionStatus: MerchantResolutionStatus;
+};
+
+export const MERCHANT_INTELLIGENCE_REGISTRY_VERSION = "2026.07.sprint7";
 
 export type MerchantCategoryNode = {
   categoryId: string;
@@ -435,6 +628,359 @@ export function resolveMerchantIntelligence(input: MerchantResolutionInput): Mer
   return resolveMerchant(input).merchant ? resolveMerchant(input) : null;
 }
 
+export function evaluateMerchantIntelligence(
+  input: MerchantIntelligenceInput,
+): MerchantIntelligenceResult {
+  const safeInput = sanitizeMerchantIntelligenceInput(input);
+  const hostname = normalizeHost(safeInput.hostname || safeInput.url);
+  const textSignals = [
+    safeInput.detectedMerchantLabel,
+    safeInput.pageTitle,
+    ...(safeInput.documentTextSignals || []),
+    ...(safeInput.structuredData || []).map((signal) => signal.value),
+    ...(safeInput.domSignals || []).map((signal) => signal.value),
+  ]
+    .filter(Boolean)
+    .map(normalizeText)
+    .filter(Boolean);
+
+  const evidence: MerchantEvidence[] = [];
+  const candidateEvidence = new Map<string, MerchantEvidence[]>();
+
+  function addEvidence(item: Omit<MerchantEvidence, "evidenceId">) {
+    const evidenceItem = {
+      ...item,
+      evidenceId: `mi-e${evidence.length + 1}`,
+    };
+    evidence.push(evidenceItem);
+    if (evidenceItem.candidateMerchantId) {
+      const current = candidateEvidence.get(evidenceItem.candidateMerchantId) || [];
+      current.push(evidenceItem);
+      candidateEvidence.set(evidenceItem.candidateMerchantId, current);
+    }
+  }
+
+  if (hostname) {
+    for (const merchant of MERCHANT_INTELLIGENCE_REGISTRY) {
+      const domains = [...merchant.websiteDomains, ...merchant.knownCheckoutDomains];
+      for (const domain of domains) {
+        const normalizedDomain = normalizeHost(domain);
+        if (!normalizedDomain) continue;
+        if (isSharedFamilyDomainOwnedByRoot(merchant, normalizedDomain)) continue;
+        if (hostname === normalizedDomain) {
+          addEvidence({
+            type: "exact_canonical_domain",
+            source: "hostname",
+            matchedValue: normalizedDomain,
+            candidateMerchantId: merchant.merchantId,
+            weight: 0.9,
+            reliability: "verified",
+            effect: "supporting",
+            explanation: `Hostname exactly matched ${merchant.displayName}.`,
+          });
+        } else if (hostname.endsWith(`.${normalizedDomain}`)) {
+          addEvidence({
+            type: "known_subdomain",
+            source: "hostname",
+            matchedValue: normalizedDomain,
+            candidateMerchantId: merchant.merchantId,
+            weight: 0.82,
+            reliability: "strong",
+            effect: "supporting",
+            explanation: `Hostname is a known subdomain for ${merchant.displayName}.`,
+          });
+        }
+      }
+    }
+  }
+
+  for (const text of textSignals) {
+    const descriptor = bestDescriptorMatch(text);
+    if (descriptor) {
+      addEvidence({
+        type: "billing_descriptor",
+        source: "merchant_text",
+        matchedValue: descriptor.alias,
+        candidateMerchantId: descriptor.merchant.merchantId,
+        weight: 0.88,
+        reliability: "verified",
+        effect: "supporting",
+        explanation: `Known billing descriptor matched ${descriptor.merchant.displayName}.`,
+      });
+    }
+    const alias = bestAliasMatch(text);
+    if (alias) {
+      addEvidence({
+        type: "exact_merchant_alias",
+        source: "merchant_text",
+        matchedValue: alias.alias,
+        candidateMerchantId: alias.merchant.merchantId,
+        weight: 0.78,
+        reliability: "strong",
+        effect: "supporting",
+        explanation: `Known alias matched ${alias.merchant.displayName}.`,
+      });
+    }
+    const categoryMatch = inferByCategory(text);
+    if (categoryMatch) {
+      addEvidence({
+        type: "category_only_signal",
+        source: "merchant_text",
+        matchedValue: String(categoryMatch.category),
+        candidateMerchantId: categoryMatch.merchantId,
+        weight: 0.35,
+        reliability: "weak",
+        effect: "supporting",
+        explanation: `Weak category text matched ${categoryMatch.displayName}.`,
+      });
+    }
+  }
+
+  for (const signal of safeInput.structuredData || []) {
+    if (signal.type === "merchant_name" || signal.type === "organization") {
+      const alias = bestAliasMatch(normalizeText(signal.value));
+      if (alias) {
+        addEvidence({
+          type: "structured_data_merchant_name",
+          source: signal.source || "structured_data",
+          matchedValue: alias.alias,
+          candidateMerchantId: alias.merchant.merchantId,
+          weight: 0.8,
+          reliability: "strong",
+          effect: "supporting",
+          explanation: `Structured merchant metadata matched ${alias.merchant.displayName}.`,
+        });
+      }
+    }
+  }
+
+  const provider = checkoutProviderFrom([
+    ...(safeInput.checkoutProviderSignals || []),
+    ...(safeInput.domSignals || []).map((signal) => signal.value),
+    hostname,
+  ]);
+  if (provider !== "unknown") {
+    addEvidence({
+      type: "checkout_provider_signal",
+      source: "checkout_provider",
+      matchedValue: provider,
+      weight: 0.12,
+      reliability: "medium",
+      effect: "neutral",
+      explanation: `${provider} identified as checkout provider, not purchase merchant.`,
+    });
+  }
+
+  const candidates = buildMerchantCandidates(candidateEvidence);
+  const conflicts = conflictingCandidateCount(candidates);
+  const top = candidates[0] || null;
+  const second = candidates[1] || null;
+  const ambiguityMargin = 0.08;
+  const ambiguous = Boolean(
+    top &&
+      second &&
+      top.confidence >= 0.55 &&
+      (Math.abs(top.confidence - second.confidence) < ambiguityMargin ||
+        (second.confidence >= 0.65 && top.confidence - second.confidence < 0.18)),
+  );
+  const conflictPenalty = conflicts > 1 ? Math.min(0.2, (conflicts - 1) * 0.06) : 0;
+  const ambiguityPenalty = ambiguous ? 0.18 : 0;
+  const finalConfidence = clamp01((top?.confidence || 0) - conflictPenalty - ambiguityPenalty);
+  const band = confidenceBand(finalConfidence);
+  const resolvedMerchant =
+    !ambiguous && top && finalConfidence >= 0.6 ? findMerchant(top.merchantId) : null;
+  const resolutionStatus: MerchantResolutionStatus = resolvedMerchant
+    ? "resolved"
+    : ambiguous
+      ? "ambiguous"
+      : "unknown";
+
+  const context = contextForMerchant(
+    resolvedMerchant,
+    safeInput,
+    provider,
+    textSignals,
+  );
+  const classification = classificationForMerchant(
+    resolvedMerchant,
+    context,
+    finalConfidence,
+    top,
+    safeInput,
+  );
+  const warnings = merchantWarnings({
+    resolutionStatus,
+    finalConfidence,
+    provider,
+    candidates,
+    input: safeInput,
+  });
+
+  return {
+    identity: resolvedMerchant
+      ? {
+          merchantId: resolvedMerchant.merchantId,
+          canonicalName: resolvedMerchant.canonicalName,
+          displayName: resolvedMerchant.displayName,
+          merchantFamilyId: resolvedMerchant.merchantGroup || undefined,
+        }
+      : null,
+    context,
+    classification,
+    confidence: { score: finalConfidence, band },
+    evidence,
+    alternatives: candidates.slice(1, 4),
+    trace: {
+      inputSummary: {
+        hasUrl: Boolean(safeInput.url),
+        hostname: hostname || undefined,
+        pageTitle: safeInput.pageTitle,
+        documentTextSignalCount: safeInput.documentTextSignals?.length || 0,
+        structuredDataCount: safeInput.structuredData?.length || 0,
+        domSignalCount: safeInput.domSignals?.length || 0,
+        checkoutProviderSignalCount: safeInput.checkoutProviderSignals?.length || 0,
+        checkoutStage: safeInput.checkoutStage,
+      },
+      normalizedHostname: hostname || undefined,
+      registryCandidates: candidates,
+      aliasMatches: evidence
+        .filter((item) => item.type === "exact_merchant_alias" || item.type === "billing_descriptor")
+        .map((item) => ({
+          merchantId: item.candidateMerchantId || "unknown",
+          alias: item.matchedValue || "",
+          evidenceId: item.evidenceId,
+        })),
+      categoryResolution: {
+        category: String(classification.primaryCategory),
+        source: classification.source,
+        confidence: classification.classificationConfidence,
+      },
+      channelResolution: {
+        purchaseChannel: context.purchaseChannel,
+        commerceModel: context.commerceModel,
+      },
+      marketplaceResolution: context.marketplace,
+      confidenceCalculation: {
+        topScore: top?.confidence || 0,
+        secondScore: second?.confidence || 0,
+        conflictPenalty,
+        ambiguityPenalty,
+        finalConfidence,
+        band,
+      },
+      finalResolution: {
+        status: resolutionStatus,
+        merchantId: resolvedMerchant?.merchantId,
+        reason: resolvedMerchant
+          ? "Resolved with sufficient deterministic evidence."
+          : ambiguous
+            ? "Multiple merchant candidates were too close to resolve safely."
+            : "No deterministic merchant evidence reached the resolution threshold.",
+      },
+      warnings,
+    },
+    registryVersion: MERCHANT_INTELLIGENCE_REGISTRY_VERSION,
+    resolutionStatus,
+  };
+}
+
+export function merchantDecisionInputAdapter(
+  result: MerchantIntelligenceResult,
+): {
+  merchant: string | null;
+  hostname: string | null;
+  category: string | null;
+  purchaseChannel: MerchantPurchaseChannel;
+} {
+  return {
+    merchant: result.identity?.displayName || null,
+    hostname: result.trace.normalizedHostname || null,
+    category:
+      result.classification.primaryCategory === "unknown"
+        ? null
+        : String(result.classification.primaryCategory),
+    purchaseChannel: result.context.purchaseChannel,
+  };
+}
+
+export function validateMerchantRegistryQuality() {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const merchantIds = new Set<string>();
+  const aliases = new Map<string, string>();
+  const domains = new Map<string, string>();
+  for (const record of MERCHANT_INTELLIGENCE_REGISTRY) {
+    if (merchantIds.has(record.merchantId)) {
+      errors.push(`duplicate merchantId: ${record.merchantId}`);
+    }
+    merchantIds.add(record.merchantId);
+    if (!record.active) warnings.push(`inactive merchant ignored: ${record.merchantId}`);
+    if (!record.createdAt || Number.isNaN(Date.parse(record.createdAt))) {
+      errors.push(`invalid createdAt for ${record.merchantId}`);
+    }
+    if (!record.updatedAt || Number.isNaN(Date.parse(record.updatedAt))) {
+      errors.push(`invalid updatedAt for ${record.merchantId}`);
+    }
+    if (record.knownAliases.length === 0) {
+      errors.push(`missing aliases for ${record.merchantId}`);
+    }
+    for (const alias of record.knownAliases) {
+      const normalized = normalizeText(alias);
+      if (!normalized) errors.push(`empty normalized alias for ${record.merchantId}`);
+      const owner = aliases.get(normalized);
+      if (owner && owner !== record.merchantId) {
+        errors.push(`alias collision: ${normalized} (${owner}, ${record.merchantId})`);
+      }
+      aliases.set(normalized, record.merchantId);
+    }
+    for (const domain of [...record.websiteDomains, ...record.knownCheckoutDomains]) {
+      const normalized = normalizeHost(domain);
+      if (!normalized || normalized.includes("*")) {
+        errors.push(`invalid domain for ${record.merchantId}: ${domain}`);
+      }
+      const owner = domains.get(normalized);
+      if (
+        owner &&
+        owner !== record.merchantId &&
+        !isAllowedSharedDomain(owner, record.merchantId, normalized)
+      ) {
+        errors.push(`domain collision: ${normalized} (${owner}, ${record.merchantId})`);
+      }
+      domains.set(normalized, record.merchantId);
+    }
+    for (const rel of record.relationships) {
+      if (!findMerchant(rel.merchantId)) {
+        errors.push(`missing family reference ${rel.merchantId} from ${record.merchantId}`);
+      }
+    }
+  }
+  return {
+    ok: errors.length === 0,
+    registryVersion: MERCHANT_INTELLIGENCE_REGISTRY_VERSION,
+    merchantCount: MERCHANT_INTELLIGENCE_REGISTRY.length,
+    errors,
+    warnings,
+  };
+}
+
+function isAllowedSharedDomain(ownerId: string, candidateId: string, domain: string) {
+  const owner = findMerchant(ownerId);
+  const candidate = findMerchant(candidateId);
+  if (!owner || !candidate) return false;
+  const sameFamily =
+    owner.merchantGroup &&
+    candidate.merchantGroup &&
+    owner.merchantGroup === candidate.merchantGroup;
+  if (!sameFamily) return false;
+  const root = findMerchant(owner.merchantGroup || "");
+  return Boolean(
+    root &&
+      [...root.websiteDomains, ...root.knownCheckoutDomains]
+        .map(normalizeHost)
+        .includes(domain),
+  );
+}
+
 export function resolveMerchant(input: MerchantResolutionInput): MerchantResolutionResult {
   const normalizationSteps: string[] = [];
   const rawText = [
@@ -637,7 +1183,7 @@ function bestTextMatch(
     for (const alias of valuesForMerchant(merchant)) {
       const normalized = normalizeText(alias);
       if (!normalized) continue;
-      if (text === normalized || text.includes(normalized) || normalized.includes(text)) {
+      if (text === normalized || containsNormalizedPhrase(text, normalized)) {
         if (!best || normalized.length > best.length) {
           best = { merchant, alias, length: normalized.length };
         }
@@ -720,13 +1266,31 @@ function normalizeText(value: unknown) {
     .trim();
 }
 
+function containsNormalizedPhrase(text: string, phrase: string) {
+  if (!text || !phrase) return false;
+  const escaped = escapeRegExp(phrase).replace(/\\ /g, "\\s+");
+  return new RegExp(`(?:^|\\s)${escaped}(?:\\s|$)`).test(text);
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function normalizeHost(value?: string | null) {
   if (!value) return "";
   try {
     const parsed = value.includes("://") ? new URL(value).hostname : value;
-    return parsed.replace(/^(?:www|m)\./i, "").toLowerCase();
+    return parsed
+      .replace(/\.$/g, "")
+      .replace(/:\d+$/g, "")
+      .replace(/^(?:www|m)\./i, "")
+      .toLowerCase();
   } catch {
-    return value.replace(/^(?:www|m)\./i, "").toLowerCase();
+    return value
+      .replace(/\.$/g, "")
+      .replace(/:\d+$/g, "")
+      .replace(/^(?:www|m)\./i, "")
+      .toLowerCase();
   }
 }
 
@@ -871,4 +1435,248 @@ function duplicateAliasesAcrossMerchants() {
       alias,
       merchantIds: Array.from(merchants),
     }));
+}
+
+function isSharedFamilyDomainOwnedByRoot(
+  merchant: CanonicalMerchant,
+  normalizedDomain: string,
+) {
+  if (!merchant.merchantGroup || merchant.merchantId === merchant.merchantGroup) {
+    return false;
+  }
+  return MERCHANT_INTELLIGENCE_REGISTRY.some(
+    (candidate) =>
+      candidate.merchantId === merchant.merchantGroup &&
+      [...candidate.websiteDomains, ...candidate.knownCheckoutDomains]
+        .map(normalizeHost)
+        .includes(normalizedDomain),
+  );
+}
+
+function sanitizeMerchantIntelligenceInput(
+  input: MerchantIntelligenceInput,
+): MerchantIntelligenceInput {
+  return {
+    url: sanitizeUrl(input.url),
+    hostname: sanitizeScalar(input.hostname, 128),
+    pageTitle: sanitizeScalar(input.pageTitle, 160),
+    detectedMerchantLabel: sanitizeScalar(input.detectedMerchantLabel, 120),
+    documentTextSignals: sanitizeSignalList(input.documentTextSignals, 12, 120),
+    checkoutProviderSignals: sanitizeSignalList(
+      input.checkoutProviderSignals,
+      12,
+      80,
+    ),
+    structuredData: (input.structuredData || [])
+      .slice(0, 12)
+      .map((signal) => ({
+        type: signal.type,
+        value: sanitizeScalar(signal.value, 120),
+        source: sanitizeScalar(signal.source, 60),
+      }))
+      .filter((signal) => Boolean(signal.value)),
+    domSignals: (input.domSignals || [])
+      .slice(0, 20)
+      .map((signal) => ({
+        type: signal.type,
+        value: sanitizeScalar(signal.value, 100),
+        source: sanitizeScalar(signal.source, 60),
+      }))
+      .filter((signal) => Boolean(signal.value)),
+    purchaseChannelHint: input.purchaseChannelHint,
+    checkoutStage: sanitizeScalar(input.checkoutStage, 40),
+    transactionDate:
+      input.transactionDate && !Number.isNaN(Date.parse(input.transactionDate))
+        ? input.transactionDate
+        : new Date().toISOString(),
+  };
+}
+
+function sanitizeUrl(value: string) {
+  try {
+    const parsed = new URL(String(value || ""));
+    if (!["http:", "https:"].includes(parsed.protocol)) return "";
+    return `${parsed.protocol}//${parsed.hostname}${parsed.pathname}`;
+  } catch {
+    return "";
+  }
+}
+
+function sanitizeSignalList(
+  values: string[] | undefined,
+  maxCount: number,
+  maxLength: number,
+) {
+  return Array.from(
+    new Set((values || []).map((value) => sanitizeScalar(value, maxLength))),
+  )
+    .filter((value) => Boolean(value))
+    .slice(0, maxCount);
+}
+
+function sanitizeScalar(value: unknown, maxLength: number) {
+  const text = String(value || "")
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(
+      /\b(?:\d[ -]*?){12,19}\b|\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,
+      "[redacted]",
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) return "";
+  return text.slice(0, maxLength);
+}
+
+function buildMerchantCandidates(
+  candidateEvidence: Map<string, MerchantEvidence[]>,
+): MerchantCandidate[] {
+  return Array.from(candidateEvidence.entries())
+    .map(([merchantId, evidence]) => {
+      const supporting = evidence.filter((item) => item.effect === "supporting");
+      const conflicting = evidence.filter((item) => item.effect === "conflicting");
+      const score = clamp01(
+        1 -
+          supporting.reduce(
+            (remaining, item) => remaining * (1 - item.weight),
+            1,
+          ) -
+          Math.min(0.25, conflicting.length * 0.08),
+      );
+      const merchant = findMerchant(merchantId);
+      return {
+        merchantId,
+        canonicalName: merchant?.canonicalName || merchantId,
+        score,
+        confidence: score,
+        supportingEvidenceIds: supporting.map((item) => item.evidenceId),
+        conflictingEvidenceIds: conflicting.map((item) => item.evidenceId),
+        category: merchant?.category,
+      };
+    })
+    .sort((a, b) => b.confidence - a.confidence || a.merchantId.localeCompare(b.merchantId));
+}
+
+function conflictingCandidateCount(candidates: MerchantCandidate[]) {
+  return candidates.filter((candidate) => candidate.confidence >= 0.45).length;
+}
+
+function confidenceBand(value: number): MerchantConfidenceBand {
+  if (value >= 0.85) return "high";
+  if (value >= 0.6) return "medium";
+  if (value > 0) return "low";
+  return "unknown";
+}
+
+function clamp01(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, Number(value.toFixed(4))));
+}
+
+function contextForMerchant(
+  merchant: CanonicalMerchant | null,
+  input: MerchantIntelligenceInput,
+  checkoutProvider: CheckoutProvider,
+  textSignals: string[],
+): MerchantContext {
+  const joined = textSignals.join(" ");
+  const marketplace =
+    merchant?.merchantType === "marketplace" ||
+    /marketplace|seller|fulfilled by|third party|mktp/.test(joined);
+  const purchaseChannel =
+    input.purchaseChannelHint ||
+    (/portal/.test(joined)
+      ? "travel_portal"
+      : marketplace
+        ? "online_direct"
+        : /subscription|recurring/.test(joined)
+          ? "subscription"
+          : "online_direct");
+  const commerceModel: CommerceModel = marketplace
+    ? "marketplace"
+    : /delivery/.test(joined)
+      ? "delivery"
+      : /pickup/.test(joined)
+        ? "pickup"
+        : /subscription|recurring/.test(joined)
+          ? "subscription"
+          : "direct";
+  return {
+    category: merchant?.category || "unknown",
+    subcategory: merchant?.subcategory,
+    purchaseChannel,
+    commerceModel,
+    marketplace: {
+      isMarketplace: marketplace,
+      platformMerchantId: marketplace ? merchant?.merchantId : undefined,
+      sellerConfidence: marketplace ? 0.4 : undefined,
+    },
+    checkoutProvider,
+  };
+}
+
+function classificationForMerchant(
+  merchant: CanonicalMerchant | null,
+  context: MerchantContext,
+  confidence: number,
+  candidate: MerchantCandidate | null,
+  input: MerchantIntelligenceInput,
+): MerchantClassification {
+  if (!merchant) {
+    return {
+      primaryCategory: "unknown",
+      secondaryCategories: [],
+      source: input.detectedMerchantLabel ? "inferred_fallback" : "unknown",
+      classificationConfidence: 0,
+    };
+  }
+  const source: MerchantClassification["source"] =
+    candidate?.supportingEvidenceIds.length && confidence >= 0.85
+      ? "verified_registry_mapping"
+      : "inferred_fallback";
+  return {
+    primaryCategory: context.category,
+    secondaryCategories: merchant.categoryIds
+      .map((id) => findCategory(id)?.displayName || id)
+      .filter((value) => normalizeText(value) !== normalizeText(context.category)),
+    subcategory: merchant.subcategory,
+    source,
+    classificationConfidence: confidence,
+  };
+}
+
+function checkoutProviderFrom(values: Array<string | undefined>) {
+  const text = normalizeText(values.filter(Boolean).join(" "));
+  if (!text) return "unknown";
+  if (/\bshopify\b/.test(text)) return "shopify";
+  if (/\bstripe\b/.test(text)) return "stripe_checkout";
+  if (/\bpaypal\b/.test(text)) return "paypal";
+  if (/\bshop pay\b|\bshoppay\b/.test(text)) return "shop_pay";
+  if (/\bamazon pay\b/.test(text)) return "amazon_pay";
+  return "merchant_native";
+}
+
+function merchantWarnings(input: {
+  resolutionStatus: MerchantResolutionStatus;
+  finalConfidence: number;
+  provider: CheckoutProvider;
+  candidates: MerchantCandidate[];
+  input: MerchantIntelligenceInput;
+}) {
+  const warnings: string[] = [];
+  if (input.resolutionStatus === "unknown") {
+    warnings.push("merchant_identity_unknown");
+  }
+  if (input.resolutionStatus === "ambiguous") {
+    warnings.push("merchant_identity_ambiguous");
+  }
+  if (input.finalConfidence < 0.85) {
+    warnings.push("merchant_specific_benefits_require_caution");
+  }
+  if (input.provider !== "unknown" && !input.candidates.length) {
+    warnings.push("checkout_provider_is_not_merchant");
+  }
+  if ((input.input.documentTextSignals || []).length > 10) {
+    warnings.push("merchant_signal_payload_capped");
+  }
+  return warnings;
 }

@@ -65,3 +65,34 @@ Use this flow to demo the Amex Platinum Lululemon benefit at checkout:
 ## Release checklist
 
 See `RELEASE_CHECKLIST.md` for a concise MVP demo and release readiness guide.
+
+## Recommendation validation gate
+
+The backend includes a deterministic recommendation validation framework for wallet-first correctness. From `backend/`:
+
+```bash
+npm test -- --runInBand
+npm run build
+npm run validate:recommendations:curated
+npm run validate:recommendations:generated -- --seed 20260724 --count 1000
+npm run validate:recommendations:coverage
+npm run validate:recommendations:mutation
+npm run validate:recommendations:full
+npm run validate:recommendations:report
+```
+
+`validate:recommendations:mutation` uses test-only policy injection to simulate real engine defects. `validate:recommendations:coverage` enforces semantic branch coverage for eligibility, caps, credits, ranking paths, wallet behavior, classification confidence, date boundaries, and purchase channels. Generated pass rates validate deterministic fixture behavior; they do not prove live issuer terms are factually current.
+
+## Merchant Intelligence validation gate
+
+Sprint 7 adds a deterministic Merchant Intelligence layer between checkout detection and wallet decisioning. It resolves Merchant Identity separately from Merchant Context, keeps checkout providers separate from merchants, preserves merchant families, rejects deceptive domains, and emits safe evidence/trace summaries.
+
+From `backend/`:
+
+```bash
+npm run validate:merchant-intelligence:curated
+npm run validate:merchant-intelligence:full -- --seed 20260724 --count 1000 --report
+npm run validate:merchant-intelligence:generated -- --seed 20260724 --count 10000
+```
+
+Reports are written to `docs/MERCHANT_INTELLIGENCE_REPORT.json` and `docs/MERCHANT_INTELLIGENCE_REPORT.md`.
