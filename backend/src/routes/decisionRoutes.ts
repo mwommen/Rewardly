@@ -5,6 +5,7 @@ import {
   generateRecommendationPresentation,
 } from "../services/productExperienceService";
 import { extractPurchaseIntelligence } from "../services/purchaseIntelligenceService";
+import { authenticateBetaToken } from "../services/betaAuthService";
 import type { PaymentDecision } from "../../../packages/rewardly-core/src";
 
 const router = Router();
@@ -21,7 +22,7 @@ router.post(PAYMENT_DECISION_ROUTE, async (req, res) => {
       });
     }
 
-    const identity = resolvePaymentIdentity(req);
+    const identity = await resolvePaymentIdentity(req);
     if ("error" in identity) {
       return res.status(identity.status).json({ error: identity.error });
     }
@@ -94,10 +95,7 @@ router.post(PAYMENT_DECISION_ROUTE, async (req, res) => {
     });
 
     const presentation = generateRecommendationPresentation({ decision });
-    console.log(
-      "[Rewardly] decision-explanation-payload",
-      decisionExplanationDebugPayload(decision),
-    );
+    traceDecisionExplanation(decision);
     traceDecisionRouteResponse(decision);
     const lifecycle = [
       createLifecycleEvent({
@@ -132,6 +130,14 @@ function traceDecisionRouteResponse(decision: PaymentDecision) {
   if (process.env.REWARDLY_TRACE_DECISION !== "true") return;
   console.log(
     "[Rewardly] decision-route-response",
+    decisionExplanationDebugPayload(decision),
+  );
+}
+
+function traceDecisionExplanation(decision: PaymentDecision) {
+  if (process.env.REWARDLY_TRACE_DECISION !== "true") return;
+  console.log(
+    "[Rewardly] decision-explanation-payload",
     decisionExplanationDebugPayload(decision),
   );
 }
@@ -205,7 +211,7 @@ type PaymentIdentity =
       error: string;
     };
 
-function resolvePaymentIdentity(req: any): PaymentIdentity {
+async function resolvePaymentIdentity(req: any): Promise<PaymentIdentity> {
   if (allowDevelopmentOverrides()) {
     return {
       userId: String(req.body?.userId || "devUser"),
@@ -216,26 +222,31 @@ function resolvePaymentIdentity(req: any): PaymentIdentity {
     };
   }
 
-  const expectedToken = process.env.REWARDLY_BETA_SESSION_TOKEN;
-  const betaUserId = process.env.REWARDLY_BETA_USER_ID;
-  const providedToken = String(req.headers?.[BETA_SESSION_HEADER] || "");
-
-  if (!expectedToken || !betaUserId || providedToken !== expectedToken) {
+  try {
+    const user = await authenticateBetaToken(
+      req.headers?.authorization ||
+        (req.headers?.[BETA_SESSION_HEADER]
+          ? `Bearer ${req.headers[BETA_SESSION_HEADER]}`
+          : ""),
+    );
+    return {
+      userId: user.userId,
+      manualCardSlugs: undefined,
+      allowClientWalletControls: false,
+    };
+  } catch {
     return {
       status: 401,
       error: "Valid Rewardly beta session required.",
     };
   }
-
-  return {
-    userId: betaUserId,
-    manualCardSlugs: undefined,
-    allowClientWalletControls: false,
-  };
 }
 
 function allowDevelopmentOverrides() {
-  return process.env.REWARDLY_ALLOW_DEV_OVERRIDES === "true";
+  return (
+    process.env.NODE_ENV !== "production" &&
+    process.env.REWARDLY_ALLOW_DEV_OVERRIDES === "true"
+  );
 }
 
 function hasPaymentDecisionContext(body: any) {

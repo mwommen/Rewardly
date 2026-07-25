@@ -109,6 +109,7 @@ router.get("/funnel", async (_req, res) => {
 
 router.get("/recent", async (req, res) => {
   try {
+    if (!analyticsDashboardAllowed()) return res.status(404).json({ error: "Analytics dashboard is not enabled" });
     const col = await getAnalyticsCollection();
     const userId = String(req.query.userId || "").trim();
     const query = userId ? { userId } : {};

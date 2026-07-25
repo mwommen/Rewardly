@@ -93,7 +93,13 @@
     "purchase:extract": "ts-node ./src/purchaseIntelligenceCli.ts extract",
     "purchase:classify": "ts-node ./src/purchaseIntelligenceCli.ts classify",
     "purchase:benchmark": "ts-node ./src/purchaseIntelligenceCli.ts benchmark",
-    "purchase:report": "ts-node ./src/purchaseIntelligenceCli.ts report"
+    "purchase:report": "ts-node ./src/purchaseIntelligenceCli.ts report",
+    "beta:create-user": "ts-node ./src/betaAdminCli.ts create-user",
+    "beta:list-users": "ts-node ./src/betaAdminCli.ts list-users",
+    "beta:revoke-user": "ts-node ./src/betaAdminCli.ts revoke-user",
+    "beta:rotate-token": "ts-node ./src/betaAdminCli.ts rotate-token",
+    "beta:delete-user": "ts-node ./src/betaAdminCli.ts delete-user",
+    "db:init:production": "ts-node ./src/initProductionDb.ts"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",

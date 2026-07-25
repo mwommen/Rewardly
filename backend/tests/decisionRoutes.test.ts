@@ -2,12 +2,19 @@ jest.mock("../src/services/paymentDecisionService", () => ({
   decidePayment: jest.fn(),
 }));
 
+jest.mock("../src/services/betaAuthService", () => ({
+  authenticateBetaToken: jest.fn(),
+}));
+
 import router from "../src/routes/decisionRoutes";
 import { decidePayment } from "../src/services/paymentDecisionService";
+import { authenticateBetaToken } from "../src/services/betaAuthService";
 
 const mockedDecidePayment = decidePayment as jest.MockedFunction<
   typeof decidePayment
 >;
+const mockedAuthenticateBetaToken =
+  authenticateBetaToken as jest.MockedFunction<typeof authenticateBetaToken>;
 
 const ORIGINAL_ENV = process.env;
 
@@ -58,6 +65,10 @@ describe("decisionRoutes", () => {
       REWARDLY_ALLOW_DEV_OVERRIDES: "true",
     };
     jest.clearAllMocks();
+    mockedAuthenticateBetaToken.mockResolvedValue({
+      userId: "beta-user",
+      status: "active",
+    });
   });
 
   afterAll(() => {
@@ -118,6 +129,7 @@ describe("decisionRoutes", () => {
       REWARDLY_BETA_SESSION_TOKEN: "beta-secret",
       REWARDLY_BETA_USER_ID: "beta-user",
     };
+    mockedAuthenticateBetaToken.mockRejectedValueOnce(new Error("invalid"));
 
     const res = await invokeRoute("POST", "/decisions/payment", {
       userId: "spoofed-user",
@@ -157,7 +169,7 @@ describe("decisionRoutes", () => {
         manualCardSlugs: ["amex-platinum"],
         restrictToWallet: false,
       },
-      { "x-rewardly-beta-session": "beta-secret" },
+      { authorization: "Bearer beta-secret" },
     );
 
     expect(res.statusCode).toBe(200);
