@@ -151,6 +151,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           cardSlug: data?.decision?.recommendedCard?.card?.slug || null,
           merchant: data?.decision?.merchant?.name || null,
         });
+        rewardlyDebugLog(
+          debugLogs,
+          "background-decision-explanation",
+          explanationDebugPayload(data?.decision || null),
+        );
         sendResponse({ ok: true, data });
       } catch (e) {
         console.error("[Rewardly] pipeline-failed", {
@@ -322,7 +327,10 @@ async function trackAnalyticsEvent(event, metadata = {}) {
     installationId,
     source: "chrome_extension",
     event,
-    metadata: sanitizeAnalyticsMetadata(metadata),
+    metadata: {
+      ...sanitizeAnalyticsMetadata(metadata),
+      ...analyticsRuntimeMetadata(),
+    },
   };
   try {
     await fetchJsonWithFallback(apiBase, ANALYTICS_EVENT_API_PATH, {
@@ -354,11 +362,20 @@ async function getInstallationId() {
 function sanitizeAnalyticsMetadata(metadata) {
   const allowed = {};
   const keys = [
+    "sessionId",
     "reason",
     "stage",
     "merchant",
     "hostname",
     "category",
+    "confidenceLabel",
+    "confidenceBand",
+    "recommendationLatencyMs",
+    "popupLatencyMs",
+    "merchantClassificationLatencyMs",
+    "estimatedRewardValueUSD",
+    "advantageOverRunnerUpUSD",
+    "rewardType",
     "hasRecommendation",
     "errorCode",
     "errorType",
@@ -380,6 +397,34 @@ function sanitizeAnalyticsMetadata(metadata) {
   return allowed;
 }
 
+function analyticsRuntimeMetadata() {
+  return {
+    extensionVersion: chrome.runtime.getManifest?.().version || "unknown",
+    recommendationEngineVersion: "wallet-decision-engine-v1",
+    merchantRegistryVersion: "merchant-registry-v1",
+    browserFamily: browserFamilyFromUserAgent(navigator.userAgent || ""),
+    operatingSystem: operatingSystemFromUserAgent(navigator.userAgent || ""),
+  };
+}
+
+function browserFamilyFromUserAgent(userAgent) {
+  if (/Edg\//.test(userAgent)) return "Edge";
+  if (/OPR\//.test(userAgent)) return "Opera";
+  if (/Firefox\//.test(userAgent)) return "Firefox";
+  if (/Chrome\//.test(userAgent) || /Chromium\//.test(userAgent)) return "Chrome";
+  if (/Safari\//.test(userAgent)) return "Safari";
+  return "Unknown";
+}
+
+function operatingSystemFromUserAgent(userAgent) {
+  if (/Windows/i.test(userAgent)) return "Windows";
+  if (/Mac OS X|Macintosh/i.test(userAgent)) return "macOS";
+  if (/Android/i.test(userAgent)) return "Android";
+  if (/iPhone|iPad|iPod/i.test(userAgent)) return "iOS";
+  if (/Linux/i.test(userAgent)) return "Linux";
+  return "Unknown";
+}
+
 function safeDecisionLogPayload(payload) {
   return {
     merchant: payload?.merchant || null,
@@ -391,6 +436,64 @@ function safeDecisionLogPayload(payload) {
     walletCardCount: Array.isArray(payload?.manualCardSlugs)
       ? payload.manualCardSlugs.length
       : undefined,
+  };
+}
+
+function explanationDebugPayload(decision) {
+  const recommendation = decision?.recommendedCard || null;
+  const winningReason =
+    decision?.winningReason || recommendation?.winningReason || null;
+  const relevantBenefits =
+    decision?.relevantBenefits || recommendation?.relevantBenefits || [];
+  const legacyBenefits = [
+    ...(decision?.unlockedBenefits || []),
+    ...(recommendation?.unlockedBenefits || []),
+  ];
+
+  return {
+    merchant: decision?.merchant?.name || null,
+    recommendedCard:
+      recommendation?.card?.slug || recommendation?.card?.name || null,
+    decisionNarrative: decision?.decisionNarrative
+      ? {
+          reasonType: decision.decisionNarrative.reasonType || null,
+          headline: decision.decisionNarrative.headline || null,
+          summary: decision.decisionNarrative.summary || null,
+          estimatedReward: decision.decisionNarrative.estimatedReward || null,
+          comparison: decision.decisionNarrative.comparison || null,
+          confidence: decision.decisionNarrative.confidence || null,
+          primaryReason: decision.decisionNarrative.primaryReason || null,
+        }
+      : null,
+    recommendationIntegrity: decision?.recommendationIntegrity || null,
+    winningReason: winningReason
+      ? {
+          type: winningReason.type || null,
+          title: winningReason.title || null,
+          explanation: winningReason.explanation || null,
+          applicableToPurchase: winningReason.applicableToPurchase,
+          influencedRecommendation: winningReason.influencedRecommendation,
+          sourceBenefitId: winningReason.sourceBenefitId || null,
+          sourceRuleId: winningReason.sourceRuleId || null,
+        }
+      : null,
+    relevantBenefits: relevantBenefits.map((match) => ({
+      label: match?.benefit?.label || match?.summary || null,
+      sourceBenefitId: match?.benefit?.id || null,
+    })),
+    legacyWhyThisWins:
+      decision?.primaryReason?.detail ||
+      recommendation?.primaryReason?.detail ||
+      null,
+    legacyBenefits: legacyBenefits.map((match) => ({
+      label: match?.benefit?.label || match?.summary || null,
+      sourceBenefitId: match?.benefit?.id || null,
+    })),
+    sourceBenefitIds: [
+      winningReason?.sourceBenefitId,
+      ...relevantBenefits.map((match) => match?.benefit?.id),
+    ].filter(Boolean),
+    sourceRuleIds: [winningReason?.sourceRuleId].filter(Boolean),
   };
 }
 

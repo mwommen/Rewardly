@@ -10,6 +10,7 @@ import {
   type RecommendationPurchaseContext,
   type PurchaseContext,
   type Recommendation,
+  type RecommendationWinningReason,
 } from "../../../packages/rewardly-core/src";
 import {
   recommendAllBenefits,
@@ -19,6 +20,11 @@ import {
   resolveMerchant,
   type ResolveMerchantInput,
 } from "./merchantDetectionService";
+import {
+  evaluateMerchantIntelligence,
+  merchantDecisionInputAdapter,
+  type MerchantIntelligenceInput,
+} from "./merchantIntelligenceService";
 import { resolveUserWallet } from "./walletService";
 import {
   explainRecommendationDecision,
@@ -35,6 +41,7 @@ export type PaymentDecisionRequest = ResolveMerchantInput & {
   manualCardSlugs?: string[];
   restrictToWallet?: boolean;
   purchaseContext?: Partial<PurchaseContext>;
+  merchantSignals?: Partial<MerchantIntelligenceInput>;
 };
 
 type ExistingRecommendation = {
@@ -46,6 +53,7 @@ type ExistingRecommendation = {
   confidence?: number;
   reason?: string;
   matchedBenefit?: string | null;
+  matchTier?: string;
   annualFee?: number;
   lastVerified?: string | null;
   intelligenceConfidence?: {
@@ -79,7 +87,48 @@ export async function decidePayment(
   request: PaymentDecisionRequest,
 ): Promise<PaymentDecision> {
   const userId = request.userId?.trim() || "devUser";
-  const merchant = resolveMerchant(request);
+  const merchantIntelligence = evaluateMerchantIntelligence({
+    url: request.merchantSignals?.url || request.url || "",
+    hostname: request.merchantSignals?.hostname || request.hostname || "",
+    pageTitle: request.merchantSignals?.pageTitle || request.title || "",
+    documentTextSignals: request.merchantSignals?.documentTextSignals || [],
+    structuredData: request.merchantSignals?.structuredData || [],
+    detectedMerchantLabel:
+      request.merchantSignals?.detectedMerchantLabel || request.merchant || "",
+    checkoutProviderSignals:
+      request.merchantSignals?.checkoutProviderSignals || [],
+    domSignals: request.merchantSignals?.domSignals || [],
+    purchaseChannelHint: request.merchantSignals?.purchaseChannelHint,
+    checkoutStage:
+      request.merchantSignals?.checkoutStage ||
+      request.purchaseContext?.checkoutStage ||
+      undefined,
+    transactionDate:
+      request.merchantSignals?.transactionDate ||
+      request.purchaseContext?.timestamp ||
+      new Date().toISOString(),
+  });
+  const merchantIntelligenceMode = resolveMerchantIntelligenceMode();
+  const legacyMerchant = resolveMerchant(request);
+  const merchantAdapterInput =
+    merchantIntelligenceMode === "merchant-intelligence"
+      ? merchantDecisionInputAdapter(merchantIntelligence)
+      : {};
+  const merchant =
+    merchantIntelligenceMode === "merchant-intelligence"
+      ? resolveMerchant({
+          ...request,
+          ...merchantAdapterInput,
+        })
+      : legacyMerchant;
+  const merchantIntelligenceDiagnostics = {
+    ...merchantIntelligence,
+    rolloutMode: merchantIntelligenceMode,
+    shadowDiscrepancy:
+      merchantIntelligenceMode === "shadow"
+        ? buildMerchantShadowDiscrepancy(legacyMerchant, merchantIntelligence)
+        : null,
+  };
   const wallet = await resolveUserWallet({
     userId,
     manualCardSlugs: request.manualCardSlugs,
@@ -113,6 +162,7 @@ export async function decidePayment(
       purchase,
       recommendationPurchaseContext,
       decisionExplanation: explanation,
+      merchantIntelligence: merchantIntelligenceDiagnostics,
     };
   }
 
@@ -166,14 +216,17 @@ export async function decidePayment(
       walletSlugs.has(String(item.slug || "")),
     )
     .map((item: ExistingRecommendation) =>
-      toDecisionRecommendation(item, wallet.cards, offers),
+      toDecisionRecommendation(item, wallet.cards, offers, merchant),
     );
 
   const decision = createPaymentDecision({
     wallet,
     merchant,
     recommendations,
+    purchaseAmount: amount ?? null,
   });
+  tracePaymentDecisionBoundary("paymentDecisionService-output", decision);
+  tracePaymentDecisionBoundary("canonical-paymentDecision-output", decision);
   const explanation = explainRecommendationDecision({
     userId,
     merchant,
@@ -191,7 +244,74 @@ export async function decidePayment(
     purchase,
     recommendationPurchaseContext,
     decisionExplanation: explanation,
+    merchantIntelligence: merchantIntelligenceDiagnostics,
   };
+}
+
+function resolveMerchantIntelligenceMode() {
+  const mode = String(
+    process.env.REWARDLY_MERCHANT_INTELLIGENCE_MODE || "shadow",
+  ).trim();
+  if (mode === "legacy" || mode === "shadow" || mode === "merchant-intelligence") {
+    return mode;
+  }
+  return "shadow";
+}
+
+function buildMerchantShadowDiscrepancy(
+  legacyMerchant: ReturnType<typeof resolveMerchant>,
+  merchantIntelligence: ReturnType<typeof evaluateMerchantIntelligence>,
+) {
+  const normalizedLegacyMerchant = legacyMerchant.name || null;
+  const normalizedNewMerchant = merchantIntelligence.identity?.displayName || null;
+  const legacyCategory = legacyMerchant.category || null;
+  const newCategory =
+    merchantIntelligence.classification.primaryCategory === "unknown"
+      ? null
+      : merchantIntelligence.classification.primaryCategory;
+  const legacyChannel = "online_direct";
+  const newChannel = merchantIntelligence.context.purchaseChannel;
+  const differences = [
+    normalizedLegacyMerchant !== normalizedNewMerchant ? "merchant" : null,
+    legacyCategory !== newCategory ? "category" : null,
+    legacyChannel !== newChannel ? "channel" : null,
+  ].filter(Boolean);
+  return {
+    normalizedLegacyMerchant,
+    normalizedNewMerchant,
+    legacyCategory,
+    newCategory,
+    legacyChannel,
+    newChannel,
+    newConfidenceBand: merchantIntelligence.confidence.band,
+    discrepancyType: differences.length ? differences.join("_") : "equivalent",
+    registryVersion: merchantIntelligence.registryVersion,
+    correlationId: `mi-${merchantIntelligence.registryVersion}-${String(
+      normalizedLegacyMerchant || normalizedNewMerchant || "unknown",
+    )
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .slice(0, 60)}`,
+  };
+}
+
+function tracePaymentDecisionBoundary(label: string, decision: PaymentDecision) {
+  if (process.env.REWARDLY_TRACE_DECISION !== "true") return;
+  console.log(`[Rewardly] ${label}`, {
+    merchant: decision.merchant?.name || null,
+    recommendedCard:
+      decision.recommendedCard?.card.slug ||
+      decision.recommendedCard?.card.name ||
+      null,
+    winningReasonType: decision.winningReason?.type || null,
+    winningRuleId: decision.winningReason?.sourceRuleId || null,
+    winningBenefitId: decision.winningReason?.sourceBenefitId || null,
+    narrativeHeadline: decision.decisionNarrative?.headline || null,
+    integrityValid: decision.recommendationIntegrity?.valid ?? null,
+    integrityFailureReasons: decision.recommendationIntegrity?.reason
+      ? [decision.recommendationIntegrity.reason]
+      : [],
+  });
 }
 
 function benefitEnrollmentState(
@@ -242,30 +362,41 @@ function benefitEnrollmentState(
 function toDecisionRecommendation(
   item: ExistingRecommendation,
   walletCards: Card[],
-  offers: ExistingOffer[],
+  _offers: ExistingOffer[],
+  merchant: ReturnType<typeof resolveMerchant>,
 ): Recommendation {
   const card =
     walletCards.find((walletCard) => walletCard.slug === item.slug) ||
     fallbackCard(item);
-  const matchedOffer = offers.find((offer) => offer.slug === item.slug);
-  const benefitLabels = [
-    item.matchedBenefit,
-    ...(matchedOffer?.perks || []),
-  ].filter(Boolean) as string[];
+  const decisionCard = cardForDecisionPayload(card);
+  const benefitLabels = [item.matchedBenefit].filter(Boolean) as string[];
+  const winningReason = winningReasonForItem(item, card, merchant);
+  const relevantBenefits = relevantBenefitsFor(item, decisionCard, winningReason);
 
   return buildRecommendation({
-    card,
-    primaryReason: primaryReasonFor(item, benefitLabels),
+    card: decisionCard,
+    primaryReason: primaryReasonFor(item, benefitLabels, winningReason),
     rewardEstimate: {
-      label: rewardLabel(item.effectiveRate),
+      label: winningReason?.title || rewardLabel(item.effectiveRate, card),
       effectiveRate: item.effectiveRate,
       estimatedValueUSD: item.estValueUSD,
     },
     confidence: item.intelligenceConfidence,
-    unlockedBenefits: benefitLabels
-      .slice(0, 4)
-      .map((label) => toBenefitMatch(label, card)),
+    unlockedBenefits: relevantBenefits,
+    relevantBenefits,
+    winningReason,
   });
+}
+
+function cardForDecisionPayload(card: Card): Card {
+  return {
+    slug: card.slug,
+    name: card.name,
+    issuer: card.issuer,
+    annualFee: card.annualFee,
+    sourceUrl: card.sourceUrl,
+    lastVerified: card.lastVerified,
+  };
 }
 
 function fallbackCard(item: ExistingRecommendation): Card {
@@ -285,7 +416,16 @@ function fallbackCard(item: ExistingRecommendation): Card {
 function primaryReasonFor(
   item: ExistingRecommendation,
   benefitLabels: string[],
+  winningReason?: RecommendationWinningReason | null,
 ): DecisionReason {
+  if (winningReason) {
+    return {
+      label: "Why this wins",
+      detail: winningReason.explanation,
+      kind: winningReason.type.includes("reward") ? "reward" : "benefit",
+    };
+  }
+
   const firstBenefit = benefitLabels[0];
   if (firstBenefit) {
     return {
@@ -312,9 +452,13 @@ function primaryReasonFor(
   };
 }
 
-function toBenefitMatch(label: string, card: Card): BenefitMatch {
+function toBenefitMatch(
+  label: string,
+  card: Card,
+  benefitId?: string | null,
+): BenefitMatch {
   return {
-    benefit: benefitFromLabel(label),
+    benefit: benefitFromLabel(label, benefitId ? { id: benefitId } : {}),
     card: {
       slug: card.slug,
       name: card.name,
@@ -326,13 +470,161 @@ function toBenefitMatch(label: string, card: Card): BenefitMatch {
   };
 }
 
-function rewardLabel(rate?: number) {
+function winningReasonForItem(
+  item: ExistingRecommendation,
+  card: Card,
+  merchant: ReturnType<typeof resolveMerchant>,
+): RecommendationWinningReason | null {
+  const merchantName = merchant.name || "this purchase";
+  if (item.matchedBenefit) {
+    return {
+      type: reasonTypeForItem(item),
+      merchantName,
+      title: item.matchedBenefit,
+      explanation: explanationForMatchedBenefit(
+        item.matchedBenefit,
+        merchantName,
+      ),
+      rewardRate: item.effectiveRate,
+      rewardUnit: rewardUnitFor(card),
+      estimatedValue: item.estValueUSD,
+      applicableToPurchase: true,
+      influencedRecommendation: true,
+      sourceBenefitId: item.matchedBenefitId || undefined,
+    };
+  }
+
+  if (
+    typeof item.effectiveRate !== "number" ||
+    !Number.isFinite(item.effectiveRate) ||
+    item.effectiveRate <= 0
+  ) {
+    return null;
+  }
+
+  const title =
+    catchAllEarningLabel(card.perks || [], item.effectiveRate) ||
+    rewardLabel(item.effectiveRate, card);
+  return {
+    type: "catch_all_reward",
+    merchantName,
+    title,
+    explanation: `Earn ${rewardLabel(
+      item.effectiveRate,
+      card,
+      rewardUnitFor(card),
+    )} on ${purchasePhraseFor(merchantName)}.`,
+    rewardRate: item.effectiveRate,
+    rewardUnit: rewardUnitFor(card),
+    estimatedValue: item.estValueUSD,
+    applicableToPurchase: true,
+    influencedRecommendation: true,
+    sourceRuleId: `${card.slug}:catch_all_reward`,
+  };
+}
+
+function relevantBenefitsFor(
+  item: ExistingRecommendation,
+  card: Card,
+  winningReason: RecommendationWinningReason | null,
+) {
+  if (item.matchedBenefit) {
+    return [toBenefitMatch(item.matchedBenefit, card, item.matchedBenefitId)];
+  }
+  if (winningReason?.type === "catch_all_reward") {
+    return [toBenefitMatch(winningReason.title, card)];
+  }
+  return [];
+}
+
+function reasonTypeForItem(
+  item: ExistingRecommendation,
+): RecommendationWinningReason["type"] {
+  if (item.matchTier === "exact_benefit") {
+    if (/offer/i.test(item.matchedBenefit || "")) return "merchant_offer";
+    if (/credit|statement/i.test(item.matchedBenefit || "")) {
+      return "merchant_credit";
+    }
+    return "merchant_reward";
+  }
+  if (item.matchTier === "category_match") return "category_reward";
+  return "other";
+}
+
+function explanationForMatchedBenefit(label: string, merchantName: string) {
+  if (/at|with|on/i.test(label)) return label;
+  return `${label} applies to this ${merchantName} purchase.`;
+}
+
+function catchAllEarningLabel(perks: string[], rate: number) {
+  const expectedRates = [rateMultiplierLabel(rate), ratePercentLabel(rate)];
+  if (rate < 1) expectedRates.push(rateMultiplierLabel(rate * 100));
+  const match = perks.find(
+    (perk) =>
+      /\b(every|all|all other|everyday)\b/i.test(perk) &&
+      expectedRates.some((expectedRate) =>
+        new RegExp(escapeRegExp(expectedRate), "i").test(perk),
+      ),
+  );
+  if (!match) return null;
+  return match.trim().replace(/[.。]+$/g, "");
+}
+
+function rewardLabel(
+  rate?: number,
+  card?: Card,
+  unitOverride?: RecommendationWinningReason["rewardUnit"],
+) {
   if (typeof rate !== "number" || !Number.isFinite(rate) || rate <= 0) {
     return "strong available rewards";
   }
-  if (rate < 1) {
-    const percent = rate * 100;
-    return `${Number.isInteger(percent) ? percent.toFixed(0) : percent.toFixed(1)}% value`;
+  const unit = unitOverride || (card ? rewardUnitFor(card) : "percent");
+  if (unit === "miles") {
+    const program = card ? rewardProgramLabelFor(card) : "miles";
+    return `${rateMultiplierLabel(rateMultiplier(rate))} ${program}`;
   }
-  return `${Number.isInteger(rate) ? rate.toFixed(0) : rate.toFixed(1)}x rewards`;
+  if (unit === "points") {
+    return `${rateMultiplierLabel(rateMultiplier(rate))} points`;
+  }
+  if (unit === "cash") return `${rateMultiplierLabel(rate)} cash back`;
+  if (rate < 1) return `${ratePercentLabel(rate)} cash back`;
+  return `${rateMultiplierLabel(rate)} rewards`;
+}
+
+function purchasePhraseFor(merchantName: string) {
+  if (!merchantName || /^this purchase$/i.test(merchantName)) {
+    return "this purchase";
+  }
+  return `this ${merchantName} purchase`;
+}
+
+function rateMultiplierLabel(rate: number) {
+  return `${Number.isInteger(rate) ? rate.toFixed(0) : rate.toFixed(1)}x`;
+}
+
+function rateMultiplier(rate: number) {
+  return rate < 1 ? rate * 100 : rate;
+}
+
+function ratePercentLabel(rate: number) {
+  const percent = rate * 100;
+  return `${Number.isInteger(percent) ? percent.toFixed(0) : percent.toFixed(1)}%`;
+}
+
+function rewardUnitFor(card: Card): RecommendationWinningReason["rewardUnit"] {
+  const text = `${card.name} ${(card.perks || []).join(" ")}`.toLowerCase();
+  if (/mile/.test(text)) return "miles";
+  if (/point|membership reward/.test(text)) return "points";
+  if (/cash/.test(text)) return "cash";
+  return "percent";
+}
+
+function rewardProgramLabelFor(card: Card) {
+  const text = `${card.name} ${(card.perks || []).join(" ")}`.toLowerCase();
+  if (/venture/.test(text)) return "Venture Miles";
+  return "miles";
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

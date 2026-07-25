@@ -1,0 +1,1 @@
+export { validateMerchantRegistryQuality } from "../merchantIntelligenceService";

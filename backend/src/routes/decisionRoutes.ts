@@ -5,6 +5,7 @@ import {
   generateRecommendationPresentation,
 } from "../services/productExperienceService";
 import { extractPurchaseIntelligence } from "../services/purchaseIntelligenceService";
+import type { PaymentDecision } from "../../../packages/rewardly-core/src";
 
 const router = Router();
 
@@ -78,9 +79,26 @@ router.post(PAYMENT_DECISION_ROUTE, async (req, res) => {
             purchase: purchaseReport?.purchase || purchaseContext.purchase,
           }
         : undefined,
+      merchantSignals: sanitizeMerchantSignals(req.body?.merchantSignals, {
+        url: typeof req.body?.url === "string" ? req.body.url : "",
+        hostname:
+          typeof req.body?.hostname === "string" ? req.body.hostname : "",
+        pageTitle: typeof req.body?.title === "string" ? req.body.title : "",
+        detectedMerchantLabel:
+          typeof req.body?.merchant === "string" ? req.body.merchant : "",
+        checkoutStage:
+          typeof purchaseContext?.checkoutStage === "string"
+            ? purchaseContext.checkoutStage
+            : undefined,
+      }) as any,
     });
 
     const presentation = generateRecommendationPresentation({ decision });
+    console.log(
+      "[Rewardly] decision-explanation-payload",
+      decisionExplanationDebugPayload(decision),
+    );
+    traceDecisionRouteResponse(decision);
     const lifecycle = [
       createLifecycleEvent({
         stage: "decision_generated",
@@ -100,6 +118,7 @@ router.post(PAYMENT_DECISION_ROUTE, async (req, res) => {
       lifecycle,
       purchase: purchaseReport?.purchase || null,
       purchasePerformance: purchaseReport?.performance || null,
+      merchant: safeMerchantSummary((decision as any).merchantIntelligence),
     });
   } catch (error) {
     console.error("[decisionRoutes/payment] Error:", error);
@@ -108,6 +127,72 @@ router.post(PAYMENT_DECISION_ROUTE, async (req, res) => {
 });
 
 export default router;
+
+function traceDecisionRouteResponse(decision: PaymentDecision) {
+  if (process.env.REWARDLY_TRACE_DECISION !== "true") return;
+  console.log(
+    "[Rewardly] decision-route-response",
+    decisionExplanationDebugPayload(decision),
+  );
+}
+
+function decisionExplanationDebugPayload(decision: PaymentDecision) {
+  const recommendation = decision?.recommendedCard || null;
+  const winningReason =
+    decision?.winningReason || recommendation?.winningReason || null;
+  const relevantBenefits =
+    decision?.relevantBenefits || recommendation?.relevantBenefits || [];
+  const legacyBenefits = [
+    ...(decision?.unlockedBenefits || []),
+    ...(recommendation?.unlockedBenefits || []),
+  ];
+
+  return {
+    merchant: decision?.merchant?.name || null,
+    recommendedCard:
+      recommendation?.card?.slug || recommendation?.card?.name || null,
+    decisionNarrative: decision?.decisionNarrative
+      ? {
+          reasonType: decision.decisionNarrative.reasonType || null,
+          headline: decision.decisionNarrative.headline || null,
+          summary: decision.decisionNarrative.summary || null,
+          estimatedReward: decision.decisionNarrative.estimatedReward || null,
+          comparison: decision.decisionNarrative.comparison || null,
+          confidence: decision.decisionNarrative.confidence || null,
+          primaryReason: decision.decisionNarrative.primaryReason || null,
+        }
+      : null,
+    recommendationIntegrity: decision?.recommendationIntegrity || null,
+    winningReason: winningReason
+      ? {
+          type: winningReason.type || null,
+          title: winningReason.title || null,
+          explanation: winningReason.explanation || null,
+          applicableToPurchase: winningReason.applicableToPurchase,
+          influencedRecommendation: winningReason.influencedRecommendation,
+          sourceBenefitId: winningReason.sourceBenefitId || null,
+          sourceRuleId: winningReason.sourceRuleId || null,
+        }
+      : null,
+    relevantBenefits: relevantBenefits.map((match) => ({
+      label: match?.benefit?.label || match?.summary || null,
+      sourceBenefitId: match?.benefit?.id || null,
+    })),
+    legacyWhyThisWins:
+      decision?.primaryReason?.detail ||
+      recommendation?.primaryReason?.detail ||
+      null,
+    legacyBenefits: legacyBenefits.map((match) => ({
+      label: match?.benefit?.label || match?.summary || null,
+      sourceBenefitId: match?.benefit?.id || null,
+    })),
+    sourceBenefitIds: [
+      winningReason?.sourceBenefitId,
+      ...relevantBenefits.map((match) => match?.benefit?.id),
+    ].filter(Boolean),
+    sourceRuleIds: [winningReason?.sourceRuleId].filter(Boolean),
+  };
+}
 
 type PaymentIdentity =
   | {
@@ -154,7 +239,93 @@ function allowDevelopmentOverrides() {
 }
 
 function hasPaymentDecisionContext(body: any) {
-  return ["merchant", "hostname", "url", "title", "pageText"].some(
-    (field) => typeof body?.[field] === "string" && body[field].trim(),
+  if (
+    ["merchant", "hostname", "url", "title", "pageText"].some(
+      (field) => typeof body?.[field] === "string" && body[field].trim(),
+    )
+  ) {
+    return true;
+  }
+  return Boolean(
+    body?.merchantSignals &&
+      typeof body.merchantSignals === "object" &&
+      ["url", "hostname", "pageTitle", "detectedMerchantLabel"].some(
+        (field) =>
+          typeof body.merchantSignals?.[field] === "string" &&
+          body.merchantSignals[field].trim(),
+      ),
   );
+}
+
+function sanitizeMerchantSignals(raw: any, fallback: any) {
+  const input = raw && typeof raw === "object" ? raw : {};
+  return {
+    url: stringField(input.url) || fallback.url || "",
+    hostname: stringField(input.hostname) || fallback.hostname || "",
+    pageTitle: stringField(input.pageTitle) || fallback.pageTitle || "",
+    detectedMerchantLabel:
+      stringField(input.detectedMerchantLabel) ||
+      fallback.detectedMerchantLabel ||
+      "",
+    documentTextSignals: stringList(input.documentTextSignals, 12),
+    structuredData: Array.isArray(input.structuredData)
+      ? input.structuredData.slice(0, 12).map((signal: any) => ({
+          type: stringField(signal?.type),
+          value: stringField(signal?.value),
+          source: stringField(signal?.source),
+        }))
+      : [],
+    checkoutProviderSignals: stringList(input.checkoutProviderSignals, 12),
+    domSignals: Array.isArray(input.domSignals)
+      ? input.domSignals.slice(0, 20).map((signal: any) => ({
+          type: stringField(signal?.type),
+          value: stringField(signal?.value),
+          source: stringField(signal?.source),
+        }))
+      : [],
+    purchaseChannelHint: stringField(input.purchaseChannelHint),
+    checkoutStage: stringField(input.checkoutStage) || fallback.checkoutStage,
+    transactionDate: stringField(input.transactionDate) || new Date().toISOString(),
+  };
+}
+
+function safeMerchantSummary(intelligence: any) {
+  if (!intelligence) return null;
+  return {
+    merchantId: intelligence.identity?.merchantId || undefined,
+    displayName: intelligence.identity?.displayName || undefined,
+    category: intelligence.classification?.primaryCategory || "unknown",
+    confidence: intelligence.confidence?.score ?? 0,
+    confidenceBand: intelligence.confidence?.band || "unknown",
+    resolutionStatus: intelligence.resolutionStatus || "unknown",
+    purchaseChannel: intelligence.context?.purchaseChannel || "unknown",
+    commerceModel: intelligence.context?.commerceModel || "unknown",
+    marketplace: Boolean(intelligence.context?.marketplace?.isMarketplace),
+    checkoutProvider: intelligence.context?.checkoutProvider || "unknown",
+    registryVersion: intelligence.registryVersion || null,
+    warnings: Array.isArray(intelligence.trace?.warnings)
+      ? intelligence.trace.warnings
+      : [],
+  };
+}
+
+function stringField(value: unknown) {
+  return typeof value === "string"
+    ? value
+        .replace(/[\u0000-\u001f\u007f]/g, " ")
+        .replace(
+          /\b(?:\d[ -]*?){12,19}\b|\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b|token=[^&\s]+|cookie=[^&\s]+|session[_-]?token[=:\s][^&\s]+/gi,
+          "[redacted]",
+        )
+        .slice(0, 200)
+    : "";
+}
+
+function stringList(values: unknown, maxCount: number) {
+  return Array.isArray(values)
+    ? values
+        .filter((value) => typeof value === "string")
+        .map((value) => value.slice(0, 160))
+        .slice(0, maxCount)
+    : [];
 }

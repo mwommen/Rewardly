@@ -1,0 +1,52 @@
+# Recommendation Semantic Coverage Report
+
+Coverage threshold failures: 0
+
+| Dimension | Branch | Count | Minimum | Curated | Status |
+| --- | --- | ---: | ---: | ---: | --- |
+| eligibility | eligible_rule | 5020 | 1 | 419 | PASS |
+| eligibility | expired_rule | 1 | 1 | 1 | PASS |
+| eligibility | not_yet_effective_rule | 1 | 1 | 1 | PASS |
+| eligibility | missing_activation | 4 | 1 | 4 | PASS |
+| eligibility | missing_enrollment | 2 | 1 | 2 | PASS |
+| eligibility | exhausted_cap | 4 | 1 | 4 | PASS |
+| eligibility | incompatible_channel | 5 | 1 | 5 | PASS |
+| eligibility | merchant_mismatch | 469 | 1 | 2 | PASS |
+| eligibility | category_mismatch | 7180 | 1 | 478 | PASS |
+| cap_state | unused_cap | 42 | 1 | 42 | PASS |
+| cap_state | partially_used_cap | 1 | 1 | 1 | PASS |
+| cap_state | partial_purchase_over_cap | 5 | 1 | 5 | PASS |
+| cap_state | exhausted_cap | 3 | 1 | 3 | PASS |
+| credit_state | unused_credit | 3 | 1 | 3 | PASS |
+| credit_state | partially_used_credit | 1 | 1 | 1 | PASS |
+| credit_state | purchase_below_remaining_credit | 1 | 1 | 1 | PASS |
+| credit_state | purchase_above_remaining_credit | 4 | 1 | 4 | PASS |
+| credit_state | exhausted_credit | 1 | 1 | 1 | PASS |
+| rule_type | base | 637 | 2 | 32 | PASS |
+| rule_type | category | 427 | 2 | 61 | PASS |
+| rule_type | rotating_category | 20 | 1 | 20 | PASS |
+| rule_type | portal | 37 | 1 | 8 | PASS |
+| rule_type | statement_credit | 3 | 1 | 3 | PASS |
+| classification | verified | 802 | 1 | 92 | PASS |
+| classification | inferred | 293 | 1 | 3 | PASS |
+| classification | unknown | 9 | 1 | 9 | PASS |
+| classification | high_confidence | 802 | 1 | 92 | PASS |
+| classification | medium_confidence | 166 | 1 | 0 | PASS |
+| classification | low_confidence | 136 | 1 | 12 | PASS |
+| ranking_path | clear_reward_value_winner | 627 | 1 | 77 | PASS |
+| ranking_path | exact_value_tie | 3 | 1 | 3 | PASS |
+| ranking_path | final_deterministic_tie_break | 3 | 1 | 3 | PASS |
+| wallet_size | one_card_wallet | 162 | 1 | 0 | PASS |
+| wallet_size | two_card_wallet | 145 | 1 | 32 | PASS |
+| wallet_size | three_or_more_card_wallet | 797 | 1 | 72 | PASS |
+| wallet | winning_card_removed | 87 | 1 | 87 | PASS |
+| wallet | wallet_reordered | 1191 | 1 | 1191 | PASS |
+| wallet | irrelevant_card_added | 98 | 1 | 98 | PASS |
+| date_boundary | before_effective | 1 | 1 | 1 | PASS |
+| date_boundary | exactly_on_effective | 1 | 1 | 1 | PASS |
+| date_boundary | before_expiration | 1 | 1 | 1 | PASS |
+| date_boundary | expiration_boundary | 1 | 1 | 1 | PASS |
+| date_boundary | after_expiration | 1 | 1 | 1 | PASS |
+| purchase_channel | online | 1064 | 1 | 96 | PASS |
+| purchase_channel | issuer_portal | 40 | 1 | 8 | PASS |
+| purchase_channel | incompatible_channel | 5 | 1 | 5 | PASS |

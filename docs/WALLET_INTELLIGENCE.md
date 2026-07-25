@@ -235,6 +235,32 @@ All commands use fixtures.
 
 `wallet:audit` reports missing benefit IDs, missing cycle limits, contradictory lifecycle values, negative values, values above cycle limits, ambiguous legacy mappings, low-confidence states, and overdue resets.
 
+## Wallet Decision Engine
+
+`backend/src/services/walletDecisionEngine.ts` is the wallet-first scoring surface.
+
+Input:
+
+- the user's wallet cards only
+- classified purchase merchant, category, channel, and amount when available
+- wallet benefit states
+
+Output:
+
+- winning card
+- runner-up
+- exact winning rule
+- estimated reward
+- confidence
+- rule-driven explanation
+- evaluated owned-card scores
+
+The engine canonicalizes every card benefit before scoring. Structured rule fields include reward program, reward type, earning rate, categories, merchant restrictions, enrollment requirements, activation requirements, caps, effective dates, expiration dates, and confidence.
+
+Rules are evaluated against the classified purchase. Flat/base rewards can apply broadly. Category rewards require a matching purchase or merchant category. Merchant credits require a merchant match and usable wallet state. Expired, exhausted, not-enrolled, and not-activated benefits cannot win.
+
+The explanation is generated from the winning rule only. It compares against the runner-up only when that runner-up is in the user's wallet. Cards outside the wallet are never loaded or compared by this engine.
+
 ## Known Limitations
 
 - Wallet state persistence is compatible with the existing collection but not fully migrated.

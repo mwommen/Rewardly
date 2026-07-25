@@ -16,14 +16,29 @@ jest.mock("../src/utils/valuation", () => ({
 import { getDb } from "../src/db";
 import {
   buildMerchantCoverageMatrix,
+  evaluateMerchantIntelligence,
   getMerchantHierarchy,
   inheritedCategoryTokens,
   inheritedMerchantTokens,
+  validateMerchantRegistryQuality,
   resolveMerchant,
 } from "../src/services/merchantIntelligenceService";
 import { recommendBestCards } from "../src/services/recommendationService";
 import { canonicalizeWalletBenefitState } from "../src/services/walletIntelligenceService";
 import { inferCategories } from "../src/utils/category";
+import {
+  normalizeMerchantHost,
+  normalizeMerchantText,
+  safeMerchantUrl,
+} from "../src/services/merchant-intelligence/merchantNormalization";
+import {
+  boundedMerchantConfidence,
+  merchantConfidenceBand,
+} from "../src/services/merchant-intelligence/merchantConfidenceScorer";
+import {
+  traceContainsUnsafeValue,
+  traceUsesAllowlistedKeys,
+} from "../src/services/merchant-intelligence/merchantTraceSanitizer";
 
 const mockedGetDb = getDb as jest.MockedFunction<typeof getDb>;
 const mockedInferCategories = inferCategories as jest.MockedFunction<typeof inferCategories>;
@@ -135,6 +150,99 @@ describe("merchantIntelligenceService", () => {
         matchingStrategy: "unknown",
       }),
     );
+  });
+
+  test("evaluates Merchant Identity separately from Merchant Context with trace evidence", () => {
+    const result = evaluateMerchantIntelligence({
+      url: "https://www.ubereats.com/checkout",
+      hostname: "www.ubereats.com",
+      pageTitle: "Uber Eats checkout",
+      detectedMerchantLabel: "UBER EATS",
+      checkoutProviderSignals: ["merchant native checkout"],
+      checkoutStage: "payment",
+      transactionDate: "2026-07-24T00:00:00.000Z",
+    });
+
+    expect(result.identity).toEqual(
+      expect.objectContaining({
+        merchantId: "uber-eats",
+        merchantFamilyId: "uber",
+      }),
+    );
+    expect(result.context).toEqual(
+      expect.objectContaining({
+        category: "dining",
+        purchaseChannel: "online_direct",
+        checkoutProvider: "merchant_native",
+      }),
+    );
+    expect(result.confidence.band).toBe("high");
+    expect(result.evidence.map((item) => item.type)).toEqual(
+      expect.arrayContaining(["exact_canonical_domain", "exact_merchant_alias"]),
+    );
+    expect(JSON.stringify(result.trace)).not.toMatch(/\d{12,19}|@/);
+  });
+
+  test("does not resolve deceptive suffixes or substring aliases", () => {
+    expect(
+      evaluateMerchantIntelligence({
+        url: "https://amazon.com.attacker.example/checkout",
+        hostname: "amazon.com.attacker.example",
+        transactionDate: "2026-07-24T00:00:00.000Z",
+      }).identity,
+    ).toBeNull();
+
+    expect(
+      evaluateMerchantIntelligence({
+        url: "https://pineapple.example/checkout",
+        hostname: "pineapple.example",
+        detectedMerchantLabel: "Pineapple accessories",
+        transactionDate: "2026-07-24T00:00:00.000Z",
+      }).identity,
+    ).toBeNull();
+  });
+
+  test("keeps checkout providers separate from purchase merchants", () => {
+    const result = evaluateMerchantIntelligence({
+      url: "https://checkout.stripe.com/c/pay/session",
+      hostname: "checkout.stripe.com",
+      checkoutProviderSignals: ["Stripe Checkout"],
+      transactionDate: "2026-07-24T00:00:00.000Z",
+    });
+
+    expect(result.identity).toBeNull();
+    expect(result.context.checkoutProvider).toBe("stripe_checkout");
+    expect(result.trace.warnings).toEqual(
+      expect.arrayContaining(["checkout_provider_is_not_merchant"]),
+    );
+  });
+
+  test("registry quality validates supported merchant records", () => {
+    expect(validateMerchantRegistryQuality()).toEqual(
+      expect.objectContaining({
+        ok: true,
+        merchantCount: expect.any(Number),
+      }),
+    );
+  });
+
+  test("modular normalization, confidence, and trace helpers are independently testable", () => {
+    expect(normalizeMerchantHost("WWW.AMAZON.COM:443.")).toBe("amazon.com");
+    expect(normalizeMerchantText("APPLE.COM/BILL")).toBe("apple com bill");
+    expect(safeMerchantUrl("https://www.apple.com/shop/bag?token=secret#x")).toBe(
+      "https://www.apple.com/shop/bag",
+    );
+    expect(safeMerchantUrl("javascript:alert(1)")).toBe("");
+    expect(boundedMerchantConfidence(1.2)).toBe(1);
+    expect(merchantConfidenceBand(0.85)).toBe("high");
+    const trace = evaluateMerchantIntelligence({
+      url: "https://www.apple.com/shop/bag?token=secret",
+      hostname: "www.apple.com",
+      detectedMerchantLabel: "Apple",
+      transactionDate: "2026-07-24T00:00:00.000Z",
+    }).trace as any;
+    expect(traceUsesAllowlistedKeys(trace)).toBe(true);
+    expect(traceContainsUnsafeValue(trace)).toBe(false);
   });
 
   test("hierarchy and coverage matrix expose regression merchants", () => {

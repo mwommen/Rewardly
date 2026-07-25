@@ -1,0 +1,132 @@
+name: Recommendation Validation
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+  schedule:
+    - cron: "17 8 * * *"
+
+jobs:
+  recommendation-validation-gate:
+    name: Recommendation validation gate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        run: npm ci
+
+      - name: Run backend tests
+        run: npm test -- --runInBand
+
+      - name: Build backend
+        run: npm run build
+
+      - name: Run full merchant intelligence validation
+        run: npm run validate:merchant-intelligence:full -- --seed 20260724 --count 1000 --report
+
+      - name: Run full recommendation validation
+        run: npm run validate:recommendations:full -- --seed 20260724 --count 1000 --report
+
+      - name: Generate validation report
+        if: always()
+        run: |
+          test -f ../docs/RECOMMENDATION_VALIDATION_REPORT.json || npm run validate:recommendations:report
+
+      - name: Write validation summary
+        if: always()
+        run: npm run validate:recommendations:ci-summary
+
+      - name: Upload validation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: recommendation-validation-reports
+          path: |
+            docs/RECOMMENDATION_VALIDATION_REPORT.json
+            docs/RECOMMENDATION_VALIDATION_REPORT.md
+            docs/RECOMMENDATION_COVERAGE_REPORT.json
+            docs/RECOMMENDATION_COVERAGE_REPORT.md
+            docs/RECOMMENDATION_MUTATION_REPORT.json
+            docs/RECOMMENDATION_MUTATION_REPORT.md
+            docs/MERCHANT_INTELLIGENCE_REPORT.json
+            docs/MERCHANT_INTELLIGENCE_REPORT.md
+            docs/MERCHANT_INTELLIGENCE_PARITY_REPORT.json
+            docs/MERCHANT_INTELLIGENCE_PARITY_REPORT.md
+            docs/MERCHANT_INTELLIGENCE_PRIVACY_REPORT.json
+            docs/MERCHANT_INTELLIGENCE_PERFORMANCE_REPORT.json
+          if-no-files-found: warn
+
+      - name: Upload generated failure artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: recommendation-validation-failures
+          path: backend/validation-output/failures/
+          if-no-files-found: warn
+
+      - name: Upload CI summary source data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: recommendation-ci-summary-source
+          path: |
+            docs/RECOMMENDATION_VALIDATION_REPORT.json
+            docs/RECOMMENDATION_COVERAGE_REPORT.json
+            docs/RECOMMENDATION_MUTATION_REPORT.json
+            backend/validation-output/failures/manifest.json
+          if-no-files-found: warn
+
+  large-generated-validation:
+    name: Large generated validation
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        run: npm ci
+
+      - name: Run 10,000 generated scenarios
+        run: |
+          npm run validate:merchant-intelligence:generated -- --seed 20260724 --count 10000
+          npm run validate:recommendations:generated -- --seed 20260724 --count 10000
+
+      - name: Write large-suite summary
+        if: always()
+        run: |
+          {
+            echo "## Large Generated Validation"
+            echo ""
+            echo "- Seed: 20260724"
+            echo "- Merchant Intelligence generated count: 10000"
+            echo "- Recommendation generated count: 10000"
+            echo "- Runs on push to main, manual dispatch, and nightly schedule."
+          } >> "$GITHUB_STEP_SUMMARY"

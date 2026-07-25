@@ -83,6 +83,30 @@ export type RecommendationPresentationModel = {
   presentationId: string;
   state: RecommendationState;
   recommendationSummary: string;
+  trust: {
+    recommendationReason: string;
+    confidenceLabel: string;
+    confidenceExplanation: string;
+    estimatedRewardDisplay: string;
+    estimatedRewardValueDisplay: string | null;
+    merchantDisplayName: string;
+    categoryDisplayName: string | null;
+    benefitDisplayName: string | null;
+    alternativeCard: {
+      cardName: string;
+      valueDifferenceDisplay: string;
+      summary: string;
+    } | null;
+    details: {
+      merchant: string;
+      category: string | null;
+      estimatedRewards: string;
+      estimatedValue: string | null;
+      appliedBenefit: string | null;
+      alternativeCard: string | null;
+      confidence: string;
+    };
+  };
   recommendedCard: {
     slug: string;
     displayName: string;
@@ -236,7 +260,12 @@ export function generateRecommendationPresentation(input: {
   const purchaseContext = decision.recommendationPurchaseContext || null;
   const recommendation = decision.recommendedCard;
   const card = recommendation?.card || null;
-  const benefits = (decision.unlockedBenefits || [])
+  const relevantBenefitMatches =
+    decision.relevantBenefits ||
+    recommendation?.relevantBenefits ||
+    decision.unlockedBenefits ||
+    [];
+  const benefits = relevantBenefitMatches
     .map((match) => match?.benefit?.label || match?.summary)
     .filter(Boolean)
     .slice(0, 4) as string[];
@@ -251,7 +280,10 @@ export function generateRecommendationPresentation(input: {
       walletBenefitStates: input.opportunityContext?.walletBenefitStates || [],
       now: input.opportunityContext?.now,
       historicalBehavior: input.opportunityContext?.historicalBehavior,
-      decision,
+      decision: {
+        ...decision,
+        unlockedBenefits: relevantBenefitMatches,
+      },
     });
   const actualPerformance = {
     ...input.actualPerformanceMs,
@@ -280,7 +312,12 @@ export function generateRecommendationPresentation(input: {
       : null,
     estimatedValue: decision.rewardEstimate
       ? {
-          label: decision.rewardEstimate.label,
+          label:
+            decision.decisionNarrative?.estimatedRewardText ||
+            decision.decisionNarrative?.estimatedReward ||
+            decision.decisionNarrative?.earningText ||
+            decision.winningReason?.title ||
+            decision.rewardEstimate.label,
           amountUSD:
             typeof decision.rewardEstimate.estimatedValueUSD === "number"
               ? round(decision.rewardEstimate.estimatedValueUSD, 2)
@@ -297,11 +334,14 @@ export function generateRecommendationPresentation(input: {
         typeof decision.confidence?.score === "number"
           ? round(decision.confidence.score, 2)
           : null,
-      userFacingLabel: userFacingConfidence(decision.confidence?.label || "unknown"),
+      userFacingLabel: userFacingConfidence(decision),
     },
     explanation: {
       headline: headlineFor(decision),
       primaryReason:
+        decision.decisionNarrative?.reasonText ||
+        decision.decisionNarrative?.headline ||
+        decision.winningReason?.explanation ||
         decision.primaryReason?.detail ||
         recommendation?.primaryReason?.detail ||
         "Rewardly found the strongest available option in your wallet.",
@@ -361,6 +401,7 @@ export function generateRecommendationPresentation(input: {
       actualMs: actualPerformance,
       withinTargets: performanceWithinTargets(actualPerformance),
     },
+    trust: trustPresentationFor(decision),
   };
 }
 
@@ -541,6 +582,14 @@ function summaryForDecision(decision: PaymentDecision) {
   if (!decision.recommendedCard) return decision.recommendationSummary;
   const card = decision.recommendedCard.card.name;
   const merchant = decision.merchant?.name || "checkout";
+  if (decision.decisionNarrative?.reasonText || decision.decisionNarrative?.summary) {
+    return `Use ${card} at ${merchant}. ${
+      decision.decisionNarrative.reasonText || decision.decisionNarrative.summary
+    }`;
+  }
+  if (decision.winningReason?.explanation) {
+    return `Use ${card} at ${merchant}. ${decision.winningReason.explanation}`;
+  }
   const value = decision.rewardEstimate?.label;
   if (value) return `Use ${card} at ${merchant}. You'll get ${value}.`;
   return decision.recommendationSummary || `Use ${card} at ${merchant}.`;
@@ -548,6 +597,8 @@ function summaryForDecision(decision: PaymentDecision) {
 
 function headlineFor(decision: PaymentDecision) {
   if (!decision.recommendedCard) return "Rewardly could not find a confident card yet.";
+  if (decision.decisionNarrative?.headline) return decision.decisionNarrative.headline;
+  if (decision.winningReason?.title) return "This card wins for this purchase.";
   if ((decision.unlockedBenefits || []).length) return "This card unlocks the best available value.";
   if (decision.rewardEstimate?.label) return "This card earns the strongest rewards here.";
   return "This is the strongest card in your wallet for this checkout.";
@@ -555,9 +606,21 @@ function headlineFor(decision: PaymentDecision) {
 
 function supportingReasonsFor(decision: PaymentDecision) {
   const reasons = [
+    decision.decisionNarrative?.earningText,
+    decision.decisionNarrative?.estimatedRewardText,
+    decision.decisionNarrative?.reasonText,
+    decision.decisionNarrative?.headline,
+    decision.decisionNarrative?.comparisonText || decision.decisionNarrative?.comparison,
+    decision.winningReason?.explanation,
     decision.primaryReason?.detail,
-    decision.rewardEstimate?.label ? `You get ${decision.rewardEstimate.label}.` : null,
-    ...(decision.unlockedBenefits || []).map((match) => match.summary || match.benefit.label),
+    decision.winningReason?.title
+      ? `You get ${decision.winningReason.title}.`
+      : decision.rewardEstimate?.label
+        ? `You get ${decision.rewardEstimate.label}.`
+        : null,
+    ...(decision.relevantBenefits || decision.unlockedBenefits || []).map(
+      (match) => match.summary || match.benefit.label,
+    ),
   ].filter(Boolean) as string[];
   return Array.from(new Set(reasons)).slice(0, 3);
 }
@@ -608,11 +671,225 @@ function categoryLabel(category: PurchaseCategory) {
   return category.replace(/_/g, " ");
 }
 
-function userFacingConfidence(label: PaymentDecision["confidence"]["label"]) {
-  if (label === "high") return "Strong recommendation";
-  if (label === "medium") return "Good recommendation";
-  if (label === "low") return "Worth checking";
-  return "Not enough information";
+function trustPresentationFor(decision: PaymentDecision): RecommendationPresentationModel["trust"] {
+  const merchant = decision.merchant?.name || "this checkout";
+  const category = displayCategory(
+    decision.merchant?.category ||
+      decision.recommendationPurchaseContext?.dominantCategory ||
+      null,
+  );
+  const primaryBenefit = primaryBenefitDisplay(decision);
+  const estimatedRewardDisplay = estimatedRewardDisplayFor(decision);
+  const estimatedRewardValueDisplay = estimatedRewardValueDisplayFor(decision);
+  const confidenceLabel = userFacingConfidence(decision);
+  const recommendationReason = humanRecommendationReason(decision);
+  const alternativeCard = alternativeCardFor(decision);
+
+  return {
+    recommendationReason,
+    confidenceLabel,
+    confidenceExplanation: confidenceExplanationFor(decision, confidenceLabel),
+    estimatedRewardDisplay,
+    estimatedRewardValueDisplay,
+    merchantDisplayName: merchant,
+    categoryDisplayName: category,
+    benefitDisplayName: primaryBenefit,
+    alternativeCard,
+    details: {
+      merchant,
+      category,
+      estimatedRewards: estimatedRewardDisplay,
+      estimatedValue: estimatedRewardValueDisplay,
+      appliedBenefit: primaryBenefit,
+      alternativeCard: alternativeCard
+        ? `${alternativeCard.cardName}: ${alternativeCard.summary}`
+        : null,
+      confidence: confidenceExplanationFor(decision, confidenceLabel),
+    },
+  };
+}
+
+function userFacingConfidence(decision: PaymentDecision) {
+  const label = decision.confidence?.label || "unknown";
+  const score = decision.confidence?.score;
+  if (label === "high" && typeof score === "number" && score >= 0.9) {
+    return "Excellent Match";
+  }
+  if (label === "high") return "High Confidence";
+  if (label === "medium") return "Good Match";
+  if (label === "low") return "General Recommendation";
+  return "Limited Confidence";
+}
+
+function confidenceExplanationFor(
+  decision: PaymentDecision,
+  confidenceLabel: string,
+) {
+  if (!decision.recommendedCard) {
+    return "Rewardly needs more wallet or checkout information before making a recommendation.";
+  }
+  if (confidenceLabel === "Excellent Match") {
+    return "Rewardly found a clear match between this purchase and a verified card rule.";
+  }
+  if (confidenceLabel === "High Confidence") {
+    return "Rewardly has strong evidence that this card gives you the best value here.";
+  }
+  if (confidenceLabel === "Good Match") {
+    return "Rewardly found a good match using your wallet and available checkout signals.";
+  }
+  if (confidenceLabel === "General Recommendation") {
+    return "This recommendation is based on your cards' general rewards.";
+  }
+  return "Rewardly had limited checkout detail, so this uses the safest available wallet match.";
+}
+
+function humanRecommendationReason(decision: PaymentDecision) {
+  if (!decision.wallet?.cardSlugs?.length) {
+    return "Add your cards to begin receiving recommendations.";
+  }
+  if (!decision.recommendedCard) {
+    return "Rewardly couldn't determine the best card for this purchase.";
+  }
+  const merchant = decision.merchant?.name || "";
+  const reasonType = decision.decisionNarrative?.reasonType;
+  const category = displayCategory(
+    decision.merchant?.category ||
+      decision.recommendationPurchaseContext?.dominantCategory ||
+      null,
+  );
+
+  if (!merchant || /^unknown/i.test(merchant)) {
+    return "Rewardly couldn't confidently identify this merchant. This recommendation uses your cards' general rewards.";
+  }
+  if (!reasonType && category) {
+    if (/dining|restaurant/i.test(category)) {
+      return "This merchant qualifies for your dining rewards.";
+    }
+    if (/travel/i.test(category)) {
+      return "This purchase qualifies for your travel rewards.";
+    }
+  }
+  if (reasonType === "statement_credit" || reasonType === "merchant_offer") {
+    return `This purchase appears to qualify for a ${merchant} card benefit.`;
+  }
+  if (reasonType === "merchant_reward") {
+    return `This merchant qualifies for a card-specific reward.`;
+  }
+  if (reasonType === "category_bonus" || reasonType === "rotating_category") {
+    if (/dining|restaurant/i.test(category || "")) {
+      return "This merchant qualifies for your dining rewards.";
+    }
+    if (/travel/i.test(category || "")) {
+      return "This purchase qualifies for your travel rewards.";
+    }
+    if (category) {
+      return `This purchase qualifies for your ${category.toLowerCase()} rewards.`;
+    }
+    return "This purchase qualifies for a bonus reward category.";
+  }
+  if (reasonType === "portal_reward") {
+    return "This purchase qualifies for your travel portal rewards.";
+  }
+  if (reasonType === "catch_all_reward") {
+    return "This card provides your highest everyday rewards.";
+  }
+  return (
+    decision.decisionNarrative?.reasonText ||
+    decision.winningReason?.explanation ||
+    "Rewardly found the strongest available value in your wallet."
+  );
+}
+
+function estimatedRewardDisplayFor(decision: PaymentDecision) {
+  const narrative = decision.decisionNarrative;
+  const reward = narrative?.reward;
+  const details = narrative?.rewardDetails;
+
+  if (details?.displayQuantity && details.programName) {
+    return `${details.displayQuantity} ${details.programName}`;
+  }
+  if (narrative?.earningText) return narrative.earningText;
+  if (narrative?.estimatedRewardText) return narrative.estimatedRewardText;
+  if (narrative?.estimatedReward) return narrative.estimatedReward;
+  if (reward?.earningRate && reward.programName) {
+    return `${formatRate(reward.earningRate)}x ${reward.programName}`;
+  }
+  if (decision.rewardEstimate?.label) return decision.rewardEstimate.label;
+  if (!decision.recommendedCard) return "No reward estimate available";
+  return "Estimated rewards will update when Rewardly can read the final total.";
+}
+
+function estimatedRewardValueDisplayFor(decision: PaymentDecision) {
+  const value =
+    decision.decisionNarrative?.estimatedRewardValue ??
+    decision.decisionNarrative?.reward?.estimatedRewardCashValue ??
+    decision.rewardEstimate?.estimatedValueUSD ??
+    null;
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return `≈ $${round(value, 2).toFixed(2)}`;
+}
+
+function alternativeCardFor(decision: PaymentDecision) {
+  const alternative = decision.alternativeCards?.[0];
+  if (!alternative) return null;
+  const winnerValue =
+    decision.rewardEstimate?.estimatedValueUSD ??
+    decision.recommendedCard?.rewardEstimate?.estimatedValueUSD ??
+    null;
+  const alternativeValue = alternative.rewardEstimate?.estimatedValueUSD ?? null;
+  const cardName = alternative.card.name;
+
+  if (
+    typeof winnerValue === "number" &&
+    Number.isFinite(winnerValue) &&
+    typeof alternativeValue === "number" &&
+    Number.isFinite(alternativeValue)
+  ) {
+    const delta = round(winnerValue - alternativeValue, 2);
+    if (Math.abs(delta) <= 0.1) {
+      return {
+        cardName,
+        valueDifferenceDisplay: "within $0.10",
+        summary: "Very similar rewards",
+      };
+    }
+    if (delta > 0) {
+      return {
+        cardName,
+        valueDifferenceDisplay: `+$${delta.toFixed(2)}`,
+        summary: "Better than your next-best card",
+      };
+    }
+  }
+
+  return {
+    cardName,
+    valueDifferenceDisplay: "next best option",
+    summary: alternative.primaryReason?.detail || alternative.rewardEstimate?.label || "Also eligible",
+  };
+}
+
+function primaryBenefitDisplay(decision: PaymentDecision) {
+  const benefit =
+    decision.relevantBenefits?.[0]?.benefit?.label ||
+    decision.unlockedBenefits?.[0]?.benefit?.label ||
+    decision.decisionNarrative?.primaryReason?.headline ||
+    decision.winningReason?.title ||
+    null;
+  if (!benefit) return null;
+  return benefit.replace(/\s+/g, " ").trim();
+}
+
+function displayCategory(category: unknown) {
+  if (!category) return null;
+  return String(category)
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatRate(value?: number | null) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "";
+  return Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1);
 }
 
 function performanceWithinTargets(actual: Partial<ProductPerformanceTargets>) {

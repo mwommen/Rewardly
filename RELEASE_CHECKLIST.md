@@ -1,5 +1,30 @@
 # Release Checklist — Rewardly MVP
 
+## Sprint 7 Merchant Intelligence and Recommendation Accuracy Gate
+
+Before a beta release, rerun:
+
+- `cd backend && npm test -- --runInBand`
+- `cd backend && npm run build`
+- `cd backend && npm run validate:merchant-intelligence:curated`
+- `cd backend && npm run validate:merchant-intelligence:registry`
+- `cd backend && npm run validate:merchant-intelligence:coverage -- --seed 20260724 --count 1000`
+- `cd backend && npm run validate:merchant-intelligence:parity`
+- `cd backend && npm run validate:merchant-intelligence:privacy`
+- `cd backend && npm run validate:merchant-intelligence:performance -- --seed 20260724 --count 1000`
+- `cd backend && npm run validate:merchant-intelligence:full -- --seed 20260724 --count 1000 --report`
+- `cd backend && npm run validate:merchant-intelligence:generated -- --seed 20260724 --count 10000`
+- `cd backend && npm run validate:recommendations:full -- --seed 20260724 --count 1000 --report`
+- `cd backend && npm run validate:recommendations:generated -- --seed 20260724 --count 10000`
+- `cd backend && npm run validate:recommendations:report`
+- `cd frontend-vite && npm run build`
+- `cd frontend-vite && npm run lint`
+- `cd packages/rewardly-core && ../../backend/node_modules/.bin/tsc -p tsconfig.json`
+- `node --check extension/background.js`
+- `node --check extension/content.js`
+
+Current Sprint 7 status: PASS locally. Merchant Intelligence now has deterministic identity/context resolution, registry validation, semantic coverage, invariants, metamorphic checks, shadow parity, privacy redaction checks, performance guardrails, generated scenarios, safe extension signal collection, and a CI gate alongside recommendation validation. A fresh unzip/clone must install dependencies first because `node_modules` is intentionally excluded from distributed zip files.
+
 ## What this MVP includes
 
 - Wallet-assistant search and best-card lookup.

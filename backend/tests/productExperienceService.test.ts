@@ -125,6 +125,160 @@ describe("productExperienceService", () => {
       expect.arrayContaining(["dismiss", "view_explanation", "mark_incorrect"]),
     );
     expect(presentation.performance.withinTargets).toBe(true);
+    expect(presentation.trust).toEqual(
+      expect.objectContaining({
+        recommendationReason: "This merchant qualifies for your dining rewards.",
+        confidenceLabel: "Excellent Match",
+        estimatedRewardDisplay: "4x rewards",
+        estimatedRewardValueDisplay: "≈ $8.00",
+        merchantDisplayName: "DoorDash",
+        categoryDisplayName: "Dining",
+        benefitDisplayName: "Dining Credit",
+      }),
+    );
+    expect(presentation.trust.details).toEqual(
+      expect.objectContaining({
+        merchant: "DoorDash",
+        category: "Dining",
+        estimatedRewards: "4x rewards",
+        estimatedValue: "≈ $8.00",
+        appliedBenefit: "Dining Credit",
+        confidence:
+          "Rewardly found a clear match between this purchase and a verified card rule.",
+      }),
+    );
+  });
+
+  test("formats alternative comparison without exaggerating small differences", () => {
+    const presentation = generateRecommendationPresentation({
+      decision: {
+        ...decision,
+        alternativeCards: [
+          {
+            card: {
+              slug: "chase-sapphire-preferred",
+              name: "Chase Sapphire Preferred",
+              issuer: "Chase",
+            },
+            primaryReason: {
+              label: "Also strong",
+              detail: "3x rewards at restaurants",
+              kind: "reward",
+            },
+            rewardEstimate: {
+              label: "3x rewards",
+              effectiveRate: 3,
+              estimatedValueUSD: 7.95,
+            },
+            confidence: {
+              score: 0.89,
+              label: "high",
+            },
+            unlockedBenefits: [],
+          },
+        ],
+      },
+    });
+
+    expect(presentation.trust.alternativeCard).toEqual({
+      cardName: "Chase Sapphire Preferred",
+      valueDifferenceDisplay: "within $0.10",
+      summary: "Very similar rewards",
+    });
+  });
+
+  test("formats material alternative value differences", () => {
+    const presentation = generateRecommendationPresentation({
+      decision: {
+        ...decision,
+        alternativeCards: [
+          {
+            card: {
+              slug: "capital-one-venture",
+              name: "Capital One Venture Rewards",
+              issuer: "Capital One",
+            },
+            primaryReason: {
+              label: "Everyday rewards",
+              detail: "2x miles",
+              kind: "reward",
+            },
+            rewardEstimate: {
+              label: "2x miles",
+              effectiveRate: 2,
+              estimatedValueUSD: 5.86,
+            },
+            confidence: {
+              score: 0.82,
+              label: "medium",
+            },
+            unlockedBenefits: [],
+          },
+        ],
+      },
+    });
+
+    expect(presentation.trust.alternativeCard).toEqual(
+      expect.objectContaining({
+        cardName: "Capital One Venture Rewards",
+        valueDifferenceDisplay: "+$2.14",
+        summary: "Better than your next-best card",
+      }),
+    );
+  });
+
+  test("uses general recommendation language for unknown merchants", () => {
+    const presentation = generateRecommendationPresentation({
+      decision: {
+        ...decision,
+        merchant: {
+          name: "Unknown merchant",
+          category: null,
+          hostname: "checkout.example",
+        },
+        confidence: {
+          label: "low",
+          score: 0.42,
+        },
+      },
+    });
+
+    expect(presentation.trust.confidenceLabel).toBe("General Recommendation");
+    expect(presentation.trust.recommendationReason).toMatch(
+      /couldn't confidently identify this merchant/i,
+    );
+    expect(presentation.trust.confidenceExplanation).toBe(
+      "This recommendation is based on your cards' general rewards.",
+    );
+  });
+
+  test("returns consumer empty state text when wallet cards are missing", () => {
+    const presentation = generateRecommendationPresentation({
+      decision: {
+        ...decision,
+        recommendedCard: null,
+        alternativeCards: [],
+        primaryReason: null,
+        rewardEstimate: undefined,
+        unlockedBenefits: [],
+        confidence: { label: "unknown" },
+        recommendationSummary: "Add cards to your wallet.",
+        wallet: {
+          userId: "devUser",
+          source: "empty",
+          cardSlugs: [],
+        },
+      },
+    });
+
+    expect(presentation.state).toBe("wallet_information_missing");
+    expect(presentation.trust.recommendationReason).toBe(
+      "Add your cards to begin receiving recommendations.",
+    );
+    expect(presentation.trust.estimatedRewardDisplay).toBe(
+      "No reward estimate available",
+    );
+    expect(presentation.trust.confidenceLabel).toBe("Limited Confidence");
   });
 
   test("surfaces purchase intelligence fields without requiring UI category logic", () => {
@@ -161,6 +315,86 @@ describe("productExperienceService", () => {
     expect(presentation.dominantCategory).toBe("groceries");
     expect(presentation.exclusionsSummary).toMatch(/\$40.00/);
     expect(presentation.mixedCartWarning).toMatch(/multiple meaningful categories/i);
+  });
+
+  test("uses merchant-relevant winning reason instead of unrelated opportunity perks", () => {
+    const presentation = generateRecommendationPresentation({
+      decision: {
+        ...decision,
+        recommendedCard: {
+          ...decision.recommendedCard,
+          card: {
+            slug: "capital-one-venture",
+            name: "Capital One Venture Rewards",
+            issuer: "Capital One",
+            perks: [
+              "2x miles on every purchase",
+              "$250 Capital One Travel credit (one-time)",
+            ],
+          },
+        },
+        primaryReason: {
+          label: "Why this wins",
+          detail: "Earn approximately 63 miles on this Amazon purchase.",
+          kind: "reward",
+        },
+        rewardEstimate: {
+          label: "2x miles on every purchase",
+          effectiveRate: 0.02,
+          estimatedValueUSD: 0.63,
+        },
+        winningReason: {
+          type: "catch_all_reward",
+          merchantName: "Amazon",
+          title: "2x miles on every purchase",
+          explanation: "Earn approximately 63 miles on this Amazon purchase.",
+          rewardRate: 0.02,
+          rewardUnit: "miles",
+          estimatedValue: 0.63,
+          applicableToPurchase: true,
+          influencedRecommendation: true,
+        },
+        relevantBenefits: [
+          {
+            benefit: { label: "2x miles on every purchase", type: "other" },
+            card: {
+              slug: "capital-one-venture",
+              name: "Capital One Venture Rewards",
+              issuer: "Capital One",
+            },
+            summary: "2x miles on every purchase",
+          },
+        ],
+        unlockedBenefits: [
+          {
+            benefit: {
+              label: "$250 Capital One Travel credit (one-time)",
+              type: "travel_perk",
+            },
+            card: {
+              slug: "capital-one-venture",
+              name: "Capital One Venture Rewards",
+              issuer: "Capital One",
+            },
+            summary: "$250 Capital One Travel credit (one-time)",
+          },
+        ],
+        merchant: {
+          name: "Amazon",
+          category: "online_shopping",
+          hostname: "www.amazon.com",
+        },
+      },
+    });
+
+    expect(presentation.explanation.primaryReason).toBe(
+      "Earn approximately 63 miles on this Amazon purchase.",
+    );
+    expect(presentation.estimatedValue?.label).toBe("2x miles on every purchase");
+    expect(presentation.opportunitySummary.benefits).toEqual([
+      "2x miles on every purchase",
+    ]);
+    expect(JSON.stringify(presentation)).not.toMatch(/Capital One Travel credit/i);
   });
 
   test("recommendation states cover user-visible edge cases", () => {

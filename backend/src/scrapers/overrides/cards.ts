@@ -11,6 +11,7 @@ type CardOverride = {
   lastVerified?: string;
   productionEligible?: boolean;
   rewardsByCategory?: Record<string, number>;
+  rewardsFlat?: Array<{ rate: number; unit?: "cash" | "points" | "miles" }>;
   perks?: string[];
   signupOffer?: string | null;
   benefitsDetail?: BenefitsPayload;
@@ -265,10 +266,20 @@ export const CARD_OVERRIDES: Record<string, CardOverride> = {
     name: "Capital One Venture Rewards",
     issuer: "Capital One",
     annualFee: 95,
+    productionEligible: true,
+    sourceUrl: "https://www.capitalone.com/credit-cards/venture/",
+    lastVerified: "2026-07-23",
     apr: "19.49%–28.49% variable",
     signupOffer: "75,000 bonus miles after $4,000 in purchases within 3 months",
-    rewardsByCategory: {
-      other: 2,
+    rewardsFlat: [{ rate: 2, unit: "miles" }],
+    benefitsDetail: {
+      rewardsFlat: [{ rate: 2, unit: "miles" }],
+      perks: ["2x miles on every purchase"],
+      sourceUrl: "https://www.capitalone.com/credit-cards/venture/",
+      sourceType: "issuer_official",
+      lastVerified: "2026-07-23",
+      confidence: 0.95,
+      productionEligible: true,
     },
     perks: ["2x miles on every purchase", "$250 Capital One Travel credit (one-time)"],
   },
