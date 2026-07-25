@@ -1,5 +1,7 @@
 // extension/popup.js
-const DEFAULT_API_BASE = "http://localhost:5001";
+const REWARDLY_CONFIG = globalThis.REWARDLY_CONFIG || {};
+const DEFAULT_API_BASE = REWARDLY_CONFIG.API_BASE || "http://localhost:5001";
+const EXTENSION_ENV = REWARDLY_CONFIG.ENV || "development";
 const SAVE_MESSAGE_MS = 1800;
 
 const apiBaseEl = document.getElementById("apiBase");
@@ -30,6 +32,9 @@ const chromeApi =
 
 loadSettings();
 trackPopupEvent("extension_popup_opened");
+if (EXTENSION_ENV === "production") {
+  document.querySelector(".developer-settings")?.setAttribute("hidden", "true");
+}
 
 Object.entries(quickButtons).forEach(([id, slug]) => {
   document.getElementById(id)?.addEventListener("click", () => {
@@ -77,7 +82,7 @@ function loadSettings() {
       "DEBUG_LOGS",
     ],
     (settings) => {
-      apiBaseEl.value = settings?.API_BASE || DEFAULT_API_BASE;
+      apiBaseEl.value = EXTENSION_ENV === "production" ? DEFAULT_API_BASE : settings?.API_BASE || DEFAULT_API_BASE;
       userIdEl.value = settings?.USER_ID || "devUser";
       betaSessionTokenEl.value = settings?.BETA_SESSION_TOKEN || "";
       debugLogs.checked = !!settings?.DEBUG_LOGS;
@@ -87,13 +92,13 @@ function loadSettings() {
           : [],
       );
       renderAll();
-      loadCards();
+      loadWalletFromBackend().finally(loadCards);
     },
   );
 }
 
 async function loadCards() {
-  const apiBase = apiBaseEl.value.trim() || DEFAULT_API_BASE;
+  const apiBase = getApiBase();
   cardList.innerHTML = `<p class="empty-wallet">Loading card options...</p>`;
   try {
     const res = await fetch(`${apiBase}/api/cards/slugs`);
@@ -225,7 +230,7 @@ function saveSettings(message = "Saved.") {
   if (saveTimer) window.clearTimeout(saveTimer);
 
   const payload = {
-    API_BASE: apiBaseEl.value.trim() || DEFAULT_API_BASE,
+    API_BASE: getApiBase(),
     USER_ID: userIdEl.value.trim() || "devUser",
     BETA_SESSION_TOKEN: betaSessionTokenEl.value.trim(),
     MANUAL_CARD_SLUGS: Array.from(selectedSlugs),
@@ -244,8 +249,44 @@ function saveSettings(message = "Saved.") {
     },
     (resp) => {
       if (resp?.ok) showSaved(message);
+      syncWalletToBackend();
     },
   );
+}
+
+async function loadWalletFromBackend() {
+  const token = betaSessionTokenEl.value.trim();
+  if (!token) return;
+  try {
+    const res = await fetch(`${getApiBase()}/api/wallet`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (Array.isArray(data?.wallet?.cardSlugs)) {
+      selectedSlugs = new Set(data.wallet.cardSlugs);
+      renderAll();
+    }
+  } catch {
+    // The local wallet remains available if beta wallet sync is unavailable.
+  }
+}
+
+async function syncWalletToBackend() {
+  const token = betaSessionTokenEl.value.trim();
+  if (!token) return;
+  try {
+    await fetch(`${getApiBase()}/api/wallet/cards`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ cardSlugs: Array.from(selectedSlugs) }),
+    });
+  } catch {
+    showSaved("Saved locally. Rewardly could not sync your wallet yet.");
+  }
 }
 
 function showSaved(message) {
@@ -329,4 +370,9 @@ function trackPopupEvent(event, metadata = {}) {
   } catch (error) {
     console.warn("Rewardly analytics event failed", error);
   }
+}
+
+function getApiBase() {
+  if (EXTENSION_ENV === "production") return DEFAULT_API_BASE;
+  return apiBaseEl.value.trim() || DEFAULT_API_BASE;
 }

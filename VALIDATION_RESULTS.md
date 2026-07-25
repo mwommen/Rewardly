@@ -1,5 +1,63 @@
 # Rewardly Correctness Validation Results
 
+## Sprint 8.4 User Feedback & Merchant Coverage
+
+Date: 2026-07-24
+
+Status: PASS. This sprint adds lightweight structured feedback and merchant coverage reporting without changing recommendation logic, merchant intelligence, checkout detection, analytics behavior, onboarding, or recommendation scoring.
+
+What changed:
+
+- Added `FeedbackService` for helpful feedback, negative feedback, and merchant support requests.
+- Added privacy validation for comments and structured feedback fields.
+- Added conservative merchant normalization and deduplication for support requests.
+- Added `POST /api/feedback`, `GET /api/feedback/summary`, `GET /api/feedback/merchants`, and `GET /api/feedback/trends`.
+- Added feedback dashboard aggregates: helpful rate, not-helpful rate, common issue, confidence versus feedback, requested merchants, and coverage by category.
+- Added optional checkout popup feedback UI with Yes/No and structured negative reasons.
+- Added request-support action for no-recommendation merchant coverage gaps.
+- Added extension background feedback transport with anonymous installation correlation and extension version.
+- Added documentation in `docs/USER_FEEDBACK_AND_MERCHANT_COVERAGE.md`.
+
+Final local gate results:
+
+- Focused feedback tests: PASS, 2/2 suites and 9/9 tests.
+- Backend Jest: PASS, 49/49 suites and 379/379 tests.
+- Backend build: PASS.
+- Frontend build: PASS.
+- Frontend lint: PASS.
+- Shared core compile: PASS.
+- Extension syntax checks: PASS for `popup.js`, `content.js`, and `background.js`.
+
+Privacy note: feedback does not store card numbers, purchase totals, order details, payment information, customer names, addresses, tokens, cookies, or full URLs with sensitive query parameters. Optional free text is limited to 250 characters and rejected when sensitive patterns are detected.
+
+Manual QA note: live extension feedback submission and dashboard API verification were not run against a deployed beta environment.
+
+## Sprint 8.3 First-Time User Experience
+
+Date: 2026-07-24
+
+Status: PASS. This sprint adds a polished onboarding/setup experience for new users without changing recommendation logic, merchant intelligence, checkout detection, analytics behavior, or the extension popup.
+
+What changed:
+
+- Added a welcome experience explaining what Rewardly does, when it works, and what setup does next.
+- Added a setup checklist for wallet, extension verification, browser permissions, demo test, and ready state.
+- Added browser setup validation for extension detection, session readiness, wallet availability, and checkout permissions.
+- Added a supported merchant overview grouped by category instead of a large merchant list.
+- Added a demo recommendation launcher for Amazon, Target, Starbucks, Hilton, and DoorDash using the existing search/recommendation flow.
+- Added clear empty/fix states for missing wallet, missing extension, and missing permissions.
+- Added responsive onboarding styling with accessible labels, focus behavior inherited from the design system, and no horizontal overflow in the render check.
+
+Final local gate results:
+
+- Frontend build: PASS.
+- Frontend lint: PASS.
+- Extension syntax checks: PASS for `popup.js`, `content.js`, and `background.js`.
+- Local render check: PASS at `http://127.0.0.1:5173/`.
+- Screenshot artifact: `artifacts/rewardly-sprint-8-3-onboarding.png`.
+
+Testing note: the frontend project does not currently include a dedicated UI/unit test runner. Validation was performed with TypeScript build, ESLint, extension syntax checks, and Playwright render inspection.
+
 ## Sprint 8.2 Polish Product Intelligence Hardening
 
 Date: 2026-07-24
@@ -569,3 +627,113 @@ Recent live failures were not isolated merchant bugs. They exposed universal det
 ## Merchant-Specific Scope Check
 
 No Domino's-specific domain, route, selector, merchant, or recommendation logic was added. Generic detector fixtures use non-merchant-specific hostnames and assert the generic detector path still recognizes payment-stage intent.
+
+# Sprint 8.5 Private Beta Production Deployment
+
+Date: 2026-07-24
+
+## Production Blockers Addressed
+
+- Replaced single shared production beta identity with server-side beta users, hashed tokens, and bearer-token authentication.
+- Added server-owned beta wallet storage so payment decisions load cards from the authenticated user's wallet.
+- Removed full MongoDB URI logging and gated decision explanation logs behind `REWARDLY_TRACE_DECISION`.
+- Added production environment validation so production cannot silently use localhost, `devUser`, `manualTestUser`, or development identity overrides.
+- Added strict environment-aware CORS and disabled `/api/_env` plus QA routes in production.
+- Added minimal `/health` and `/ready` endpoints.
+- Added Render, Vercel, Atlas, Chrome package, and founder beta-user documentation.
+
+## Validation Commands
+
+- `npm --prefix backend run build`: PASS.
+- `npm --prefix backend test -- --runInBand betaAuthService betaAuthRoutes decisionRoutes`: PASS, 3 suites, 13 tests.
+- `npm --prefix backend test -- --runInBand`: PASS, 51 suites, 386 tests.
+- `npm --prefix frontend-vite run build`: PASS.
+- `npm --prefix frontend-vite run lint`: PASS.
+- `cd packages/rewardly-core && ../../backend/node_modules/.bin/tsc -p tsconfig.json`: PASS.
+- `node --check extension/background.js`: PASS.
+- `node --check extension/content.js`: PASS.
+- `node --check extension/popup.js`: PASS.
+- `node --check extension/config.js`: PASS.
+- `npm run verify:beta-production`: PASS.
+- `REWARDLY_EXTENSION_API_BASE=https://rewardly-api.example.com REWARDLY_EXTENSION_APP_URL=https://rewardly.example.com npm run extension:package:beta`: PASS.
+
+## Chrome Beta Package Smoke Test
+
+Generated package:
+
+```text
+release/rewardly-extension-beta.zip
+sha256: eafd47ef7ac99d5df0a23f545c522d1ec756953bd8d5312fbf5d9cb843bc0ae7
+```
+
+The package validation fails if production output contains `localhost`, `127.0.0.1`, `devUser`, `manualTestUser`, `REWARDLY_BETA_SESSION_TOKEN`, or `debug=true`.
+
+## Remaining Manual Verification
+
+- Create real Render, Vercel, MongoDB Atlas, and Chrome Web Store unlisted resources.
+- Set real `FRONTEND_ORIGIN`, `EXTENSION_ORIGIN`, `MONGO_URI`, and extension production URLs.
+- Run `npm run db:init:production` against Atlas.
+- Create two beta users, activate both, add different wallets, and verify payment decisions remain isolated in the deployed environment.
+- Manually load or install the packaged extension and confirm Amazon/Lululemon checkout requests use `Authorization: Bearer <token>`.
+
+# Sprint 8.5.1 Private Beta Activation and Release Validation
+
+Date: 2026-07-25
+
+## Root Causes Closed
+
+- The hosted frontend had no complete activation-code flow even though the backend exposed `/api/beta/activate`.
+- The production extension could hide Developer Settings but still depended on the hidden token field.
+- New extension installs had no supported way to receive a beta session.
+- Production extension packaging used string replacement instead of production-specific popup/background entry points.
+- Wallet updates normalized slugs but did not prove catalog validation.
+- `verify:beta-production` did not run package inspection and production extension checks in one command.
+
+## Architecture Added
+
+- Frontend beta session service with activation, verification, authenticated requests, logout, wallet loading, and extension-code creation.
+- Website activation panel with clear missing/invalid/revoked/backend states.
+- One-time extension connection codes created by the authenticated website and redeemed by the extension.
+- Production extension popup states: not connected, connected empty wallet, ready, expired/revoked, backend unavailable.
+- Production extension background entry point with authenticated bearer-token requests and no developer settings dependency.
+- Catalog validation for beta wallet card slugs.
+
+## Validation Commands
+
+- `npm --prefix backend run build`: PASS.
+- `npm --prefix backend test -- --runInBand betaAuthService betaAuthRoutes decisionRoutes`: PASS, 3 suites, 17 tests.
+- `npm run verify:beta-production`: PASS.
+
+`verify:beta-production` ran:
+
+- Backend build.
+- Full backend tests: PASS, 51 suites, 390 tests.
+- Frontend build.
+- Frontend lint.
+- Shared core compile.
+- Extension syntax checks for development and production popup/background files.
+- Production extension package generation.
+- Manifest validation and unsafe-content scan.
+
+## Production Package
+
+```text
+release/rewardly-extension-beta.zip
+sha256: 36297b0aa07440b473fc9905d8d1ffb12d045573102130bf7096945392de9a3f
+inspection report: release/rewardly-extension-beta-report.json
+```
+
+Package inspection confirms Manifest V3, permissions `activeTab`, `scripting`, `storage`, no localhost permissions, no Developer Settings markup, no manual token UI, no debug controls, and no development user strings.
+
+## Two-User End-To-End Coverage
+
+Automated service/route tests cover:
+
+- User A activation and wallet update.
+- User B activation and independent wallet update.
+- User A and User B wallet isolation.
+- Spoofed wallet identity ignored by authenticated wallet route.
+- Extension connection code creation and one-time redemption.
+- Revoked users cannot authenticate.
+
+Hosted two-user browser testing is not executed locally and still requires real Render/Vercel/Chrome Web Store resources.

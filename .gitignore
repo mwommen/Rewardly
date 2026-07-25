@@ -20,6 +20,7 @@ artifacts/
 coverage/
 dist/
 build/
+release/
 .cache/
 .vite/
 .turbo/

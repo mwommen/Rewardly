@@ -21,10 +21,9 @@ export async function connectDB(): Promise<Db> {
       connectTimeoutMS: mongoConnectTimeoutMS,
     });
     await client.connect();
-    console.log("✅ Connected to MongoDB at URI:", uri);
+    console.log("Connected to MongoDB");
   }
   const db = client.db("creditCardOptimizer");
-  console.log("Using database:", db.databaseName);
   cachedDb = db;
   return db;
 }
@@ -57,6 +56,26 @@ export async function getUserBenefitStatesCollection(): Promise<Collection<UserB
 export async function getAnalyticsCollection(): Promise<Collection<Document>> {
   const db = await connectDB();
   return db.collection<Document>("analyticsEvents");
+}
+
+export async function getFeedbackCollection(): Promise<Collection<Document>> {
+  const db = await connectDB();
+  return db.collection<Document>("feedbackEvents");
+}
+
+export async function getBetaUsersCollection(): Promise<Collection<BetaUser>> {
+  const db = await connectDB();
+  return db.collection<BetaUser>("betaUsers");
+}
+
+export async function getBetaWalletsCollection(): Promise<Collection<BetaWallet>> {
+  const db = await connectDB();
+  return db.collection<BetaWallet>("betaWallets");
+}
+
+export async function getBetaExtensionConnectionsCollection(): Promise<Collection<BetaExtensionConnection>> {
+  const db = await connectDB();
+  return db.collection<BetaExtensionConnection>("betaExtensionConnections");
 }
 
 /**
@@ -135,4 +154,36 @@ export interface UserBenefitState {
   usedAt?: Date | null;
   remindEnabled?: boolean;
   updatedAt?: Date;
+}
+
+export interface BetaUser {
+  userId: string;
+  name?: string;
+  email?: string;
+  status: "invited" | "active" | "revoked";
+  activationTokenHash?: string | null;
+  sessionTokenHash?: string | null;
+  tokenExpiresAt?: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  lastUsedAt?: Date | null;
+}
+
+export interface BetaWallet {
+  userId: string;
+  cardSlugs: string[];
+  onboardingCompletedAt?: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface BetaExtensionConnection {
+  connectionId: string;
+  userId: string;
+  codeHash: string;
+  status: "pending" | "redeemed" | "expired" | "revoked";
+  expiresAt: Date;
+  redeemedAt?: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
 }

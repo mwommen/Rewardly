@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import type { Card as WalletCard } from "./cardModules";
 import { type DebugState } from "./components/AdvancedInputs";
 import BenefitSearchResult from "./components/BenefitSearchResult";
+import BetaActivation from "./components/BetaActivation";
+import FirstTimeOnboarding from "./components/FirstTimeOnboarding";
 import HeroAskRewardly from "./components/HeroAskRewardly";
 import HowRewardlyWorks from "./components/HowRewardlyWorks";
 import RecommendationResult from "./components/RecommendationResult";
@@ -69,6 +71,10 @@ export default function App() {
   });
   const [walletCards, setWalletCards] = useState<WalletCard[]>([]);
   const [selectedWalletSlug, setSelectedWalletSlug] = useState<string>("");
+  const [extensionInstalled, setExtensionInstalled] = useState(false);
+  const [demoCompleted, setDemoCompleted] = useState(
+    () => localStorage.getItem("rewardly-onboarding-demo-complete") === "true",
+  );
 
   const merchant = useMemo(
     () => parseIntent(submittedIntent),
@@ -125,6 +131,28 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    const updateExtensionStatus = () => {
+      setExtensionInstalled(
+        document.documentElement.getAttribute("data-rewardly-extension") ===
+          "loaded",
+      );
+    };
+
+    updateExtensionStatus();
+    const timer = window.setTimeout(updateExtensionStatus, 800);
+    const observer = new MutationObserver(updateExtensionStatus);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-rewardly-extension"],
+    });
+
+    return () => {
+      window.clearTimeout(timer);
+      observer.disconnect();
+    };
+  }, []);
+
   const unlockedBenefits = useMemo(() => {
     const lines = new Map<string, string | null>();
     if (topPick) lines.set(rewardChip(topPick.effectiveRate), null);
@@ -156,13 +184,28 @@ export default function App() {
     setSubmittedIntent(intent.trim());
   };
 
-  const useExample = (example: string) => {
+  const applyExample = (example: string) => {
     setIntent(example);
     setSubmittedIntent(example);
   };
 
+  const runDemoRecommendation = (merchantName: string) => {
+    localStorage.setItem("rewardly-onboarding-demo-complete", "true");
+    setDemoCompleted(true);
+    applyExample(merchantName);
+  };
+
   return (
     <main className="assistant-shell">
+      <BetaActivation />
+
+      <FirstTimeOnboarding
+        walletCards={walletCards}
+        extensionInstalled={extensionInstalled}
+        demoCompleted={demoCompleted}
+        onDemoSelect={runDemoRecommendation}
+      />
+
       <section className="assistant-hero">
         <HeroAskRewardly
           intent={intent}
@@ -172,12 +215,12 @@ export default function App() {
           examples={EXAMPLES}
           onIntentChange={setIntent}
           onSubmit={submitIntent}
-          onExample={useExample}
+          onExample={applyExample}
           onDebugChange={setDebug}
           onDebugOpenChange={setDebugOpen}
         />
         <HowRewardlyWorks />
-        <SmartMoves moves={SMART_MOVES} onSelect={useExample} />
+        <SmartMoves moves={SMART_MOVES} onSelect={applyExample} />
       </section>
 
       <section
@@ -193,7 +236,7 @@ export default function App() {
             walletCards={walletCards}
             offers={offers}
             onRetry={refetch}
-            onSuggestion={useExample}
+            onSuggestion={applyExample}
           />
         ) : (
           <>
@@ -206,7 +249,7 @@ export default function App() {
               alternatives={otherBest}
               unlockedBenefits={unlockedBenefits}
               onRetry={refetch}
-              onSuggestion={useExample}
+              onSuggestion={applyExample}
             />
 
             <UnlocksSection unlockedBenefits={unlockedBenefits} />

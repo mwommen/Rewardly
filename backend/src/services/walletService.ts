@@ -1,5 +1,6 @@
 import type { Card, Wallet } from "../../../packages/rewardly-core/src";
 import {
+  getBetaWalletsCollection,
   getCardsCollection,
   getLinkedAccountsCollection,
   getUserBenefitStatesCollection,
@@ -36,8 +37,9 @@ export async function resolveUserWallet({
   manualCardSlugs = [],
   restrictToWallet = true,
 }: WalletResolutionInput): Promise<ResolvedWallet> {
-  const [allCards, linkedSlugs, benefitStates] = await Promise.all([
+  const [allCards, betaWalletSlugs, linkedSlugs, benefitStates] = await Promise.all([
     loadCards(),
+    loadBetaWalletSlugs(userId),
     loadLinkedCardSlugs(userId),
     loadBenefitStates(userId),
   ]);
@@ -45,7 +47,7 @@ export async function resolveUserWallet({
   const manualSlugs = manualCardSlugs
     .map((slug) => String(slug || "").trim())
     .filter(Boolean);
-  const ownedSlugs = new Set([...linkedSlugs, ...manualSlugs]);
+  const ownedSlugs = new Set([...betaWalletSlugs, ...linkedSlugs, ...manualSlugs]);
 
   const hydratedCards = hydrateManualOverrideCards(allCards, ownedSlugs);
   const cards = restrictToWallet
@@ -56,7 +58,7 @@ export async function resolveUserWallet({
     userId,
     cards,
     cardSlugs: cards.map((card) => card.slug),
-    source: walletSource(linkedSlugs.length, manualSlugs.length),
+    source: walletSource(betaWalletSlugs.length, linkedSlugs.length, manualSlugs.length),
     benefitStates,
   };
 }
@@ -80,6 +82,16 @@ async function loadLinkedCardSlugs(userId: string) {
   });
 
   return Array.from(slugs);
+}
+
+async function loadBetaWalletSlugs(userId: string) {
+  const walletCol = await getBetaWalletsCollection();
+  const wallet = await walletCol.findOne({ userId });
+  return Array.isArray(wallet?.cardSlugs)
+    ? wallet.cardSlugs
+        .map((slug) => String(slug || "").trim())
+        .filter(Boolean)
+    : [];
 }
 
 async function loadBenefitStates(
@@ -200,10 +212,13 @@ function hydrateManualOverrideCards(cards: Card[], ownedSlugs: Set<string>) {
 }
 
 function walletSource(
+  betaWalletCount: number,
   linkedCount: number,
   manualCount: number,
 ): Wallet["source"] {
-  if (linkedCount && manualCount) return "mixed";
+  if ((betaWalletCount || linkedCount) && manualCount) return "mixed";
+  if (betaWalletCount && linkedCount) return "mixed";
+  if (betaWalletCount) return "manual";
   if (linkedCount) return "plaid";
   if (manualCount) return "manual";
   return "empty";

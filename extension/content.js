@@ -603,6 +603,15 @@ function runRewardlyPipeline(triggerReason = "scheduled") {
             primaryLabel: "Dismiss",
             dismissKey: key,
             merchant: payload.merchant,
+            supportRequest:
+              Array.isArray(decision?.wallet?.cardSlugs) &&
+              decision.wallet.cardSlugs.length > 0,
+            supportContext: {
+              sessionId: key,
+              merchantName: payload.merchant,
+              merchantDomain: location.hostname,
+              merchantCategory: payload.category,
+            },
           });
           return;
         }
@@ -1478,6 +1487,33 @@ function renderRewardlyPopup(decision, dismissKey) {
         ${comparison ? `<em>${sanitize(comparison)}</em>` : ""}
       </div>
 
+      <div class="rewardly-feedback" aria-label="Recommendation feedback">
+        <div class="rewardly-feedback-prompt">
+          <span>Was this helpful?</span>
+          <div>
+            <button class="rewardly-feedback-yes" type="button" aria-label="Recommendation was helpful">Yes</button>
+            <button class="rewardly-feedback-no" type="button" aria-label="Recommendation was not helpful">No</button>
+          </div>
+        </div>
+        <div class="rewardly-feedback-reasons" hidden>
+          <label>
+            <span>What went wrong?</span>
+            <select class="rewardly-feedback-reason">
+              <option value="">Choose one</option>
+              <option value="wrong_card_recommended">Wrong card recommended</option>
+              <option value="wrong_merchant_detected">Wrong merchant detected</option>
+              <option value="recommendation_too_late">Recommendation appeared too late</option>
+              <option value="recommendation_confusing">Recommendation was confusing</option>
+              <option value="reward_estimate_incorrect">Reward estimate looked incorrect</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+          <textarea class="rewardly-feedback-comment" maxlength="250" rows="2" placeholder="Optional, 250 characters max" hidden></textarea>
+          <button class="rewardly-feedback-submit" type="button">Send feedback</button>
+        </div>
+        <p class="rewardly-feedback-status" role="status" aria-live="polite" hidden></p>
+      </div>
+
       <div class="rewardly-details" id="${detailId}" hidden>
         ${detailRow("Merchant", trust.details?.merchant || merchantName)}
         ${detailRow("Category", trust.details?.category || categoryLabel)}
@@ -1519,6 +1555,12 @@ function renderRewardlyPopup(decision, dismissKey) {
   });
 
   const dismissButton = root.querySelector(".rewardly-dismiss");
+  setupRecommendationFeedback(root, decision, dismissKey, {
+    merchantName,
+    cardName,
+    confidenceLabel,
+    categoryLabel,
+  });
   dismissButton.addEventListener("click", () => {
     rememberDismissal(dismissKey);
     trackRewardlyEvent("recommendation_dismissed", {
@@ -1578,6 +1620,72 @@ function renderRewardlyPopup(decision, dismissKey) {
   });
 }
 
+function setupRecommendationFeedback(root, decision, sessionId, context) {
+  const yes = root.querySelector(".rewardly-feedback-yes");
+  const no = root.querySelector(".rewardly-feedback-no");
+  const reasons = root.querySelector(".rewardly-feedback-reasons");
+  const reasonSelect = root.querySelector(".rewardly-feedback-reason");
+  const comment = root.querySelector(".rewardly-feedback-comment");
+  const submit = root.querySelector(".rewardly-feedback-submit");
+  const status = root.querySelector(".rewardly-feedback-status");
+  if (!yes || !no || !reasons || !reasonSelect || !submit || !status) return;
+
+  yes.addEventListener("click", () => {
+    sendRewardlyFeedback({
+      type: "recommendation_helpful",
+      sessionId,
+      merchantName: context.merchantName,
+      merchantDomain: location.hostname,
+      merchantCategory: context.categoryLabel,
+      confidenceBand: context.confidenceLabel,
+      recommendedCardName: context.cardName,
+    });
+    renderFeedbackAcknowledgement(status, reasons, "Thanks. Your feedback helps improve Rewardly.");
+    disableFeedbackButtons(root);
+  });
+
+  no.addEventListener("click", () => {
+    reasons.hidden = false;
+    reasonSelect.focus({ preventScroll: true });
+  });
+
+  reasonSelect.addEventListener("change", () => {
+    comment.hidden = reasonSelect.value !== "other";
+  });
+
+  submit.addEventListener("click", () => {
+    if (!reasonSelect.value) {
+      renderFeedbackAcknowledgement(status, null, "Choose one reason first.");
+      return;
+    }
+    sendRewardlyFeedback({
+      type: "recommendation_not_helpful",
+      sessionId,
+      merchantName: context.merchantName,
+      merchantDomain: location.hostname,
+      merchantCategory: context.categoryLabel,
+      confidenceBand: context.confidenceLabel,
+      recommendedCardName: context.cardName,
+      reason: reasonSelect.value,
+      comment: reasonSelect.value === "other" ? comment.value : "",
+    });
+    renderFeedbackAcknowledgement(status, reasons, "Thanks. We'll use this to improve Rewardly.");
+    disableFeedbackButtons(root);
+  });
+}
+
+function renderFeedbackAcknowledgement(status, panel, message) {
+  if (panel) panel.hidden = true;
+  status.textContent = message;
+  status.hidden = false;
+}
+
+function disableFeedbackButtons(root) {
+  root.querySelectorAll(".rewardly-feedback button, .rewardly-feedback select, .rewardly-feedback textarea").forEach((element) => {
+    element.disabled = true;
+  });
+}
+
 function detailRow(label, value) {
   if (!value) return "";
   return `
@@ -1597,6 +1705,8 @@ function renderRewardlyStatePopup({
   dismissKey,
   merchant,
   onPrimary,
+  supportRequest,
+  supportContext,
 }) {
   if (document.getElementById("rewardly-popup")) return;
   ensureRewardlyStyles();
@@ -1619,6 +1729,15 @@ function renderRewardlyStatePopup({
         <strong>${sanitize(title)}</strong>
         <p id="rewardly-state-body">${sanitize(body)}</p>
       </div>
+      ${
+        supportRequest
+          ? `<div class="rewardly-support-request">
+              <span>Don't see support for this merchant yet?</span>
+              <button class="rewardly-request-support" type="button">Request support</button>
+              <p role="status" aria-live="polite" hidden></p>
+            </div>`
+          : ""
+      }
       <div class="rewardly-actions">
         ${
           secondaryLabel
@@ -1652,6 +1771,22 @@ function renderRewardlyStatePopup({
       url: safeRewardlyUrl(location.href),
       disconnectObserver: true,
     });
+  });
+  root.querySelector(".rewardly-request-support")?.addEventListener("click", (event) => {
+    const button = event.currentTarget;
+    const status = root.querySelector(".rewardly-support-request p");
+    sendRewardlyFeedback({
+      type: "merchant_support_request",
+      sessionId: supportContext?.sessionId || dismissKey,
+      merchantName: supportContext?.merchantName || merchant,
+      merchantDomain: supportContext?.merchantDomain || location.hostname,
+      merchantCategory: supportContext?.merchantCategory || null,
+    });
+    button.disabled = true;
+    if (status) {
+      status.textContent = "Thanks. We'll use this to prioritize merchant coverage.";
+      status.hidden = false;
+    }
   });
 
   document.documentElement.appendChild(root);
@@ -2001,6 +2136,102 @@ function ensureRewardlyStyles() {
       line-height: 1.35;
     }
 
+    #rewardly-popup .rewardly-feedback {
+      display: grid;
+      gap: 8px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.045);
+      padding: 10px;
+    }
+
+    #rewardly-popup .rewardly-feedback-prompt {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    #rewardly-popup .rewardly-feedback-prompt > span,
+    #rewardly-popup .rewardly-feedback-reasons span {
+      color: #b7c3d7;
+      font-size: 12px;
+      font-weight: 820;
+    }
+
+    #rewardly-popup .rewardly-feedback-prompt > div {
+      display: flex;
+      gap: 7px;
+    }
+
+    #rewardly-popup .rewardly-feedback button,
+    #rewardly-popup .rewardly-feedback select,
+    #rewardly-popup .rewardly-feedback textarea {
+      font: inherit;
+    }
+
+    #rewardly-popup .rewardly-feedback button {
+      min-height: 30px;
+      border: 1px solid rgba(207, 217, 255, 0.18);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.085);
+      color: #f8fafc;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 850;
+      padding: 0 11px;
+    }
+
+    #rewardly-popup .rewardly-feedback button:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    #rewardly-popup .rewardly-feedback button:disabled,
+    #rewardly-popup .rewardly-feedback select:disabled,
+    #rewardly-popup .rewardly-feedback textarea:disabled {
+      cursor: default;
+      opacity: 0.62;
+    }
+
+    #rewardly-popup .rewardly-feedback-reasons {
+      display: grid;
+      gap: 8px;
+    }
+
+    #rewardly-popup .rewardly-feedback-reasons[hidden],
+    #rewardly-popup .rewardly-feedback-status[hidden],
+    #rewardly-popup .rewardly-feedback-comment[hidden] {
+      display: none;
+    }
+
+    #rewardly-popup .rewardly-feedback-reasons label {
+      display: grid;
+      gap: 6px;
+    }
+
+    #rewardly-popup .rewardly-feedback select,
+    #rewardly-popup .rewardly-feedback textarea {
+      width: 100%;
+      border: 1px solid rgba(207, 217, 255, 0.16);
+      border-radius: 12px;
+      background: rgba(7, 12, 24, 0.72);
+      color: #f8fafc;
+      outline: none;
+      padding: 8px 9px;
+      font-size: 12px;
+    }
+
+    #rewardly-popup .rewardly-feedback textarea {
+      resize: vertical;
+    }
+
+    #rewardly-popup .rewardly-feedback-status {
+      margin: 0;
+      color: #bbf7d0;
+      font-size: 12px;
+      font-weight: 760;
+      line-height: 1.35;
+    }
+
     #rewardly-popup .rewardly-details {
       display: grid;
       gap: 8px;
@@ -2057,6 +2288,50 @@ function ensureRewardlyStyles() {
       font-size: 13px;
       font-weight: 650;
       line-height: 1.4;
+    }
+
+    #rewardly-popup .rewardly-support-request {
+      display: grid;
+      gap: 8px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.045);
+      padding: 11px;
+    }
+
+    #rewardly-popup .rewardly-support-request span,
+    #rewardly-popup .rewardly-support-request p {
+      margin: 0;
+      color: #b7c3d7;
+      font-size: 12px;
+      font-weight: 760;
+      line-height: 1.35;
+    }
+
+    #rewardly-popup .rewardly-support-request p {
+      color: #bbf7d0;
+    }
+
+    #rewardly-popup .rewardly-support-request p[hidden] {
+      display: none;
+    }
+
+    #rewardly-popup .rewardly-request-support {
+      justify-self: start;
+      min-height: 32px;
+      border: 1px solid rgba(103, 232, 249, 0.22);
+      border-radius: 999px;
+      background: rgba(103, 232, 249, 0.12);
+      color: #cffafe;
+      cursor: pointer;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 850;
+      padding: 0 12px;
+    }
+
+    #rewardly-popup .rewardly-request-support:disabled {
+      cursor: default;
+      opacity: 0.64;
     }
 
     #rewardly-popup .rewardly-includes {
@@ -2470,6 +2745,20 @@ function trackRewardlyEvent(event, metadata = {}) {
   } catch (error) {
     rewardlyLog("analytics-send-failed", {
       event,
+      message: String(error?.message || error),
+    });
+  }
+}
+
+function sendRewardlyFeedback(payload = {}) {
+  try {
+    chrome.runtime.sendMessage({
+      type: "REWARDLY_FEEDBACK_EVENT",
+      payload,
+    });
+  } catch (error) {
+    rewardlyLog("feedback-send-failed", {
+      type: payload?.type || null,
       message: String(error?.message || error),
     });
   }

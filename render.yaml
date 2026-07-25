@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: rewardly-api
+    runtime: node
+    rootDir: backend
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: REWARDLY_ALLOW_DEV_OVERRIDES
+        value: "false"
+      - key: REWARDLY_MERCHANT_INTELLIGENCE_MODE
+        value: registry
+      - key: REWARDLY_TRACE_DECISION
+        value: "false"
+      - key: REWARDLY_DECISION_LOGS
+        value: "false"
+      - key: REWARDLY_ENABLE_ANALYTICS_DASHBOARD
+        value: "false"
+      - key: REWARDLY_ENABLE_FEEDBACK_DASHBOARD
+        value: "false"
+      - key: REWARDLY_ANALYTICS_RETENTION_DAYS
+        value: "30"
+      - key: PLAID_ENV
+        value: sandbox

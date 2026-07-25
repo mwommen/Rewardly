@@ -50,7 +50,7 @@
         "https://www.walmart.com/*",
         "https://*.walmart.com/*"
       ],
-      "js": ["content.js"],
+      "js": ["config.js", "content.js"],
       "run_at": "document_idle"
     }
   ],

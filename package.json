@@ -1,0 +1,14 @@
+{
+  "name": "rewardly-workspace",
+  "private": true,
+  "scripts": {
+    "backend:build": "npm --prefix backend run build",
+    "backend:test": "npm --prefix backend test -- --runInBand",
+    "frontend:build": "npm --prefix frontend-vite run build",
+    "frontend:lint": "npm --prefix frontend-vite run lint",
+    "shared:build": "cd packages/rewardly-core && ../../backend/node_modules/.bin/tsc -p tsconfig.json",
+    "extension:check": "node --check extension/background.js && node --check extension/content.js && node --check extension/popup.js && node --check extension/config.js",
+    "extension:package:beta": "node scripts/package-extension-beta.js",
+    "verify:beta-production": "node scripts/verify-beta-production.js"
+  }
+}

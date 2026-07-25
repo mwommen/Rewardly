@@ -1,8 +1,11 @@
 // extension/background.js
 
-const DEFAULT_API_BASE = "http://localhost:5001";
+const REWARDLY_CONFIG = globalThis.REWARDLY_CONFIG || {};
+const DEFAULT_API_BASE = REWARDLY_CONFIG.API_BASE || "http://localhost:5001";
+const EXTENSION_ENV = REWARDLY_CONFIG.ENV || "development";
 const PAYMENT_DECISION_API_PATH = "/api/decisions/payment";
 const ANALYTICS_EVENT_API_PATH = "/api/analytics/event";
+const FEEDBACK_API_PATH = "/api/feedback";
 const BACKGROUND_FETCH_TIMEOUT_MS = 2500;
 // Keeping FIELDS here for later, but NOT sending it right now since your backend
 // doesn't return `top` yet. You can re-enable once backend supports it.
@@ -21,7 +24,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === "CCO_INFER") {
     (async () => {
       try {
-        const apiBase = (await getSetting("API_BASE")) || DEFAULT_API_BASE;
+        const apiBase = await getApiBase();
         const host = msg.payload?.host || "";
         console.log("[CCO] infer request for host:", host);
         const data = await fetchJsonWithFallback(
@@ -42,7 +45,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === "CCO_RECOMMEND") {
     (async () => {
       try {
-        const apiBase = (await getSetting("API_BASE")) || DEFAULT_API_BASE;
+        const apiBase = await getApiBase();
         const settingsUserId = (await getSetting("USER_ID")) || "devUser";
         const storedManualCardSlugs =
           (await getSetting("MANUAL_CARD_SLUGS")) || [];
@@ -108,9 +111,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === "REWARDLY_PAYMENT_DECISION") {
     (async () => {
       try {
-        const apiBase = (await getSetting("API_BASE")) || DEFAULT_API_BASE;
+        const apiBase = await getApiBase();
         const settingsUserId = (await getSetting("USER_ID")) || "devUser";
-        const betaSessionToken = (await getSetting("BETA_SESSION_TOKEN")) || "";
+        const betaSessionToken = await getSessionToken();
         const storedManualCardSlugs =
           (await getSetting("MANUAL_CARD_SLUGS")) || [];
         const debugLogs = !!(await getSetting("DEBUG_LOGS"));
@@ -138,7 +141,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             headers: {
               "Content-Type": "application/json",
               ...(betaSessionToken
-                ? { "X-Rewardly-Beta-Session": betaSessionToken }
+                ? {
+                    Authorization: `Bearer ${betaSessionToken}`,
+                  }
                 : {}),
             },
             body: JSON.stringify(decisionPayload),
@@ -174,6 +179,62 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 
+  if (msg?.type === "REWARDLY_REDEEM_CONNECTION_CODE") {
+    (async () => {
+      try {
+        const apiBase = await getApiBase();
+        const connectionCode = String(msg.connectionCode || "").trim();
+        if (!connectionCode) throw new Error("Connection code required");
+        const data = await fetchJsonWithFallback(
+          apiBase,
+          "/api/beta/extension-connections/redeem",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ connectionCode }),
+          },
+        );
+        await setLocalSession(data.sessionToken, data.user || null);
+        sendResponse({ ok: true, user: data.user || null });
+      } catch {
+        sendResponse({
+          ok: false,
+          error: "Rewardly could not connect this extension.",
+        });
+      }
+    })();
+    return true;
+  }
+
+  if (msg?.type === "REWARDLY_VALIDATE_SESSION") {
+    (async () => {
+      try {
+        const sessionToken = await getSessionToken();
+        if (!sessionToken) {
+          return sendResponse({ ok: false, state: "not_connected" });
+        }
+        const data = await fetchJsonWithFallback(
+          await getApiBase(),
+          "/api/beta/session",
+          {
+            method: "GET",
+            headers: { Authorization: `Bearer ${sessionToken}` },
+          },
+        );
+        sendResponse({ ok: true, user: data.user || null });
+      } catch {
+        await clearLocalSession();
+        sendResponse({ ok: false, state: "expired" });
+      }
+    })();
+    return true;
+  }
+
+  if (msg?.type === "REWARDLY_CLEAR_SESSION") {
+    clearLocalSession().then(() => sendResponse({ ok: true }));
+    return true;
+  }
+
   if (msg?.type === "REWARDLY_ANALYTICS_EVENT") {
     (async () => {
       try {
@@ -194,10 +255,30 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 
+  if (msg?.type === "REWARDLY_FEEDBACK_EVENT") {
+    (async () => {
+      try {
+        await sendFeedbackEvent(msg.payload || {});
+        sendResponse({ ok: true });
+      } catch (e) {
+        rewardlyDebugLog(
+          !!(await getSetting("DEBUG_LOGS")),
+          "feedback event failed",
+          {
+            type: msg.payload?.type || null,
+            message: String(e?.message || e),
+          },
+        );
+        sendResponse({ ok: false, error: "feedback unavailable" });
+      }
+    })();
+    return true;
+  }
+
   if (msg?.type === "CCO_GET_USER_BENEFIT_STATES") {
     (async () => {
       try {
-        const apiBase = (await getSetting("API_BASE")) || DEFAULT_API_BASE;
+        const apiBase = await getApiBase();
         const settingsUserId = (await getSetting("USER_ID")) || "devUser";
         const userId = msg.payload?.userId || settingsUserId;
         const path = `/api/user-benefits?userId=${encodeURIComponent(userId)}`;
@@ -216,7 +297,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === "CCO_GET_USER_BENEFIT_SUMMARY") {
     (async () => {
       try {
-        const apiBase = (await getSetting("API_BASE")) || DEFAULT_API_BASE;
+        const apiBase = await getApiBase();
         const settingsUserId = (await getSetting("USER_ID")) || "devUser";
         const userId = msg.payload?.userId || settingsUserId;
         const path = `/api/user-benefits/summary?userId=${encodeURIComponent(userId)}`;
@@ -235,7 +316,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === "CCO_SAVE_BENEFIT_STATE") {
     (async () => {
       try {
-        const apiBase = (await getSetting("API_BASE")) || DEFAULT_API_BASE;
+        const apiBase = await getApiBase();
         const settingsUserId = (await getSetting("USER_ID")) || "devUser";
         const {
           userId = settingsUserId,
@@ -285,6 +366,47 @@ async function getSetting(key) {
   });
 }
 
+async function getLocalSetting(key) {
+  return new Promise((resolve) => {
+    chrome.storage.local.get([key], (o) => resolve(o?.[key]));
+  });
+}
+
+async function getSessionToken() {
+  return (
+    (await getLocalSetting("SESSION_TOKEN")) ||
+    (await getSetting("BETA_SESSION_TOKEN")) ||
+    ""
+  );
+}
+
+async function setLocalSession(sessionToken, user) {
+  return new Promise((resolve) => {
+    chrome.storage.local.set(
+      {
+        SESSION_TOKEN: sessionToken,
+        BETA_USER: user || null,
+        SESSION_CONNECTED_AT: new Date().toISOString(),
+      },
+      resolve,
+    );
+  });
+}
+
+async function clearLocalSession() {
+  return new Promise((resolve) => {
+    chrome.storage.local.remove(
+      ["SESSION_TOKEN", "BETA_USER", "SESSION_CONNECTED_AT"],
+      resolve,
+    );
+  });
+}
+
+async function getApiBase() {
+  if (EXTENSION_ENV === "production") return DEFAULT_API_BASE;
+  return (await getSetting("API_BASE")) || DEFAULT_API_BASE;
+}
+
 function rewardlyDebugLog(enabled, label, data) {
   if (!enabled) return;
   console.log(`[Rewardly] ${label}`, data || {});
@@ -321,7 +443,7 @@ async function trackWalletChanges(before, after) {
 
 async function trackAnalyticsEvent(event, metadata = {}) {
   if (!event || typeof event !== "string") return;
-  const apiBase = (await getSetting("API_BASE")) || DEFAULT_API_BASE;
+  const apiBase = await getApiBase();
   const installationId = await getInstallationId();
   const body = {
     installationId,
@@ -344,6 +466,21 @@ async function trackAnalyticsEvent(event, metadata = {}) {
       message: String(error?.message || error),
     });
   }
+}
+
+async function sendFeedbackEvent(payload = {}) {
+  const apiBase = await getApiBase();
+  const installationId = await getInstallationId();
+  const body = {
+    installationId,
+    ...sanitizeFeedbackPayload(payload),
+    extensionVersion: chrome.runtime.getManifest?.().version || "unknown",
+  };
+  await fetchJsonWithFallback(apiBase, FEEDBACK_API_PATH, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }
 
 async function getInstallationId() {
@@ -392,6 +529,28 @@ function sanitizeAnalyticsMetadata(metadata) {
       typeof value === "boolean"
     ) {
       allowed[key] = value;
+    }
+  }
+  return allowed;
+}
+
+function sanitizeFeedbackPayload(payload) {
+  const allowed = {};
+  const keys = [
+    "type",
+    "sessionId",
+    "merchantName",
+    "merchantDomain",
+    "merchantCategory",
+    "confidenceBand",
+    "recommendedCardName",
+    "reason",
+    "comment",
+  ];
+  for (const key of keys) {
+    const value = payload?.[key];
+    if (typeof value === "string") {
+      allowed[key] = value.slice(0, key === "comment" ? 250 : 140);
     }
   }
   return allowed;
@@ -502,7 +661,7 @@ async function fetchJsonWithFallback(apiBase, path, options) {
     return await fetchJson(apiBase, path, options);
   } catch (err) {
     if (err?.code === "REWARDLY_TIMEOUT") throw err;
-    if (apiBase && apiBase !== DEFAULT_API_BASE) {
+    if (EXTENSION_ENV !== "production" && apiBase && apiBase !== DEFAULT_API_BASE) {
       console.warn("[CCO] fetch failed, retrying default API base", err);
       return await fetchJson(DEFAULT_API_BASE, path, options);
     }

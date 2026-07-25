@@ -1,5 +1,57 @@
 # Rewardly Extension Manual Test Results
 
+## Sprint 8.4 User Feedback & Merchant Coverage
+
+Date: 2026-07-24
+
+This sprint added a lightweight feedback and merchant coverage system. It did not change recommendation scoring, merchant intelligence, checkout timing, analytics behavior, onboarding, or popup recommendation logic.
+
+Validation summary:
+
+- Feedback service tests: PASS. Covered helpful feedback, negative feedback reason validation, `other` comments, privacy rejection, merchant request normalization/deduplication, dashboard summaries, and trends.
+- Feedback route tests: PASS. Covered `POST /api/feedback`, privacy rejection, summary, merchant coverage, and trends endpoints.
+- Backend Jest: PASS, 49/49 suites and 379/379 tests.
+- Backend build: PASS.
+- Frontend build: PASS.
+- Frontend lint: PASS.
+- Shared core compile: PASS.
+- Extension syntax checks: PASS for `popup.js`, `content.js`, and `background.js`.
+
+Manual QA not covered:
+
+- Live extension feedback submission against a running backend.
+- Live feedback dashboard API inspection against deployed beta data.
+- Screen-reader pass through the feedback controls.
+
+## Sprint 8.3 First-Time User Experience
+
+Date: 2026-07-24
+
+This sprint added a first-time onboarding and setup experience to the website. It did not change recommendation scoring, merchant intelligence, checkout timing, analytics behavior, or the extension popup.
+
+Validation summary:
+
+- Frontend build: PASS.
+- Frontend lint: PASS.
+- Extension syntax checks: PASS for `popup.js`, `content.js`, and `background.js`.
+- Local render check: PASS at `http://127.0.0.1:5173/`.
+- Screenshot artifact: `artifacts/rewardly-sprint-8-3-onboarding.png`.
+
+Manual QA covered:
+
+- Welcome copy renders.
+- Setup checklist renders.
+- Browser validation states render.
+- Demo recommendation merchant buttons render.
+- Supported merchant categories render.
+- Desktop viewport has no horizontal overflow.
+
+Manual QA not covered:
+
+- Fresh Chrome Web Store install.
+- Real missing-permission browser state.
+- Screen-reader pass with VoiceOver.
+
 ## Sprint 8.2 Polish Product Intelligence Hardening
 
 Date: 2026-07-24
@@ -402,3 +454,96 @@ node scripts/manual-extension-test.js
 node scripts/real-amazon-dry-run.js
 node --check scripts/natural-amazon-checkout-test.js
 ```
+
+## Sprint 8.5 Private Beta Production Deployment
+
+Date: 2026-07-24
+
+Result: PASS for local automated validation. Real hosted beta verification remains manual.
+
+Commands run:
+
+```bash
+npm --prefix backend run build
+npm --prefix backend test -- --runInBand betaAuthService betaAuthRoutes decisionRoutes
+npm --prefix backend test -- --runInBand
+npm --prefix frontend-vite run build
+npm --prefix frontend-vite run lint
+cd packages/rewardly-core && ../../backend/node_modules/.bin/tsc -p tsconfig.json
+node --check extension/background.js
+node --check extension/content.js
+node --check extension/popup.js
+node --check extension/config.js
+npm run verify:beta-production
+REWARDLY_EXTENSION_API_BASE=https://rewardly-api.example.com REWARDLY_EXTENSION_APP_URL=https://rewardly.example.com npm run extension:package:beta
+```
+
+Observed totals:
+
+- Focused beta/decision tests: PASS, 3 suites, 13 tests.
+- Full backend tests: PASS, 51 suites, 386 tests.
+- Backend build: PASS.
+- Frontend build and lint: PASS.
+- Shared core compile: PASS.
+- Extension syntax checks: PASS.
+- Root beta-production verification: PASS.
+- Chrome beta package content check: PASS.
+
+Coverage added:
+
+- Beta invite creation stores token hashes, not raw tokens.
+- Activation returns a one-time session token.
+- Revoked tokens cannot authenticate.
+- Wallet reads and updates use the authenticated beta user.
+- Spoofed wallet `userId` does not override authenticated identity.
+- Payment decisions outside dev resolve the server-validated beta user and ignore manual wallet overrides.
+
+Manual beta checks still required:
+
+- Deployed Render `/health` and `/ready`.
+- Deployed Vercel frontend using real `VITE_API_BASE_URL`.
+- Atlas index initialization.
+- Two isolated real beta users with different wallets.
+- Chrome Web Store unlisted extension package installed with the real extension ID.
+
+## Sprint 8.5.1 Private Beta Activation and Release Validation
+
+Date: 2026-07-25
+
+Result: PASS for local automated validation. Hosted activation and Chrome Web
+Store installation remain founder/manual steps.
+
+Commands run:
+
+```bash
+npm --prefix backend run build
+npm --prefix backend test -- --runInBand betaAuthService betaAuthRoutes decisionRoutes
+npm run verify:beta-production
+```
+
+Observed totals:
+
+- Focused beta/decision tests: PASS, 3 suites, 17 tests.
+- Full backend tests through `verify:beta-production`: PASS, 51 suites, 390 tests.
+- Frontend build and lint: PASS.
+- Shared core compile: PASS.
+- Extension development and production syntax checks: PASS.
+- Production extension package generation and inspection: PASS.
+
+Production package:
+
+```text
+release/rewardly-extension-beta.zip
+sha256: 36297b0aa07440b473fc9905d8d1ffb12d045573102130bf7096945392de9a3f
+inspection report: release/rewardly-extension-beta-report.json
+```
+
+New coverage:
+
+- Activation token creates an authenticated beta session.
+- Extension connection codes are short-lived and one-time.
+- Production extension uses bearer-token session from `chrome.storage.local`.
+- Revoked users cannot authenticate.
+- Wallet card slugs are validated against the canonical catalog.
+- Unknown, malformed, and duplicate wallet slugs are rejected.
+- Production package contains no Developer Settings, API Base, User ID, manual token field, debug controls, localhost, or development-user strings.
