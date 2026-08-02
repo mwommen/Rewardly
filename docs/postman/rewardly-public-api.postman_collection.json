@@ -1,0 +1,83 @@
+{
+  "info": {
+    "name": "Rewardly Public API",
+    "description": "Ready-to-import collection for Rewardly's V1 Payment Decision API.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health check",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/health"
+      }
+    },
+    {
+      "name": "Successful payment decision",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"merchant\": {\n    \"name\": \"Amazon\",\n    \"category\": \"online_retail\",\n    \"domain\": \"amazon.com\"\n  },\n  \"purchase\": {\n    \"amount\": 142.83,\n    \"currency\": \"USD\"\n  },\n  \"wallet\": {\n    \"cards\": [\n      { \"cardId\": \"capital-one-venture\" },\n      { \"cardId\": \"chase-sapphire-preferred\" }\n    ]\n  }\n}"
+        },
+        "url": "{{baseUrl}}/api/v1/payment-decisions"
+      }
+    },
+    {
+      "name": "Empty wallet",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"merchant\": {\n    \"name\": \"Amazon\",\n    \"category\": \"online_retail\"\n  },\n  \"purchase\": {\n    \"amount\": 142.83,\n    \"currency\": \"USD\"\n  },\n  \"wallet\": {\n    \"cards\": []\n  }\n}"
+        },
+        "url": "{{baseUrl}}/api/v1/payment-decisions"
+      }
+    },
+    {
+      "name": "Invalid request",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"merchant\": {\n    \"name\": \"Amazon\"\n  },\n  \"purchase\": {\n    \"currency\": \"USD\"\n  },\n  \"wallet\": {\n    \"cards\": []\n  }\n}"
+        },
+        "url": "{{baseUrl}}/api/v1/payment-decisions"
+      }
+    },
+    {
+      "name": "Invalid currency",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"merchant\": {\n    \"name\": \"Amazon\"\n  },\n  \"purchase\": {\n    \"amount\": 142.83,\n    \"currency\": \"EUR\"\n  },\n  \"wallet\": {\n    \"cards\": [{ \"cardId\": \"capital-one-venture\" }]\n  }\n}"
+        },
+        "url": "{{baseUrl}}/api/v1/payment-decisions"
+      }
+    },
+    {
+      "name": "Unknown merchant",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"merchant\": {\n    \"name\": \"Unknown Shop\"\n  },\n  \"purchase\": {\n    \"amount\": 42,\n    \"currency\": \"USD\"\n  },\n  \"wallet\": {\n    \"cards\": [{ \"cardId\": \"capital-one-venture\" }]\n  }\n}"
+        },
+        "url": "{{baseUrl}}/api/v1/payment-decisions"
+      }
+    },
+    {
+      "name": "OpenAPI",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/v1/openapi.json"
+      }
+    }
+  ]
+}

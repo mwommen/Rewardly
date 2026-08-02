@@ -1,4 +1,5 @@
 import { getDb } from "../db";
+import { isSandboxMode } from "../config/environment";
 import { inferCategories } from "../utils/category";
 import { toCashEquivalent } from "../utils/valuation";
 import { collectCreditMatches } from "../utils/merchantMatching";
@@ -522,7 +523,11 @@ export async function recommendAllBenefits(opts: {
     recommendationPurchaseContext,
   } = opts;
 
-  const allCards = cardsOverride || (await (await getDb()).collection("cards").find({}).toArray());
+  const allCards =
+    cardsOverride ||
+    (isSandboxMode()
+      ? Object.values(CARD_OVERRIDES)
+      : await (await getDb()).collection("cards").find({}).toArray());
   const cards = filterAllowedCards(allCards, allowedCardSlugs);
 
   const baseCats = normalizeArray<string>(inferCategories(merchant, mcc)).map(

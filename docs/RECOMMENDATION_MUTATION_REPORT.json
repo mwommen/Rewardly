@@ -28,7 +28,7 @@
       "general-retail-001"
     ],
     "unexpectedErrors": [],
-    "durationMs": 2
+    "durationMs": 1
   },
   {
     "mutationId": "ignore-benefit-expiration",
@@ -141,7 +141,7 @@
       "dining-001"
     ],
     "unexpectedErrors": [],
-    "durationMs": 0
+    "durationMs": 1
   },
   {
     "mutationId": "reverse-reward-value-sorting",
@@ -198,7 +198,7 @@
       "statement-credit-full-001"
     ],
     "unexpectedErrors": [],
-    "durationMs": 2
+    "durationMs": 1
   },
   {
     "mutationId": "wallet-array-order-final-tie-break",
@@ -218,7 +218,7 @@
       "tie-category-001"
     ],
     "unexpectedErrors": [],
-    "durationMs": 0
+    "durationMs": 1
   },
   {
     "mutationId": "runner-up-explanation-returned",

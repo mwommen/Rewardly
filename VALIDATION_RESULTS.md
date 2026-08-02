@@ -1,5 +1,70 @@
 # Rewardly Correctness Validation Results
 
+## EPIC-001 Rewardly Public Payment Decision API
+
+Date: 2026-07-29
+
+Status: PASS for local backend validation. This epic adds a versioned public API
+facade over the existing `PaymentDecisionService`; it does not change
+recommendation scoring, reward calculations, rule precedence, card catalog,
+Benefit Registry, Merchant Intelligence, or Wallet Intelligence.
+
+What changed:
+
+- Added `POST /api/v1/payment-decisions`.
+- Added request validation and structured public API errors.
+- Added developer-friendly response mapping.
+- Added `GET /api/v1/openapi.json`.
+- Simplified `GET /health` to `{ "status": "ok" }`.
+- Added Dockerfile, `docker-compose.yml`, and public API local-run docs.
+- Corrected backend `npm start` for clean TypeScript output path.
+
+Validation run:
+
+- `npm --prefix backend test -- --runInBand paymentDecisionV1Routes`: PASS,
+  1/1 suite and 7/7 tests.
+- `npm --prefix backend test -- --runInBand paymentDecisionService recommendationService walletDecisionEngine recommendation-validation/recommendationValidation.test.ts`: PASS,
+  4/4 suites and 60/60 tests.
+- `npm --prefix backend test -- --runInBand`: PASS, 53/53 suites and 398/398 tests.
+- `npm --prefix backend run build`: PASS.
+
+Docker note: `docker compose` could not be executed in this environment because
+Docker is not installed. The Dockerfile and compose file are included for local
+verification on a Docker-enabled machine.
+
+## Sprint 8.6A.1 Qualification Integrity and Behavioral Coverage
+
+Date: 2026-07-29
+
+Status: PASS for the full automated qualification gate. This sprint tightened
+the private-beta qualification runner so category names no longer overclaim
+behavior that was not executed.
+
+What changed:
+
+- Added `backend/tests/privateBetaQualificationFlow.test.ts` for a two-user beta
+  flow covering invite activation, one-time extension connection, wallet
+  isolation, authenticated decision routing, feedback, analytics, revocation,
+  and post-revocation denial.
+- Renamed syntax-only extension checks to `Extension Syntax`.
+- Split frontend activation and popup lifecycle into explicit source-contract
+  categories until a DOM/browser harness is installed.
+- Added dependency preflight checks.
+- Added independent extension ZIP inspection after beta packaging.
+- Made generated qualification reports repository-portable.
+- Added report schema version, runner version, CI flag, dependency status, and
+  manual-boundary language.
+
+Validation run:
+
+- `npm --prefix backend test -- --runInBand privateBetaQualificationFlow`: PASS,
+  1/1 suite and 1/1 test.
+- `npm run qualify:private-beta:quick`: PASS, automated status `READY`.
+- `npm run qualify:private-beta`: PASS, automated status `READY`.
+
+Manual/hosted limits still apply: this does not prove Chrome Web Store approval,
+hosted Render/Vercel behavior, or real merchant DOM behavior.
+
 ## Sprint 8.4 User Feedback & Merchant Coverage
 
 Date: 2026-07-24
@@ -737,3 +802,66 @@ Automated service/route tests cover:
 - Revoked users cannot authenticate.
 
 Hosted two-user browser testing is not executed locally and still requires real Render/Vercel/Chrome Web Store resources.
+
+## Sprint 8.6A.1 Automated Private Beta Qualification Suite
+
+Date: 2026-07-29
+
+## Qualification Result
+
+```text
+PRIVATE BETA QUALIFICATION: READY
+```
+
+The generated report includes noncritical warnings for development-only source
+references, untracked generated validation output, and hosted route/CORS probes
+that still require a deployed backend.
+
+## Commands
+
+- `npm run qualify:private-beta:quick`: PASS.
+- `npm run qualify:private-beta`: PASS.
+
+## Report Paths
+
+- `artifacts/private-beta-qualification.json`
+- `artifacts/private-beta-qualification.md`
+- `artifacts/production-route-matrix.md`
+- `artifacts/extension-package-report.md`
+- `artifacts/merchant-fixture-coverage.md`
+
+## Full Qualification Summary
+
+- Overall status: READY.
+- Critical failures: 0.
+- Warnings: 26.
+- Duration: 189.1s.
+- Orchestrated Beta Flow: PASS.
+- Full Backend Regression Suite: PASS.
+- Production extension package scan: PASS.
+- Independent ZIP inspection: PASS.
+- Extension package checksum: `9c036af57e31965758264dbed9e3f4a8aab84474588ed10dcbd246d0e805ec18`.
+
+## Categories
+
+- Repository Safety: WARN.
+- Build: PASS.
+- Authentication: PASS.
+- Wallet Isolation: PASS.
+- Recommendation Correctness: PASS.
+- Merchant Detection: PASS.
+- Extension Syntax: PASS.
+- Frontend Activation Contract: WARN.
+- Popup Lifecycle Contract: WARN.
+- Analytics: PASS.
+- Feedback: PASS.
+- Production Route Contracts: WARN.
+- CORS Runtime Policy: WARN.
+- Logging Redaction: WARN.
+- Extension Package: PASS.
+- Orchestrated Beta Flow: PASS.
+- Full Backend Regression Suite: PASS.
+- Performance: WARN.
+
+Recommendation scoring, card reward calculations, benefit precedence, and
+merchant coverage were not changed in Sprint 8.6A.1.

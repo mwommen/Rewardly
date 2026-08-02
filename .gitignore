@@ -32,6 +32,7 @@ backend/node_modules/
 backend/dist/
 backend/coverage/
 backend/.cache/
+backend/validation-output/
 frontend-vite/node_modules/
 frontend-vite/dist/
 frontend-vite/build/

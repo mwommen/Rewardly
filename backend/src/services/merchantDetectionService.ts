@@ -5,7 +5,7 @@ import {
   type Merchant,
   type MerchantDetectionInput,
 } from "../../../packages/rewardly-core/src";
-import { resolveMerchantIntelligence } from "./merchantIntelligenceService";
+import { resolveMerchantKnowledge } from "./merchantKnowledgeService";
 
 export type ResolveMerchantInput = MerchantDetectionInput & {
   merchant?: string | null;
@@ -13,8 +13,8 @@ export type ResolveMerchantInput = MerchantDetectionInput & {
 };
 
 export function resolveMerchant(input: ResolveMerchantInput): Merchant {
-  const intelligence = resolveMerchantIntelligence(input);
-  const merchant = intelligence?.merchant || null;
+  const intelligence = resolveMerchantKnowledge(input);
+  const merchant = intelligence.profile || null;
   if (input.merchant?.trim()) {
     const name =
       merchant?.displayName || normalizeMerchantName(input.merchant);

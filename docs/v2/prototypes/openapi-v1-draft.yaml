@@ -1,0 +1,291 @@
+openapi: 3.1.0
+info:
+  title: Rewardly V1 Draft API
+  version: 0.0.1-draft
+  description: Draft only. Not connected to production routing.
+servers:
+  - url: https://api.rewardly.example/v1
+security:
+  - bearerAuth: []
+paths:
+  /payment-decisions:
+    post:
+      summary: Create a payment decision
+      operationId: createPaymentDecision
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            maxLength: 128
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentDecisionRequest"
+            examples:
+              dining:
+                value:
+                  externalUserId: customer_user_123
+                  wallet:
+                    paymentMethods:
+                      - type: credit_card
+                        cardSlug: american-express-gold
+                      - type: credit_card
+                        cardSlug: chase-sapphire-preferred
+                  purchase:
+                    amountMinor: 12550
+                    currency: USD
+                    channel: online
+                    merchant:
+                      name: Example Restaurant
+                      merchantCategoryCode: "5812"
+                      country: US
+      responses:
+        "200":
+          description: Decision created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentDecisionResponse"
+              examples:
+                recommended:
+                  value:
+                    id: pdec_123
+                    status: recommended
+                    recommendation:
+                      cardSlug: american-express-gold
+                      displayName: American Express Gold Card
+                      appliedRuleIds: [rule_4x_dining_v4]
+                    alternatives:
+                      - cardSlug: chase-sapphire-preferred
+                        displayName: Chase Sapphire Preferred
+                        estimatedValueMinor: 314
+                    estimatedValue:
+                      rewardValueMinor: 502
+                      incrementalValueMinor: 188
+                      nextBestValueMinor: 314
+                      currency: USD
+                      valuationProfile: rewardly_default
+                      guaranteed: false
+                    explanation:
+                      summary: This card offers the highest estimated reward value for this dining purchase.
+                      reasons:
+                        - Merchant classified as dining.
+                        - This card earns an elevated reward rate on dining.
+                        - The next-best eligible card earns lower estimated value.
+                    confidence:
+                      score: 0.96
+                      level: high
+                    warnings: []
+                    audit:
+                      decisionId: pdec_123
+                      replayable: true
+                    engine:
+                      version: 2.0.0
+                      evaluatedAt: "2026-07-29T00:00:00.000Z"
+                      dataVersions:
+                        benefitRegistry: 1
+                    requestId: req_123
+                lowConfidence:
+                  value:
+                    id: pdec_124
+                    status: low_confidence
+                    alternatives: []
+                    explanation:
+                      summary: Rewardly needs stronger merchant evidence before making a confident recommendation.
+                      reasons: []
+                    confidence:
+                      score: 0.42
+                      level: low
+                    warnings:
+                      - code: low_merchant_confidence
+                        message: Merchant identity could not be verified.
+                    audit:
+                      decisionId: pdec_124
+                      replayable: true
+                    engine:
+                      version: 2.0.0
+                      evaluatedAt: "2026-07-29T00:00:00.000Z"
+                      dataVersions:
+                        benefitRegistry: 1
+                    requestId: req_124
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              examples:
+                unknownCard:
+                  value:
+                    error:
+                      code: unknown_card
+                      message: One or more wallet cards are not supported.
+                      requestId: req_125
+                      retryable: false
+                      details:
+                        - path: wallet.paymentMethods[1].cardSlug
+                          value: unknown-card
+                          message: Unsupported card slug.
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: Idempotency conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "429":
+          description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              examples:
+                rateLimit:
+                  value:
+                    error:
+                      code: rate_limited
+                      message: Too many requests. Please retry later.
+                      requestId: req_126
+                      retryable: true
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    PaymentDecisionRequest:
+      type: object
+      additionalProperties: false
+      required: [wallet, purchase]
+      properties:
+        externalUserId:
+          type: string
+          maxLength: 128
+        wallet:
+          $ref: "#/components/schemas/WalletInput"
+        purchase:
+          $ref: "#/components/schemas/PurchaseContext"
+        preferences:
+          type: object
+          additionalProperties: false
+          properties:
+            valuationProfile:
+              type: string
+        metadata:
+          type: object
+          additionalProperties:
+            type: [string, number, boolean, "null"]
+    WalletInput:
+      type: object
+      additionalProperties: false
+      required: [paymentMethods]
+      properties:
+        paymentMethods:
+          type: array
+          minItems: 1
+          maxItems: 30
+          items:
+            $ref: "#/components/schemas/PaymentMethodInput"
+    PaymentMethodInput:
+      type: object
+      additionalProperties: false
+      required: [type, cardSlug]
+      properties:
+        type:
+          const: credit_card
+        cardSlug:
+          type: string
+        referenceId:
+          type: string
+    PurchaseContext:
+      type: object
+      additionalProperties: false
+      required: [channel, merchant]
+      properties:
+        amountMinor:
+          type: integer
+          minimum: 0
+        currency:
+          const: USD
+        channel:
+          enum: [online, in_store, mobile_app, subscription, unknown]
+        merchant:
+          $ref: "#/components/schemas/MerchantContext"
+    MerchantContext:
+      type: object
+      additionalProperties: false
+      properties:
+        rewardlyMerchantId:
+          type: string
+        name:
+          type: string
+        domain:
+          type: string
+        merchantCategoryCode:
+          type: string
+        partnerCategory:
+          type: string
+        country:
+          type: string
+    PaymentDecisionResponse:
+      type: object
+      additionalProperties: false
+      required: [id, status, alternatives, explanation, confidence, warnings, audit, engine, requestId]
+      properties:
+        id:
+          type: string
+        status:
+          enum: [recommended, no_recommendation, insufficient_context, unsupported_wallet, unsupported_merchant, low_confidence]
+        recommendation:
+          type: object
+        alternatives:
+          type: array
+          items:
+            type: object
+        estimatedValue:
+          type: object
+        explanation:
+          type: object
+        confidence:
+          type: object
+        warnings:
+          type: array
+          items:
+            type: object
+        audit:
+          type: object
+        engine:
+          type: object
+        requestId:
+          type: string
+    ApiError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, requestId, retryable]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            requestId:
+              type: string
+            retryable:
+              type: boolean
+            docsUrl:
+              type: string
+            details:
+              type: array
+              items:
+                type: object

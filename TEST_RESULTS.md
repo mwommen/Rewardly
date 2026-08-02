@@ -1,5 +1,44 @@
 # Rewardly Extension Manual Test Results
 
+## EPIC-001 Rewardly Public Payment Decision API
+
+Date: 2026-07-29
+
+Validation summary:
+
+- V1 payment-decision route tests: PASS, 1 suite and 7 tests.
+- Existing recommendation/payment regression subset: PASS, 4 suites and 60 tests.
+- Full backend test suite: PASS, 53 suites and 398 tests.
+- Backend TypeScript build: PASS.
+- Docker execution: NOT RUN in this environment because the `docker` command is not installed.
+
+Manual QA still required:
+
+- Run `docker compose up --build` on a machine with Docker installed.
+- Call `GET /health` and confirm `{ "status": "ok" }`.
+- Call `POST /api/v1/payment-decisions` with the example in `docs/PUBLIC_PAYMENT_DECISION_API.md`.
+
+## Sprint 8.6A.1 Qualification Integrity and Behavioral Coverage
+
+Date: 2026-07-29
+
+Validation summary:
+
+- Dedicated two-user beta flow: PASS. Covered activation, one-time extension
+  connection, wallet isolation, decision routing, feedback, analytics,
+  revocation, and User B remaining active after User A revocation.
+- Quick private beta qualification: PASS with automated status `READY`.
+- Extension package inspection: PASS, including independent ZIP content scan.
+- Report portability: PASS, generated report paths are repository-relative.
+
+Manual QA still required:
+
+- Real Chrome extension install from the eventual beta package.
+- Hosted backend/frontend route and CORS verification.
+- Real merchant checkout popup lifecycle.
+- Frontend activation and popup lifecycle DOM behavior until dedicated browser
+  harnesses are added.
+
 ## Sprint 8.4 User Feedback & Merchant Coverage
 
 Date: 2026-07-24
@@ -547,3 +586,57 @@ New coverage:
 - Wallet card slugs are validated against the canonical catalog.
 - Unknown, malformed, and duplicate wallet slugs are rejected.
 - Production package contains no Developer Settings, API Base, User ID, manual token field, debug controls, localhost, or development-user strings.
+
+## Sprint 8.6A.1 Automated Private Beta Qualification Suite
+
+Date: 2026-07-29
+
+Result:
+
+```text
+PRIVATE BETA QUALIFICATION: READY
+```
+
+Commands run:
+
+```bash
+npm run qualify:private-beta:quick
+npm run qualify:private-beta
+```
+
+Report artifacts:
+
+```text
+artifacts/private-beta-qualification.json
+artifacts/private-beta-qualification.md
+artifacts/production-route-matrix.md
+artifacts/extension-package-report.md
+artifacts/merchant-fixture-coverage.md
+```
+
+Full qualification totals:
+
+- Critical failures: 0.
+- Warnings: 26.
+- Duration: 189.1s.
+- Build category: PASS.
+- Authentication category: PASS.
+- Wallet Isolation category: PASS.
+- Recommendation Correctness category: PASS.
+- Merchant Detection category: PASS.
+- Extension Syntax category: PASS.
+- Frontend Activation Contract category: WARN.
+- Popup Lifecycle Contract category: WARN.
+- Analytics category: PASS.
+- Feedback category: PASS.
+- Production Route Contracts category: WARN.
+- CORS Runtime Policy category: WARN.
+- Logging Redaction category: WARN.
+- Extension Package category: PASS.
+- Orchestrated Beta Flow category: PASS.
+- Full Backend Regression Suite category: PASS.
+
+Warnings are noncritical and primarily document manual boundaries: source-contract
+checks where no DOM/browser harness exists, hosted route/CORS verification, slow
+analytics test runtime, generated validation output, and development-only
+references that remain in tests, docs, demo scripts, or nonproduction-gated code.

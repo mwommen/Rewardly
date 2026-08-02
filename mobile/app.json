@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "Rewardly",
+    "slug": "rewardly-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "rewardly",
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.rewardly.mobile",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Rewardly uses your location while the app is open to suggest nearby merchants for Smart Pay."
+      }
+    },
+    "android": {
+      "package": "com.rewardly.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#0f172a"
+      }
+    },
+    "extra": {
+      "apiBaseUrl": "http://localhost:5001"
+    }
+  }
+}

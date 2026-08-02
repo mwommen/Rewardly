@@ -44,6 +44,10 @@ async function invokeRoute(method: string, url: string, body?: any) {
 }
 
 describe("analyticsRoutes", () => {
+  const recentTimestamp = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const recentTimestampPlusTwoSeconds = new Date(recentTimestamp.getTime() + 2000);
+  const recentExpiry = new Date(recentTimestamp.getTime() + 30 * 24 * 60 * 60 * 1000);
+  const recentExpiryPlusTwoSeconds = new Date(recentExpiry.getTime() + 2000);
   const storedEvents = [
     {
       eventId: "event-1",
@@ -51,8 +55,8 @@ describe("analyticsRoutes", () => {
       installationId: "install-123",
       userId: null,
       source: "chrome_extension",
-      timestamp: "2026-07-24T12:00:00.000Z",
-      expiresAt: "2026-08-23T12:00:00.000Z",
+      timestamp: recentTimestamp.toISOString(),
+      expiresAt: recentExpiry.toISOString(),
       eventType: "recommendation_generated",
       merchantName: "Amazon",
       merchantCategory: "online_shopping",
@@ -82,8 +86,8 @@ describe("analyticsRoutes", () => {
       installationId: "install-123",
       userId: null,
       source: "chrome_extension",
-      timestamp: "2026-07-24T12:00:02.000Z",
-      expiresAt: "2026-08-23T12:00:02.000Z",
+      timestamp: recentTimestampPlusTwoSeconds.toISOString(),
+      expiresAt: recentExpiryPlusTwoSeconds.toISOString(),
       eventType: "popup_displayed",
       merchantName: "Amazon",
       merchantCategory: "online_shopping",
