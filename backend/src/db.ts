@@ -78,6 +78,36 @@ export async function getBetaExtensionConnectionsCollection(): Promise<Collectio
   return db.collection<BetaExtensionConnection>("betaExtensionConnections");
 }
 
+export async function getRewardlyUsersCollection(): Promise<Collection<RewardlyUser>> {
+  const db = await connectDB();
+  return db.collection<RewardlyUser>("rewardlyUsers");
+}
+
+export async function getRewardlySessionsCollection(): Promise<Collection<RewardlySession>> {
+  const db = await connectDB();
+  return db.collection<RewardlySession>("rewardlySessions");
+}
+
+export async function getUserWalletsCollection(): Promise<Collection<UserWallet>> {
+  const db = await connectDB();
+  return db.collection<UserWallet>("userWallets");
+}
+
+export async function getPaymentJourneyCollection(): Promise<Collection<PaymentJourneyRecord>> {
+  const db = await connectDB();
+  return db.collection<PaymentJourneyRecord>("paymentJourney");
+}
+
+export async function getUserShoppingPlansCollection(): Promise<Collection<UserShoppingPlanRecord>> {
+  const db = await connectDB();
+  return db.collection<UserShoppingPlanRecord>("userShoppingPlans");
+}
+
+export async function getUserPreferencesCollection(): Promise<Collection<UserPreferencesRecord>> {
+  const db = await connectDB();
+  return db.collection<UserPreferencesRecord>("userPreferences");
+}
+
 /**
  * Type Definitions
  */
@@ -186,4 +216,97 @@ export interface BetaExtensionConnection {
   redeemedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface RewardlyUser {
+  userId: string;
+  email: string;
+  displayName?: string | null;
+  status: "active" | "suspended" | "deleted";
+  authProvider: "rewardly_native";
+  authProviderUserId: string;
+  passwordHash?: string | null;
+  passwordSalt?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  lastLoginAt?: Date | null;
+  dataSchemaVersion: number;
+  deletedAt?: Date | null;
+  onboardingCompletedAt?: Date | null;
+}
+
+export interface RewardlySession {
+  sessionId: string;
+  userId: string;
+  accessTokenHash: string;
+  refreshTokenHash: string;
+  status: "active" | "revoked";
+  createdAt: Date;
+  updatedAt: Date;
+  expiresAt: Date;
+  refreshExpiresAt: Date;
+  revokedAt?: Date | null;
+}
+
+export interface UserWallet {
+  userId: string;
+  cardSlugs: string[];
+  createdAt: Date;
+  updatedAt: Date;
+  schemaVersion: number;
+  syncRevision: number;
+  deletedAt?: Date | null;
+  lastModifiedSource?: string | null;
+}
+
+export interface PaymentJourneyRecord {
+  paymentId: string;
+  userId: string;
+  decisionId?: string | null;
+  merchant: string;
+  amount: number;
+  currency: "USD";
+  recommendedCard?: string | null;
+  selectedCard?: string | null;
+  estimatedValue?: number | null;
+  confidence?: number | null;
+  notes?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  completedAt?: Date | null;
+  schemaVersion: number;
+  syncRevision: number;
+  deletedAt?: Date | null;
+  clientIdempotencyKey?: string | null;
+  lastModifiedSource?: string | null;
+}
+
+export interface UserShoppingPlanRecord {
+  planId: string;
+  userId: string;
+  title: string;
+  notes?: string | null;
+  status: "active" | "completed";
+  currency: "USD";
+  items: unknown[];
+  createdAt: Date;
+  updatedAt: Date;
+  schemaVersion: number;
+  syncRevision: number;
+  deletedAt?: Date | null;
+  lastModifiedSource?: string | null;
+}
+
+export interface UserPreferencesRecord {
+  userId: string;
+  favoriteMerchants: Array<{ name: string; category?: string; domain?: string; merchantId?: string }>;
+  theme?: "system" | "light" | "dark";
+  defaultCurrency: "USD";
+  onboardingCompleted: boolean;
+  locationEnabled?: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  schemaVersion: number;
+  syncRevision: number;
+  deletedAt?: Date | null;
 }

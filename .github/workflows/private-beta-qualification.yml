@@ -1,0 +1,53 @@
+name: Private Beta Qualification
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  push:
+    branches: [phase1-runtime-debug]
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    env:
+      REWARDLY_EXTENSION_API_BASE: https://api.rewardly-test.example
+      REWARDLY_EXTENSION_APP_URL: https://app.rewardly-test.example
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install backend dependencies
+        run: npm ci
+        working-directory: backend
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend-vite
+
+      - name: Install mobile dependencies
+        run: npm install
+        working-directory: mobile
+
+      - name: Run EPIC-011 release foundation verification
+        run: npm run verify:epic-011
+
+      - name: Run private beta qualification
+        run: npm run qualify:private-beta
+
+      - name: Upload qualification reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: private-beta-qualification
+          path: |
+            artifacts/private-beta-qualification.json
+            artifacts/private-beta-qualification.md
+            artifacts/production-route-matrix.md
+            artifacts/extension-package-report.md
+            artifacts/merchant-fixture-coverage.md
+            release/rewardly-extension-beta-report.json

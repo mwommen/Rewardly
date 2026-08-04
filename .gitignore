@@ -21,6 +21,9 @@ coverage/
 dist/
 build/
 release/
+docs/RECOMMENDATION_VALIDATION_REPORT.json
+docs/RECOMMENDATION_COVERAGE_REPORT.json
+docs/RECOMMENDATION_MUTATION_REPORT.json
 .cache/
 .vite/
 .turbo/
@@ -32,6 +35,7 @@ backend/node_modules/
 backend/dist/
 backend/coverage/
 backend/.cache/
+backend/validation-output/
 frontend-vite/node_modules/
 frontend-vite/dist/
 frontend-vite/build/

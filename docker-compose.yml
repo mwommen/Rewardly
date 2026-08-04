@@ -1,0 +1,42 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: 5001
+      MONGO_URI: mongodb://mongo:27017
+      FRONTEND_ORIGIN: https://app.rewardly.local
+      EXTENSION_ORIGIN: chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      REWARDLY_ALLOW_DEV_OVERRIDES: "false"
+      REWARDLY_MERCHANT_INTELLIGENCE_MODE: merchant-intelligence
+      REWARDLY_TRACE_DECISION: "false"
+      REWARDLY_DECISION_LOGS: "false"
+      REWARDLY_ENABLE_ANALYTICS_DASHBOARD: "false"
+      REWARDLY_ENABLE_FEEDBACK_DASHBOARD: "false"
+    ports:
+      - "5001:5001"
+    depends_on:
+      - mongo
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:5001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - rewardly-mongo:/data/db
+
+volumes:
+  rewardly-mongo:

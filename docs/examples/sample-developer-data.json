@@ -1,0 +1,106 @@
+{
+  "wallets": {
+    "starterTravel": {
+      "cards": [
+        { "cardId": "capital-one-venture" },
+        { "cardId": "chase-sapphire-preferred" }
+      ]
+    },
+    "amexDining": {
+      "cards": [
+        { "cardId": "amex-gold" },
+        { "cardId": "capital-one-venture" }
+      ]
+    },
+    "empty": {
+      "cards": []
+    }
+  },
+  "merchants": {
+    "amazon": {
+      "name": "Amazon",
+      "category": "online_retail",
+      "domain": "amazon.com"
+    },
+    "restaurant": {
+      "name": "Local Bistro",
+      "category": "restaurants"
+    },
+    "unknown": {
+      "name": "Unknown Shop"
+    }
+  },
+  "purchases": {
+    "amazonCart": {
+      "amount": 142.83,
+      "currency": "USD"
+    },
+    "dinner": {
+      "amount": 86.4,
+      "currency": "USD"
+    },
+    "smallPurchase": {
+      "amount": 19.99,
+      "currency": "USD"
+    }
+  },
+  "requests": {
+    "successfulPaymentDecision": {
+      "merchant": {
+        "name": "Amazon",
+        "category": "online_retail",
+        "domain": "amazon.com"
+      },
+      "purchase": {
+        "amount": 142.83,
+        "currency": "USD"
+      },
+      "wallet": {
+        "cards": [
+          { "cardId": "capital-one-venture" },
+          { "cardId": "chase-sapphire-preferred" }
+        ]
+      }
+    },
+    "emptyWallet": {
+      "merchant": {
+        "name": "Amazon",
+        "category": "online_retail"
+      },
+      "purchase": {
+        "amount": 142.83,
+        "currency": "USD"
+      },
+      "wallet": {
+        "cards": []
+      }
+    },
+    "invalidCurrency": {
+      "merchant": {
+        "name": "Amazon"
+      },
+      "purchase": {
+        "amount": 142.83,
+        "currency": "EUR"
+      },
+      "wallet": {
+        "cards": [{ "cardId": "capital-one-venture" }]
+      }
+    }
+  },
+  "expectedResponses": {
+    "successfulPaymentDecision": {
+      "status": "recommended",
+      "recommendedPaymentMethod.cardId": "capital-one-venture",
+      "currency": "USD"
+    },
+    "emptyWallet": {
+      "status": "no_recommendation",
+      "recommendedPaymentMethod": null,
+      "currency": "USD"
+    },
+    "invalidCurrency": {
+      "error.code": "UNSUPPORTED_PURCHASE"
+    }
+  }
+}

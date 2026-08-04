@@ -2,13 +2,24 @@
   "name": "rewardly-workspace",
   "private": true,
   "scripts": {
+    "build": "npm run backend:build && npm run shared:build && npm run frontend:build",
+    "test": "npm run backend:test",
     "backend:build": "npm --prefix backend run build",
     "backend:test": "npm --prefix backend test -- --runInBand",
+    "backend:auth:test": "npm --prefix backend test -- --runInBand productionIdentityCloudSync.test.ts productionAuthorizationHttp.test.ts",
     "frontend:build": "npm --prefix frontend-vite run build",
     "frontend:lint": "npm --prefix frontend-vite run lint",
     "shared:build": "cd packages/rewardly-core && ../../backend/node_modules/.bin/tsc -p tsconfig.json",
     "extension:check": "node --check extension/background.js && node --check extension/content.js && node --check extension/popup.js && node --check extension/config.js",
     "extension:package:beta": "node scripts/package-extension-beta.js",
-    "verify:beta-production": "node scripts/verify-beta-production.js"
+    "verify:beta-production": "node scripts/verify-beta-production.js",
+    "qualify:private-beta": "node scripts/qualification/run-private-beta-qualification.js",
+    "qualify:private-beta:quick": "node scripts/qualification/run-private-beta-qualification.js --quick",
+    "qualify:private-beta:report": "node scripts/qualification/run-private-beta-qualification.js --report",
+    "check:repo-hygiene": "node scripts/check-repository-hygiene.js",
+    "verify:epic-011": "npm run check:repo-hygiene && npm run backend:build && npm run backend:test && npm run shared:build && npm run frontend:build && npm run extension:check && npm run mobile:typecheck && npm run mobile:lint",
+    "mobile:start": "npm --prefix mobile run start",
+    "mobile:typecheck": "npm --prefix mobile run typecheck",
+    "mobile:lint": "npm --prefix mobile run lint"
   }
 }

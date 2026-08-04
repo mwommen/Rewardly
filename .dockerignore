@@ -1,0 +1,15 @@
+.git
+.DS_Store
+node_modules
+*/node_modules
+backend/dist
+frontend-vite/dist
+backend/validation-output
+test-results
+artifacts
+release
+*.zip
+*.log
+.env
+.env.*
+!*.env.example

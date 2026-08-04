@@ -5,6 +5,7 @@ import {
   getLinkedAccountsCollection,
   getUserBenefitStatesCollection,
 } from "../db";
+import { isSandboxMode } from "../config/environment";
 import { CARD_OVERRIDES } from "../scrapers/overrides/cards";
 import {
   canonicalizeWalletBenefitState,
@@ -64,12 +65,16 @@ export async function resolveUserWallet({
 }
 
 async function loadCards(): Promise<Card[]> {
+  if (isSandboxMode()) {
+    return dedupeCards(Object.values(CARD_OVERRIDES).map(toDomainCard));
+  }
   const col = await getCardsCollection();
   const rawCards = await col.find({}).toArray();
   return dedupeCards(rawCards.map(applyCardOverride).map(toDomainCard));
 }
 
 async function loadLinkedCardSlugs(userId: string) {
+  if (isSandboxMode()) return [];
   const linkedCol = await getLinkedAccountsCollection();
   const linkedDocs = await linkedCol.find({ userId }).toArray();
   const slugs = new Set<string>();
@@ -85,6 +90,7 @@ async function loadLinkedCardSlugs(userId: string) {
 }
 
 async function loadBetaWalletSlugs(userId: string) {
+  if (isSandboxMode()) return [];
   const walletCol = await getBetaWalletsCollection();
   const wallet = await walletCol.findOne({ userId });
   return Array.isArray(wallet?.cardSlugs)
@@ -97,6 +103,7 @@ async function loadBetaWalletSlugs(userId: string) {
 async function loadBenefitStates(
   userId: string,
 ): Promise<WalletBenefitState[]> {
+  if (isSandboxMode()) return [];
   const col = await getUserBenefitStatesCollection();
   const docs = await col.find({ userId }).toArray();
   return docs.map((doc: any) => ({

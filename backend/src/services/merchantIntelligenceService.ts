@@ -263,6 +263,10 @@ export type CanonicalMerchant = {
   knownBillingDescriptors: string[];
   knownMccs: string[];
   mccProfile: MerchantMccProfile;
+  supportedPaymentMethods: string[];
+  loyaltyPrograms: string[];
+  merchantTags: string[];
+  merchantMetadata: Record<string, string | number | boolean | null>;
   merchantType: MerchantType;
   active: boolean;
   createdAt: string;
@@ -1346,6 +1350,10 @@ function merchant(
       historical: [],
       exceptions: input.notes || [],
     },
+    supportedPaymentMethods: input.supportedPaymentMethods || defaultPaymentMethodsFor(input),
+    loyaltyPrograms: input.loyaltyPrograms || defaultLoyaltyProgramsFor(input),
+    merchantTags: input.merchantTags || defaultMerchantTagsFor(input),
+    merchantMetadata: input.merchantMetadata || {},
     merchantType: input.merchantType,
     active: input.active ?? true,
     createdAt: input.createdAt || NOW,
@@ -1360,6 +1368,57 @@ function merchant(
     popupEligible: input.popupEligible ?? false,
     validationCategory: input.validationCategory,
   };
+}
+
+function defaultPaymentMethodsFor(input: Partial<CanonicalMerchant>) {
+  const methods = new Set(["credit_card", "debit_card"]);
+  const text = `${input.displayName || ""} ${input.category || ""} ${input.validationCategory || ""}`.toLowerCase();
+  if (/amazon|target|walmart|apple|best buy|nike|costco|lululemon/.test(text)) {
+    methods.add("gift_card");
+  }
+  if (/apple/.test(text)) methods.add("apple_pay");
+  if (/travel|airline|hotel|restaurant|coffee|delivery|retail|online|department|electronics|apparel/.test(text)) {
+    methods.add("paypal");
+  }
+  return Array.from(methods);
+}
+
+function defaultLoyaltyProgramsFor(input: Partial<CanonicalMerchant>) {
+  const displayName = String(input.displayName || "").toLowerCase();
+  const programs: Record<string, string> = {
+    amazon: "Amazon Prime",
+    target: "Target Circle",
+    starbucks: "Starbucks Rewards",
+    delta: "Delta SkyMiles",
+    united: "MileagePlus",
+    southwest: "Rapid Rewards",
+    marriott: "Marriott Bonvoy",
+    hilton: "Hilton Honors",
+    airbnb: "Airbnb",
+    costco: "Costco Membership",
+    walmart: "Walmart Rewards",
+  };
+  return Object.entries(programs)
+    .filter(([token]) => displayName.includes(token))
+    .map(([, program]) => program);
+}
+
+function defaultMerchantTagsFor(input: Partial<CanonicalMerchant>) {
+  return Array.from(
+    new Set(
+      [
+        input.validationCategory,
+        input.category,
+        input.subcategory,
+        input.merchantType,
+        input.parentCompany ? "parent_company_known" : null,
+        input.knownMccs?.length ? "mcc_known" : null,
+        input.knownAliases?.length ? "aliases_known" : null,
+      ]
+        .filter(Boolean)
+        .map((value) => String(value)),
+    ),
+  );
 }
 
 function simpleMerchant(
