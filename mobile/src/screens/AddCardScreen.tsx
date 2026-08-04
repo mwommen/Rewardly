@@ -7,6 +7,7 @@ import { Body, Heading } from "@/components/Text";
 import { useCardCatalog, useWallet, useWalletActions } from "@/hooks/useWallet";
 import type { RootStackParamList } from "@/navigation/types";
 import { colors } from "@/theme/colors";
+import type { CatalogCard, WalletCard } from "@/types/rewardly";
 
 type Props = NativeStackScreenProps<RootStackParamList, "AddCard">;
 
@@ -14,7 +15,7 @@ export function AddCardScreen({ navigation }: Props) {
   const catalog = useCardCatalog();
   const wallet = useWallet();
   const walletActions = useWalletActions();
-  const owned = new Set(wallet.data?.map((card) => card.cardId));
+  const owned = new Set(wallet.data?.map((card: WalletCard) => card.cardId));
 
   return (
     <Screen>
@@ -23,7 +24,7 @@ export function AddCardScreen({ navigation }: Props) {
         {catalog.isLoading ? (
           <LoadingState label="Loading card catalog..." />
         ) : (
-          catalog.data?.map((card) => {
+          catalog.data?.map((card: CatalogCard) => {
             const added = owned.has(card.cardId);
             return (
               <Pressable

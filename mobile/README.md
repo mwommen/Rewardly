@@ -1,9 +1,8 @@
 # Rewardly Mobile Smart Pay
 
-Rewardly Mobile is an Expo React Native client for the Rewardly Payment Decision
-API. The app does not contain recommendation logic. It sends the user's selected
-wallet cards, merchant, and purchase amount to the API and renders the returned
-decision.
+Rewardly Mobile is an Expo React Native client for the Rewardly API. The app
+does not contain recommendation logic. It authenticates the beta user, syncs
+their cloud wallet, and sends Smart Pay requests to the backend decision engine.
 
 ## Run
 
@@ -37,12 +36,13 @@ EXPO_PUBLIC_REWARDLY_API_BASE_URL=http://192.168.1.20:5001 npm run start
 
 1. Open Rewardly.
 2. Tap `Start Rewardly`, or choose `Try demo Smart Pay`.
-3. Add supported cards or use the demo wallet.
-4. Select a suggested or recent merchant.
-5. Enter the purchase amount.
-6. Tap `Get recommendation`.
-7. Review the recommended card, estimated value, confidence, and explanation.
-8. Tap `Complete Purchase` after paying to add it to your Payment Journey.
+3. Sign in or create a private-beta account.
+4. Add supported cards or use the demo wallet.
+5. Select a suggested or recent merchant.
+6. Enter the purchase amount.
+7. Tap `Get recommendation`.
+8. Review the recommended card, estimated value, confidence, and explanation.
+9. Tap `Complete Purchase` after paying to add it to your Payment Journey.
 
 The target demo is under 30 seconds once the API is running.
 
@@ -79,18 +79,21 @@ are stored locally and appear first in Smart Pay shortcuts and search.
 
 ## Local Persistence
 
-Stored locally with Expo Secure Store:
+Cloud-synced for signed-in users and cached locally with Expo Secure Store:
 
 - selected wallet cards
-- recent Smart Pay recommendations
 - completed Payment Journey entries
 - payment notes
+- shopping plans
+- favorite merchants
+
+Stored locally only:
+
+- recent Smart Pay recommendations
 - latest Wallet Coach snapshot
 - dismissed coaching opportunities
 - recent merchants
-- favorite merchants
 - last purchase amount
-- temporary mobile development ID
 
 No card numbers, bank credentials, Plaid tokens, or payment credentials are
 stored.
@@ -100,13 +103,27 @@ stored.
 The app calls:
 
 - `GET /health`
+- `POST /api/v1/auth/signup`
+- `POST /api/v1/auth/signin`
+- `POST /api/v1/auth/refresh`
+- `POST /api/v1/auth/logout`
+- `GET /api/v1/auth/session`
+- `DELETE /api/v1/me/account`
 - `GET /api/v1/card-catalog`
+- `GET /api/v1/me/wallet`
+- `PUT /api/v1/me/wallet`
+- `GET /api/v1/me/payment-journey`
+- `POST /api/v1/me/payment-journey`
+- `GET /api/v1/me/preferences`
+- `PUT /api/v1/me/preferences`
+- `POST /api/v1/me/migration/import`
 - `POST /api/v1/intents`
 - `POST /api/v1/payment-decisions`
-- `POST /api/v1/plans`
-- `GET /api/v1/plans`
-- `POST /api/v1/plans/:planId/items`
-- `POST /api/v1/plans/:planId/optimize`
+- `POST /api/v1/me/plans`
+- `GET /api/v1/me/plans`
+- `POST /api/v1/me/plans/:planId/items`
+- `POST /api/v1/me/plans/:planId/optimize`
+- `POST /api/v1/me/plans/:planId/complete-item`
 
 All recommendation scoring, benefit logic, wallet-first validation, merchant
 intelligence, and explanation generation remain on the Rewardly API.

@@ -23,6 +23,8 @@ import v1PaymentDecisionRoutes from "./routes/v1/paymentDecisionRoutes";
 import v1PlanningRoutes from "./routes/v1/planningRoutes";
 import v1FinancialIntentRoutes from "./routes/v1/financialIntentRoutes";
 import v1MerchantKnowledgeRoutes from "./routes/v1/merchantKnowledgeRoutes";
+import v1AuthRoutes from "./routes/v1/authRoutes";
+import v1MeRoutes from "./routes/v1/meRoutes";
 
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -107,6 +109,8 @@ app.use("/api/v1", v1PaymentDecisionRoutes);
 app.use("/api/v1", v1PlanningRoutes);
 app.use("/api/v1", v1FinancialIntentRoutes);
 app.use("/api/v1", v1MerchantKnowledgeRoutes);
+app.use("/api/v1", v1AuthRoutes);
+app.use("/api/v1", v1MeRoutes);
 app.use("/api/cards", cardRoutes);
 app.use("/api/plaid", plaidRoutes);
 if (!isProduction || process.env.REWARDLY_ENABLE_PLAID_SANDBOX === "true") {

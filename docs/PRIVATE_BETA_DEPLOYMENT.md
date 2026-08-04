@@ -168,16 +168,32 @@ The package command:
 Run:
 
 ```bash
+npm run verify:epic-011
 npm run verify:beta-production
 ```
 
 For a full release rehearsal also run the extension package command with
 production HTTPS URLs.
 
+## Mobile Cloud Sync
+
+Before enabling mobile beta testers:
+
+```bash
+npm --prefix backend run db:init:production
+```
+
+Mobile cloud-sync routes are authenticated through `/api/v1/auth/*` and
+`/api/v1/me/*`. User identity is resolved server-side from access tokens; clients
+must not send authoritative `userId` values for wallet, journey, plans, or
+preferences.
+
 ## Known Limitations
 
 - This is private-beta bearer-token authentication, not full production auth.
 - Tokens should be distributed out-of-band and revoked immediately if exposed.
+- Mobile email/password auth is private-beta identity, not a full commercial
+  auth provider.
 - Plaid Production remains disabled.
 - Chrome Web Store installation ID must be added to `EXTENSION_ORIGIN` after
   the unlisted listing is created.

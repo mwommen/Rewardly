@@ -289,7 +289,7 @@ export async function optimizeShoppingPlan(
   }
 }
 
-function toPlanningPaymentDecisionResponse(
+export function toPlanningPaymentDecisionResponse(
   decision: any,
   fallbackDecisionId: string,
 ): PublicPaymentDecisionResponse {

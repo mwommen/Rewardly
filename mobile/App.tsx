@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StatusBar } from "expo-status-bar";
-import { Component, type PropsWithChildren } from "react";
+import { Component, type ErrorInfo, type PropsWithChildren } from "react";
 import { Text, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AppNavigator } from "@/navigation/AppNavigator";
 import { Button } from "@/components/Button";
+import { captureAppError } from "@/services/errorReporting";
 import { colors } from "@/theme/colors";
 
 const queryClient = new QueryClient({
@@ -37,6 +38,10 @@ class ErrorBoundary extends Component<PropsWithChildren, ErrorBoundaryState> {
 
   static getDerivedStateFromError() {
     return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    captureAppError(error, { componentStack: info.componentStack || undefined });
   }
 
   render() {

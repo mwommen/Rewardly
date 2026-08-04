@@ -4,7 +4,7 @@ import { storageKeys } from "@/storage/keys";
 import type { RecentPurchase } from "@/types/rewardly";
 
 export function useRecentPurchases() {
-  return useQuery({
+  return useQuery<RecentPurchase[]>({
     queryKey: ["recentPurchases"],
     queryFn: () => getJson<RecentPurchase[]>(storageKeys.recentPurchases, [])
   });

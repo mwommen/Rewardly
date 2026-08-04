@@ -17,7 +17,7 @@ const snapshotKey = ["walletCoachSnapshot"];
 export function useWalletCoach() {
   const wallet = useWallet();
   const journey = usePaymentJourney();
-  const dismissed = useQuery({
+  const dismissed = useQuery<DismissedOpportunity[]>({
     queryKey: dismissedKey,
     queryFn: async () => {
       const stored = await getJson<unknown>(
@@ -29,7 +29,9 @@ export function useWalletCoach() {
   });
 
   const snapshot = useMemo(() => {
-    const dismissedIds = (dismissed.data || []).map((item) => item.opportunityId);
+    const dismissedIds = (dismissed.data || []).map(
+      (item: DismissedOpportunity) => item.opportunityId
+    );
     return createWalletCoachSnapshot({
       wallet: wallet.data || [],
       journey: journey.data || [],

@@ -8,6 +8,7 @@ import { usePaymentJourney } from "@/hooks/usePaymentJourney";
 import { useWalletCoach, useWalletCoachActions } from "@/hooks/useWalletCoach";
 import type { RootStackParamList } from "@/navigation/types";
 import { colors } from "@/theme/colors";
+import type { PaymentJourneyEntry } from "@/types/paymentJourney";
 import { formatCurrency, shortDate } from "@/utils/format";
 
 type Props = NativeStackScreenProps<RootStackParamList, "OpportunityDetail">;
@@ -19,7 +20,7 @@ export function OpportunityDetailScreen({ navigation, route }: Props) {
   const opportunity = coach.data.opportunities.find(
     (item) => item.opportunityId === route.params.opportunityId
   );
-  const supportingPurchases = (journey.data || []).filter((entry) =>
+  const supportingPurchases = (journey.data || []).filter((entry: PaymentJourneyEntry) =>
     opportunity?.supportingPaymentIds.includes(entry.paymentId)
   );
 
@@ -77,7 +78,7 @@ export function OpportunityDetailScreen({ navigation, route }: Props) {
       {supportingPurchases.length ? (
         <View style={{ gap: 12 }}>
           <Heading>Supporting purchases</Heading>
-          {supportingPurchases.map((entry) => (
+          {supportingPurchases.map((entry: PaymentJourneyEntry) => (
             <Card key={entry.paymentId}>
               <View style={{ gap: 8 }}>
                 <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>

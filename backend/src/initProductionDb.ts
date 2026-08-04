@@ -8,10 +8,14 @@ import {
   connectDB,
 } from "./db";
 import { ensureBetaIndexes } from "./services/betaAuthService";
+import { ensureProductionAuthIndexes } from "./services/productionAuthService";
+import { ensureUserDataIndexes } from "./services/userDataService";
 
 async function main() {
   await connectDB();
   await ensureBetaIndexes();
+  await ensureProductionAuthIndexes();
+  await ensureUserDataIndexes();
 
   const [
     cards,

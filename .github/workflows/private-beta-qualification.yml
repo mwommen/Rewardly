@@ -29,6 +29,13 @@ jobs:
         run: npm ci
         working-directory: frontend-vite
 
+      - name: Install mobile dependencies
+        run: npm install
+        working-directory: mobile
+
+      - name: Run EPIC-011 release foundation verification
+        run: npm run verify:epic-011
+
       - name: Run private beta qualification
         run: npm run qualify:private-beta
 

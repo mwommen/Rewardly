@@ -10,6 +10,7 @@ import { Body, Heading, Title } from "@/components/Text";
 import { useWallet, useWalletActions } from "@/hooks/useWallet";
 import type { MainTabParamList, RootStackParamList } from "@/navigation/types";
 import { colors } from "@/theme/colors";
+import type { WalletCard } from "@/types/rewardly";
 
 type Props = CompositeScreenProps<
   BottomTabScreenProps<MainTabParamList, "Wallet">,
@@ -38,7 +39,7 @@ export function WalletScreen({ navigation }: Props) {
             body="Add a supported card or load demo mode to start using Smart Pay."
           />
         ) : (
-          wallet.data.map((card) => (
+          wallet.data.map((card: WalletCard) => (
             <Card key={card.cardId}>
               <View style={{ gap: 12 }}>
                 <View style={{ gap: 4 }}>

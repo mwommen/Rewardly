@@ -1,9 +1,19 @@
 # Rewardly
 
-This workspace contains two main apps:
+Rewardly is an API-first Payment Intelligence Platform with first-party mobile
+and browser experiences. It helps users make smarter payment decisions from the
+cards they already own.
 
-- `backend`: Express + TypeScript backend with card recommendation, Plaid linking, and benefit tracking.
-- `frontend-vite`: Vite + React frontend for a wallet assistant that answers what card to use.
+This workspace contains:
+
+- `backend`: Express + TypeScript API for payment decisions, merchant
+  intelligence, benefit intelligence, wallet intelligence, financial intents,
+  and authenticated user cloud sync.
+- `frontend-vite`: Vite + React web experience for onboarding and demos.
+- `extension`: Chrome extension for checkout recommendations.
+- `mobile`: Expo React Native Smart Pay client.
+- `packages/rewardly-core`: shared runtime contracts used by the extension and
+  backend.
 
 ## MVP setup
 
@@ -24,16 +34,9 @@ This workspace contains two main apps:
 
 ## Product direction
 
-Rewardly should feel like ChatGPT for your wallet, not a credit-card testing dashboard. The backend recommendation engine stays intact, but the primary UI is now a single natural-language search box: "What are you buying or trying to use?"
-
-The app translates that intent into the existing recommendation API and shows:
-
-- Best card to use
-- Why
-- Benefits you would unlock
-- Confidence
-
-Technical fields like domain, amount, and MCC are still available in a hidden developer/debug panel for testing the engine.
+Rewardly is not a dashboard. It is a real-time payment decision platform. The
+backend remains the source of truth for recommendation logic; mobile, web, and
+extension clients consume the API.
 
 ## Extension checkout demo
 
@@ -65,6 +68,24 @@ Use this flow to demo the Amex Platinum Lululemon benefit at checkout:
 ## Release checklist
 
 See `RELEASE_CHECKLIST.md` for a concise MVP demo and release readiness guide.
+
+## EPIC-011 release foundation
+
+Production identity and cloud sync now live behind authenticated `/api/v1/me/*`
+routes. See:
+
+- `docs/AUTHENTICATION_DECISION.md`
+- `docs/CLOUD_SYNC_ARCHITECTURE.md`
+- `docs/USER_DATA_MODEL.md`
+- `docs/LOCAL_DATA_MIGRATION.md`
+- `docs/ACCOUNT_DELETION.md`
+- `docs/RELEASE_WORKFLOW.md`
+
+Run the release-foundation verifier:
+
+```bash
+npm run verify:epic-011
+```
 
 ## Recommendation validation gate
 

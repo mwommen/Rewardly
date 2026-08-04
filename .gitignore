@@ -21,6 +21,9 @@ coverage/
 dist/
 build/
 release/
+docs/RECOMMENDATION_VALIDATION_REPORT.json
+docs/RECOMMENDATION_COVERAGE_REPORT.json
+docs/RECOMMENDATION_MUTATION_REPORT.json
 .cache/
 .vite/
 .turbo/

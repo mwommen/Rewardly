@@ -7,20 +7,26 @@ import {
   markPlanItemComplete,
   optimizePlan
 } from "@/api/rewardly";
-import type { AddPlanItemInput, CreatePlanInput } from "@/types/planning";
+import type {
+  AddPlanItemInput,
+  CreatePlanInput,
+  PlanOptimization,
+  ShoppingPlan
+} from "@/types/planning";
+import type { WalletCard } from "@/types/rewardly";
 import { useWallet } from "./useWallet";
 
 const plansKey = ["plans"];
 
 export function usePlans() {
-  return useQuery({
+  return useQuery<ShoppingPlan[]>({
     queryKey: plansKey,
     queryFn: fetchPlans
   });
 }
 
 export function usePlan(planId: string) {
-  return useQuery({
+  return useQuery<ShoppingPlan>({
     queryKey: ["plan", planId],
     queryFn: () => fetchPlan(planId),
     enabled: Boolean(planId)
@@ -29,11 +35,15 @@ export function usePlan(planId: string) {
 
 export function usePlanOptimization(planId: string) {
   const wallet = useWallet();
-  return useQuery({
-    queryKey: ["planOptimization", planId, wallet.data?.map((card) => card.cardId).join(",")],
+  return useQuery<PlanOptimization>({
+    queryKey: [
+      "planOptimization",
+      planId,
+      wallet.data?.map((card: WalletCard) => card.cardId).join(",")
+    ],
     queryFn: () =>
       optimizePlan(planId, {
-        cards: (wallet.data || []).map((card) => ({ cardId: card.cardId }))
+        cards: (wallet.data || []).map((card: WalletCard) => ({ cardId: card.cardId }))
       }),
     enabled: Boolean(planId && wallet.data?.length)
   });

@@ -5,6 +5,7 @@ import { Screen } from "@/components/Screen";
 import { Body, Heading, Title } from "@/components/Text";
 import { apiBaseUrl } from "@/config/env";
 import { useApiHealth } from "@/hooks/useApiHealth";
+import { useAuthActions, useAuthSession } from "@/hooks/useAuth";
 import { useDevIdentity } from "@/hooks/useDevIdentity";
 import { useFavoriteMerchantActions } from "@/hooks/useFavoriteMerchants";
 import {
@@ -20,6 +21,8 @@ import { demoWallet } from "@/utils/demo";
 
 export function SettingsScreen() {
   const health = useApiHealth();
+  const session = useAuthSession();
+  const auth = useAuthActions();
   const devIdentity = useDevIdentity();
   const location = useLocationPermission();
   const locationActions = useLocationPermissionActions();
@@ -37,6 +40,29 @@ export function SettingsScreen() {
           <Title>Settings</Title>
           <Body>Keep the MVP simple: environment, cache, version, and about.</Body>
         </View>
+
+        <Card>
+          <View style={{ gap: 12 }}>
+            <Heading>Account</Heading>
+            <Body>{session.data?.user.email || "Signed in"}</Body>
+            <Button
+              title="Log out"
+              variant="secondary"
+              loading={auth.logout.isPending}
+              onPress={() => auth.logout.mutate()}
+            />
+            <Body>
+              Deleting your account permanently removes your cloud wallet, payment
+              journey, shopping plans, preferences, and active sessions.
+            </Body>
+            <Button
+              title="Delete account"
+              variant="danger"
+              loading={auth.deleteAccount.isPending}
+              onPress={() => auth.deleteAccount.mutate()}
+            />
+          </View>
+        </Card>
 
         <Card>
           <View style={{ gap: 8 }}>

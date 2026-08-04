@@ -12,6 +12,7 @@ import {
 } from "@/hooks/usePaymentJourney";
 import type { RootStackParamList } from "@/navigation/types";
 import { colors } from "@/theme/colors";
+import type { PaymentJourneyEntry } from "@/types/paymentJourney";
 import { reinforcementMessage } from "@/utils/paymentJourney";
 import { formatConfidence, formatCurrency, shortDate } from "@/utils/format";
 
@@ -21,7 +22,10 @@ export function PaymentDetailScreen({ route }: Props) {
   const journey = usePaymentJourney();
   const actions = usePaymentJourneyActions();
   const entry = useMemo(
-    () => journey.data?.find((item) => item.paymentId === route.params.paymentId),
+    () =>
+      journey.data?.find(
+        (item: PaymentJourneyEntry) => item.paymentId === route.params.paymentId
+      ),
     [journey.data, route.params.paymentId]
   );
   const [notes, setNotes] = useState(entry?.userNotes || "");

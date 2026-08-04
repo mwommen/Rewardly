@@ -10,7 +10,7 @@ import { usePaymentJourneyActions } from "@/hooks/usePaymentJourney";
 import { usePlan, usePlanActions, usePlanOptimization } from "@/hooks/usePlans";
 import type { RootStackParamList } from "@/navigation/types";
 import { colors } from "@/theme/colors";
-import type { PlanOptimization } from "@/types/planning";
+import type { PlanOptimization, ShoppingPlanItem } from "@/types/planning";
 import { formatConfidence, formatCurrency } from "@/utils/format";
 
 type Props = NativeStackScreenProps<RootStackParamList, "PlanDetail">;
@@ -141,9 +141,10 @@ export function PlanDetailScreen({ route }: Props) {
       {plan.data.items.length ? (
         <View style={{ gap: 12 }}>
           <Heading>Planned purchases</Heading>
-          {plan.data.items.map((item) => {
+          {plan.data.items.map((item: ShoppingPlanItem) => {
             const optimizedItem = optimization.data?.optimizedItems.find(
-              (candidate) => candidate.itemId === item.itemId
+              (candidate: PlanOptimization["optimizedItems"][number]) =>
+                candidate.itemId === item.itemId
             );
             return (
               <Card key={item.itemId}>

@@ -109,7 +109,7 @@ export function PlanningScreen({ navigation }: Props) {
       ) : plans.data?.length ? (
         <View style={{ gap: 12 }}>
           <Heading>Your plans</Heading>
-          {plans.data.map((plan) => (
+          {plans.data.map((plan: ShoppingPlan) => (
             <PlanCard
               key={plan.planId}
               plan={plan}

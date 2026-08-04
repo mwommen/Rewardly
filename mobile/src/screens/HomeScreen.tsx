@@ -20,7 +20,8 @@ import { useNearbyMerchants } from "@/hooks/useNearbyMerchants";
 import { useRecentPurchases } from "@/hooks/useRecentPurchases";
 import type { MainTabParamList, RootStackParamList } from "@/navigation/types";
 import { colors } from "@/theme/colors";
-import type { NearbyMerchant } from "@/types/location";
+import type { FavoriteMerchant, NearbyMerchant } from "@/types/location";
+import type { RecentPurchase } from "@/types/rewardly";
 import { merchantSuggestions } from "@/utils/merchants";
 
 type Props = CompositeScreenProps<
@@ -37,7 +38,7 @@ export function HomeScreen({ navigation }: Props) {
   const recent = useRecentPurchases();
   const firstNearby = nearby.data?.[0];
   const matchingRecent = recent.data?.find(
-    (purchase) =>
+    (purchase: RecentPurchase) =>
       firstNearby &&
       purchase.merchant.trim().toLowerCase() === firstNearby.name.trim().toLowerCase()
   );
@@ -103,7 +104,7 @@ export function HomeScreen({ navigation }: Props) {
         {nearby.data?.length ? (
           <View style={{ gap: 12 }}>
             <Heading>Nearby merchants</Heading>
-            {nearby.data.slice(0, 4).map((merchant) => (
+            {nearby.data.slice(0, 4).map((merchant: NearbyMerchant) => (
               <MerchantRow
                 key={merchant.name}
                 merchant={merchant}
@@ -127,7 +128,7 @@ export function HomeScreen({ navigation }: Props) {
                   ) === index
               )
               .slice(0, 8)
-              .map((merchant) => (
+              .map((merchant: FavoriteMerchant) => (
                 <Pressable
                   key={merchant.name}
                   accessibilityRole="button"

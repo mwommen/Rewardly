@@ -20,7 +20,7 @@ import {
 import { useWallet } from "@/hooks/useWallet";
 import type { MainTabParamList, RootStackParamList } from "@/navigation/types";
 import { colors } from "@/theme/colors";
-import type { MerchantSuggestion } from "@/types/rewardly";
+import type { MerchantSuggestion, WalletCard } from "@/types/rewardly";
 import { formatConfidence, formatCurrency } from "@/utils/format";
 import { merchantSuggestions } from "@/utils/merchants";
 
@@ -76,7 +76,7 @@ export function PurchaseSimulatorScreen({ navigation, route }: Props) {
         currency: "USD"
       },
       wallet: {
-        cards: (wallet.data || []).map((card) => ({ cardId: card.cardId }))
+        cards: (wallet.data || []).map((card: WalletCard) => ({ cardId: card.cardId }))
       }
     });
 

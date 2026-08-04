@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { fetchCloudPreferences, updateCloudPreferences } from "@/api/rewardly";
 import { getJson, setJson } from "@/storage/secureStorage";
 import { storageKeys } from "@/storage/keys";
 import type { FavoriteMerchant } from "@/types/location";
@@ -7,9 +8,20 @@ import type { MerchantSuggestion } from "@/types/rewardly";
 const favoriteKey = ["favoriteMerchants"];
 
 export function useFavoriteMerchants() {
-  return useQuery({
+  return useQuery<FavoriteMerchant[]>({
     queryKey: favoriteKey,
-    queryFn: () => getJson<FavoriteMerchant[]>(storageKeys.favoriteMerchants, [])
+    queryFn: async () => {
+      try {
+        const preferences = await fetchCloudPreferences();
+        const favorites = Array.isArray(preferences.favoriteMerchants)
+          ? preferences.favoriteMerchants
+          : [];
+        await setJson(storageKeys.favoriteMerchants, favorites);
+        return favorites as FavoriteMerchant[];
+      } catch {
+        return getJson<FavoriteMerchant[]>(storageKeys.favoriteMerchants, []);
+      }
+    }
   });
 }
 
@@ -18,6 +30,11 @@ export function useFavoriteMerchantActions() {
 
   const saveFavorites = useMutation({
     mutationFn: async (favorites: FavoriteMerchant[]) => {
+      try {
+        await updateCloudPreferences({ favoriteMerchants: favorites });
+      } catch {
+        // Keep the local favorite list usable while offline; cloud sync retries on next change.
+      }
       await setJson(storageKeys.favoriteMerchants, favorites);
       return favorites;
     },

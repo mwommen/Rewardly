@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import * as Location from "expo-location";
 import { getNearbyMerchantProvider } from "@/providers/nearbyMerchantProvider";
+import type { NearbyMerchant } from "@/types/location";
 
 export function useNearbyMerchants(enabled: boolean) {
-  return useQuery({
+  return useQuery<NearbyMerchant[]>({
     queryKey: ["nearbyMerchants"],
     enabled,
     staleTime: 1000 * 60 * 3,

@@ -83,19 +83,51 @@ Response:
 GET /api/v1/openapi.json
 ```
 
-## Planned Spending
+## Private-Beta Identity
 
-Planned Spending Intelligence is exposed through versioned plan endpoints:
+Authenticated user data routes use a Bearer access token returned by signup or
+signin.
 
 ```http
-POST /api/v1/plans
-GET /api/v1/plans
-GET /api/v1/plans/{planId}
-PATCH /api/v1/plans/{planId}
-DELETE /api/v1/plans/{planId}
-POST /api/v1/plans/{planId}/items
-PATCH /api/v1/plans/{planId}/items/{itemId}
-POST /api/v1/plans/{planId}/optimize
+POST /api/v1/auth/signup
+POST /api/v1/auth/signin
+POST /api/v1/auth/refresh
+POST /api/v1/auth/logout
+GET /api/v1/auth/session
+DELETE /api/v1/me/account
+```
+
+Cloud-synced user data:
+
+```http
+GET /api/v1/me/wallet
+PUT /api/v1/me/wallet
+POST /api/v1/me/wallet/cards
+DELETE /api/v1/me/wallet/cards/{cardId}
+GET /api/v1/me/payment-journey
+POST /api/v1/me/payment-journey
+GET /api/v1/me/preferences
+PUT /api/v1/me/preferences
+POST /api/v1/me/migration/import
+```
+
+The server derives user identity from the token. Clients do not supply the
+authoritative `userId` for `/api/v1/me/*` routes.
+
+## Planned Spending
+
+Authenticated Planned Spending Intelligence is exposed through user-scoped plan
+endpoints:
+
+```http
+POST /api/v1/me/plans
+GET /api/v1/me/plans
+GET /api/v1/me/plans/{planId}
+PATCH /api/v1/me/plans/{planId}
+DELETE /api/v1/me/plans/{planId}
+POST /api/v1/me/plans/{planId}/items
+POST /api/v1/me/plans/{planId}/complete-item
+POST /api/v1/me/plans/{planId}/optimize
 ```
 
 Plan optimization calls the existing Payment Decision Engine for each planned

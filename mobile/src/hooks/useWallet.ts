@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchCardCatalog } from "@/api/rewardly";
+import { fetchCardCatalog, fetchCloudWallet, updateCloudWallet } from "@/api/rewardly";
 import { getJson, setJson } from "@/storage/secureStorage";
 import { storageKeys } from "@/storage/keys";
 import type { CatalogCard, WalletCard } from "@/types/rewardly";
@@ -7,7 +7,7 @@ import type { CatalogCard, WalletCard } from "@/types/rewardly";
 const defaultWallet: WalletCard[] = [];
 
 export function useCardCatalog() {
-  return useQuery({
+  return useQuery<CatalogCard[]>({
     queryKey: ["cardCatalog"],
     queryFn: fetchCardCatalog,
     staleTime: 1000 * 60 * 15
@@ -15,9 +15,23 @@ export function useCardCatalog() {
 }
 
 export function useWallet() {
-  return useQuery({
+  return useQuery<WalletCard[]>({
     queryKey: ["wallet"],
-    queryFn: () => getJson<WalletCard[]>(storageKeys.wallet, defaultWallet)
+    queryFn: async () => {
+      try {
+        const [cloudWallet, catalog] = await Promise.all([
+          fetchCloudWallet(),
+          fetchCardCatalog()
+        ]);
+        const wallet = cloudWallet.cardSlugs
+          .map((slug) => catalog.find((card) => card.cardId === slug))
+          .filter(Boolean) as WalletCard[];
+        await setJson(storageKeys.wallet, wallet);
+        return wallet;
+      } catch {
+        return getJson<WalletCard[]>(storageKeys.wallet, defaultWallet);
+      }
+    }
   });
 }
 
@@ -26,6 +40,11 @@ export function useWalletActions() {
 
   const saveWallet = useMutation({
     mutationFn: async (wallet: WalletCard[]) => {
+      try {
+        await updateCloudWallet(wallet.map((card) => card.cardId));
+      } catch {
+        // Local wallet editing stays available when the beta API is unreachable.
+      }
       await setJson(storageKeys.wallet, wallet);
       return wallet;
     },

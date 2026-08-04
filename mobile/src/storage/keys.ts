@@ -1,4 +1,5 @@
 export const storageKeys = {
+  authSession: "rewardly.mobile.authSession",
   userId: "rewardly.mobile.devUserId",
   wallet: "rewardly.mobile.wallet",
   recentPurchases: "rewardly.mobile.recentPurchases",

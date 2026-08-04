@@ -17,6 +17,10 @@ import { WalletCoachScreen } from "@/screens/WalletCoachScreen";
 import { OpportunityDetailScreen } from "@/screens/OpportunityDetailScreen";
 import { PlanningScreen } from "@/screens/PlanningScreen";
 import { PlanDetailScreen } from "@/screens/PlanDetailScreen";
+import { AuthScreen } from "@/screens/AuthScreen";
+import { useAuthSession } from "@/hooks/useAuth";
+import { ActivityIndicator, View } from "react-native";
+import { Body } from "@/components/Text";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tabs = createBottomTabNavigator<MainTabParamList>();
@@ -66,6 +70,25 @@ function MainTabs() {
 }
 
 export function AppNavigator() {
+  const session = useAuthSession();
+
+  if (session.isLoading) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: colors.background,
+          gap: 12
+        }}
+      >
+        <ActivityIndicator color={colors.cyan} />
+        <Body>Restoring your Rewardly session...</Body>
+      </View>
+    );
+  }
+
   return (
     <NavigationContainer theme={theme}>
       <Stack.Navigator
@@ -75,34 +98,40 @@ export function AppNavigator() {
           contentStyle: { backgroundColor: colors.background }
         }}
       >
-        <Stack.Screen name="Welcome" component={WelcomeScreen} options={{ headerShown: false }} />
-        <Stack.Screen name="MainTabs" component={MainTabs} options={{ headerShown: false }} />
-        <Stack.Screen name="AddCard" component={AddCardScreen} options={{ title: "Add card" }} />
-        <Stack.Screen
-          name="MerchantSearch"
-          component={MerchantSearchScreen}
-          options={{ title: "Merchant search" }}
-        />
-        <Stack.Screen
-          name="RecommendationDetails"
-          component={RecommendationDetailsScreen}
-          options={{ title: "Recommendation" }}
-        />
-        <Stack.Screen
-          name="PaymentDetail"
-          component={PaymentDetailScreen}
-          options={{ title: "Payment detail" }}
-        />
-        <Stack.Screen
-          name="OpportunityDetail"
-          component={OpportunityDetailScreen}
-          options={{ title: "Opportunity" }}
-        />
-        <Stack.Screen
-          name="PlanDetail"
-          component={PlanDetailScreen}
-          options={{ title: "Shopping plan" }}
-        />
+        {!session.data ? (
+          <Stack.Screen name="Welcome" component={AuthScreen} options={{ headerShown: false }} />
+        ) : (
+          <>
+            <Stack.Screen name="Welcome" component={WelcomeScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="MainTabs" component={MainTabs} options={{ headerShown: false }} />
+            <Stack.Screen name="AddCard" component={AddCardScreen} options={{ title: "Add card" }} />
+            <Stack.Screen
+              name="MerchantSearch"
+              component={MerchantSearchScreen}
+              options={{ title: "Merchant search" }}
+            />
+            <Stack.Screen
+              name="RecommendationDetails"
+              component={RecommendationDetailsScreen}
+              options={{ title: "Recommendation" }}
+            />
+            <Stack.Screen
+              name="PaymentDetail"
+              component={PaymentDetailScreen}
+              options={{ title: "Payment detail" }}
+            />
+            <Stack.Screen
+              name="OpportunityDetail"
+              component={OpportunityDetailScreen}
+              options={{ title: "Opportunity" }}
+            />
+            <Stack.Screen
+              name="PlanDetail"
+              component={PlanDetailScreen}
+              options={{ title: "Shopping plan" }}
+            />
+          </>
+        )}
       </Stack.Navigator>
     </NavigationContainer>
   );
