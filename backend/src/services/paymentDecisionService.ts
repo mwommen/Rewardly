@@ -34,6 +34,10 @@ import {
   type MissingInformation,
 } from "./decisionIntelligenceService";
 import { toRecommendationPurchaseContext } from "./purchaseIntelligenceService";
+import {
+  normalizeDecisionContext,
+  type CanonicalContext,
+} from "./contextInfrastructureService";
 
 export type PaymentDecisionRequest = ResolveMerchantInput & {
   userId?: string;
@@ -42,6 +46,7 @@ export type PaymentDecisionRequest = ResolveMerchantInput & {
   restrictToWallet?: boolean;
   purchaseContext?: Partial<PurchaseContext>;
   merchantSignals?: Partial<MerchantIntelligenceInput>;
+  context?: CanonicalContext | Record<string, unknown>;
 };
 
 type ExistingRecommendation = {
@@ -86,6 +91,9 @@ type ExistingOffer = {
 export async function decidePayment(
   request: PaymentDecisionRequest,
 ): Promise<PaymentDecision> {
+  const decisionContext = request.context
+    ? normalizeDecisionContext(request.context).context || null
+    : null;
   const userId = request.userId?.trim() || "devUser";
   const merchantIntelligence = evaluateMerchantIntelligence({
     url: request.merchantSignals?.url || request.url || "",
@@ -161,6 +169,7 @@ export async function decidePayment(
       ...decision,
       purchase,
       recommendationPurchaseContext,
+      decisionContext,
       decisionExplanation: explanation,
       merchantIntelligence: merchantIntelligenceDiagnostics,
     };
@@ -173,7 +182,8 @@ export async function decidePayment(
   const recommendationPurchaseContext = purchase
     ? toRecommendationPurchaseContext(purchase)
     : null;
-  const amount = request.amount ?? recommendationPurchaseContext?.total ?? undefined;
+  const amount =
+    request.amount ?? recommendationPurchaseContext?.total ?? undefined;
 
   const [bestResult, offerResult] = await Promise.all([
     recommendBestCards({
@@ -243,6 +253,7 @@ export async function decidePayment(
     ...decision,
     purchase,
     recommendationPurchaseContext,
+    decisionContext,
     decisionExplanation: explanation,
     merchantIntelligence: merchantIntelligenceDiagnostics,
   };
@@ -252,7 +263,11 @@ function resolveMerchantIntelligenceMode() {
   const mode = String(
     process.env.REWARDLY_MERCHANT_INTELLIGENCE_MODE || "shadow",
   ).trim();
-  if (mode === "legacy" || mode === "shadow" || mode === "merchant-intelligence") {
+  if (
+    mode === "legacy" ||
+    mode === "shadow" ||
+    mode === "merchant-intelligence"
+  ) {
     return mode;
   }
   return "shadow";
@@ -263,7 +278,8 @@ function buildMerchantShadowDiscrepancy(
   merchantIntelligence: ReturnType<typeof evaluateMerchantIntelligence>,
 ) {
   const normalizedLegacyMerchant = legacyMerchant.name || null;
-  const normalizedNewMerchant = merchantIntelligence.identity?.displayName || null;
+  const normalizedNewMerchant =
+    merchantIntelligence.identity?.displayName || null;
   const legacyCategory = legacyMerchant.category || null;
   const newCategory =
     merchantIntelligence.classification.primaryCategory === "unknown"
@@ -295,7 +311,10 @@ function buildMerchantShadowDiscrepancy(
   };
 }
 
-function tracePaymentDecisionBoundary(label: string, decision: PaymentDecision) {
+function tracePaymentDecisionBoundary(
+  label: string,
+  decision: PaymentDecision,
+) {
   if (process.env.REWARDLY_TRACE_DECISION !== "true") return;
   console.log(`[Rewardly] ${label}`, {
     merchant: decision.merchant?.name || null,
@@ -371,7 +390,11 @@ function toDecisionRecommendation(
   const decisionCard = cardForDecisionPayload(card);
   const benefitLabels = [item.matchedBenefit].filter(Boolean) as string[];
   const winningReason = winningReasonForItem(item, card, merchant);
-  const relevantBenefits = relevantBenefitsFor(item, decisionCard, winningReason);
+  const relevantBenefits = relevantBenefitsFor(
+    item,
+    decisionCard,
+    winningReason,
+  );
 
   return buildRecommendation({
     card: decisionCard,

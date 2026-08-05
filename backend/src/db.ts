@@ -347,6 +347,9 @@ export interface UserPreferencesRecord {
   defaultCurrency: "USD";
   onboardingCompleted: boolean;
   locationEnabled?: boolean;
+  contextPreferences?: unknown[];
+  contextConstraints?: unknown[];
+  decisionPolicy?: unknown;
   createdAt: Date;
   updatedAt: Date;
   schemaVersion: number;

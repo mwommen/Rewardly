@@ -32,6 +32,7 @@ import {
   decisionTrustOpenApiResponses,
   decisionTrustOpenApiSchemas,
 } from "./decisionTrustRoutes";
+import { contextOpenApiPaths, contextOpenApiSchemas } from "./contextRoutes";
 
 const router = Router();
 
@@ -58,6 +59,7 @@ type NormalizedV1PaymentDecisionRequest = {
   wallet: {
     cards: Array<{ cardId: string }>;
   };
+  context?: Record<string, unknown>;
 };
 
 router.post(V1_PAYMENT_DECISIONS_ROUTE, async (req, res) => {
@@ -90,6 +92,7 @@ router.post(V1_PAYMENT_DECISIONS_ROUTE, async (req, res) => {
         checkoutDetected: true,
         checkoutStage: "payment",
       },
+      context: request.context,
     };
     const authUser = await optionalAuthUser(req.headers.authorization);
     const decision = await decidePayment(normalizedDecisionRequest);
@@ -145,10 +148,18 @@ export function validatePaymentDecisionRequest(body: any): ValidationResult {
   }
   const topLevelError = unknownKeys(
     body,
-    ["merchant", "purchase", "wallet"],
+    ["merchant", "purchase", "wallet", "context"],
     "request",
   );
   if (topLevelError) return invalid(topLevelError);
+  if (
+    body.context !== undefined &&
+    (!body.context ||
+      typeof body.context !== "object" ||
+      Array.isArray(body.context))
+  ) {
+    return invalid("context must be an object when supplied");
+  }
 
   if (!body.merchant || typeof body.merchant !== "object") {
     return invalid("merchant is required");
@@ -274,6 +285,7 @@ export function validatePaymentDecisionRequest(body: any): ValidationResult {
       wallet: {
         cards: normalizedCards,
       },
+      context: body.context,
     },
   };
 }
@@ -561,6 +573,7 @@ export function openApiDocument() {
       ...financialIntentOpenApiPaths(),
       ...merchantKnowledgeOpenApiPaths(),
       ...decisionTrustOpenApiPaths(),
+      ...contextOpenApiPaths(),
     },
     components: {
       securitySchemes: {
@@ -746,6 +759,7 @@ export function openApiDocument() {
         ...financialIntentOpenApiSchemas(),
         ...merchantKnowledgeOpenApiSchemas(),
         ...decisionTrustOpenApiSchemas(),
+        ...contextOpenApiSchemas(),
       },
     },
   };

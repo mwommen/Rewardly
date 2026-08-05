@@ -120,6 +120,12 @@ The app calls:
 - `POST /api/v1/intents`
 - `POST /api/v1/payment-decisions`
 - `GET /api/v1/decisions/:decisionId/trust`
+- `GET /api/v1/decision-policies`
+- `GET /api/v1/preferences`
+- `PATCH /api/v1/preferences`
+- `GET /api/v1/context`
+- `POST /api/v1/context`
+- `POST /api/v1/context/validate`
 - `POST /api/v1/me/plans`
 - `GET /api/v1/me/plans`
 - `POST /api/v1/me/plans/:planId/items`
@@ -133,6 +139,10 @@ Recommendation detail screens consume canonical Trust Infrastructure outputs
 when available. The mobile app renders explanation, evidence, alternatives,
 warnings, confidence, and decision reference data from the platform; it does not
 reconstruct recommendation reasoning locally.
+
+Context settings consume canonical Context Infrastructure APIs. The app displays
+and submits policy/preference choices, but backend Context Infrastructure owns
+normalization and decision interpretation.
 
 Smart Pay now submits a `SMART_PAY` financial intent through
 `POST /api/v1/intents` and unwraps the same payment decision response shape.

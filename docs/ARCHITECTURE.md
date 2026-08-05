@@ -8,6 +8,7 @@ web, and browser-extension clients.
 The backend owns:
 
 - Payment decisions
+- Context infrastructure, decision policies, preferences, and constraints
 - Trust records, evidence, explanations, confidence, and replay
 - Benefit registry
 - Wallet intelligence
@@ -25,6 +26,7 @@ Clients own:
 Clients do not duplicate recommendation logic.
 Clients consume canonical trust artifacts instead of reconstructing decision
 reasoning from raw fields.
+Clients submit context, but the platform owns normalization and interpretation.
 
 ## Current Clients
 

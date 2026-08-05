@@ -90,6 +90,20 @@ These endpoints expose canonical explanation, evidence, alternatives,
 confidence, assumptions, versioning, independence metadata, and replay status.
 See `docs/TRUST_API_REFERENCE.md`.
 
+## Context APIs
+
+```http
+POST /api/v1/context/validate
+GET /api/v1/context
+POST /api/v1/context
+GET /api/v1/decision-policies
+GET /api/v1/preferences
+PATCH /api/v1/preferences
+```
+
+Context APIs normalize purchase context, financial intent, decision policy,
+preferences, and constraints. See `docs/CONTEXT_API_REFERENCE.md`.
+
 ## Validation Rules
 
 - `merchant.name` is required.
@@ -98,6 +112,7 @@ See `docs/TRUST_API_REFERENCE.md`.
 - `wallet.cards` is required.
 - Duplicate card IDs are rejected after normalization.
 - Unsupported fields are rejected.
+- Optional `context` must be an object when supplied.
 
 ## OpenAPI
 

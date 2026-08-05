@@ -1,5 +1,6 @@
 import { rewardlyApi } from "@/api/client";
 import type { AuthSession } from "@/types/auth";
+import type { CanonicalContext, ContextPreferences, DecisionPolicy } from "@/types/context";
 import type { FavoriteMerchant } from "@/types/location";
 import type {
   CatalogCard,
@@ -96,6 +97,39 @@ export async function fetchCloudPreferences() {
 export async function updateCloudPreferences(input: Partial<CloudPreferences>) {
   const response = await rewardlyApi.put<{ preferences: CloudPreferences }>(
     "/api/v1/me/preferences",
+    input,
+  );
+  return response.data.preferences;
+}
+
+export async function fetchDecisionPolicies() {
+  const response = await rewardlyApi.get<{ policies: DecisionPolicy[] }>(
+    "/api/v1/decision-policies",
+  );
+  return response.data.policies;
+}
+
+export async function fetchCanonicalContext() {
+  const response = await rewardlyApi.get<{ context: CanonicalContext }>("/api/v1/context");
+  return response.data.context;
+}
+
+export async function fetchContextPreferences() {
+  const response = await rewardlyApi.get<{ preferences: ContextPreferences }>(
+    "/api/v1/preferences",
+  );
+  return response.data.preferences;
+}
+
+export async function updateContextPreferences(
+  input: Partial<
+    Pick<ContextPreferences, "preferences" | "constraints"> & {
+      decisionPolicy: DecisionPolicy | string;
+    }
+  >,
+) {
+  const response = await rewardlyApi.patch<{ preferences: ContextPreferences }>(
+    "/api/v1/preferences",
     input,
   );
   return response.data.preferences;

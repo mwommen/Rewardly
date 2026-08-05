@@ -189,6 +189,7 @@ async function routeIntent(
         checkoutDetected: true,
         checkoutStage: "payment",
       },
+      context: request.context,
     };
     const decision = await decidePayment(normalizedDecisionRequest);
     const trustRecord = await createOrResolveTrustRecord({
@@ -311,6 +312,7 @@ function validateSmartPayPayload(payload: any):
       };
       purchase: { amount: number; currency: "USD" };
       wallet: { cards: Array<{ cardId: string }> };
+      context?: Record<string, unknown>;
     }
   | FinancialIntentError {
   const merchantName = cleanString(payload?.merchant?.name);
@@ -353,6 +355,12 @@ function validateSmartPayPayload(payload: any):
     },
     purchase: { amount, currency: "USD" },
     wallet: { cards },
+    context:
+      payload?.context &&
+      typeof payload.context === "object" &&
+      !Array.isArray(payload.context)
+        ? payload.context
+        : undefined,
   };
 }
 

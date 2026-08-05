@@ -152,7 +152,11 @@ export type RecommendationPurchaseContext = {
   eligibleAmount: number | null;
   materiallyMixed: boolean;
   mixedCartThreshold: number;
-  refinement: "purchase_refined" | "merchant_based" | "low_confidence_fallback" | "mixed_cart_fallback";
+  refinement:
+    | "purchase_refined"
+    | "merchant_based"
+    | "low_confidence_fallback"
+    | "mixed_cart_fallback";
 };
 
 export type PaymentContext = {
@@ -266,7 +270,8 @@ export type DecisionNarrative = {
   headline: string;
   summary: string;
   estimatedReward?: string | null;
-  estimatedRewardUnit?: "dollars" | "points" | "miles" | "cash" | "unknown" | null;
+  estimatedRewardUnit?:
+    "dollars" | "points" | "miles" | "cash" | "unknown" | null;
   estimatedRewardValue?: number | null;
   rewardDetails?: DecisionRewardDetails | null;
   reward?: DecisionNormalizedReward | null;
@@ -349,6 +354,7 @@ export type PaymentDecision = {
   recommendationPurchaseContext?: RecommendationPurchaseContext | null;
   decisionExplanation?: unknown;
   merchantIntelligence?: unknown;
+  decisionContext?: unknown;
   decisionNarrative?: DecisionNarrative | null;
   recommendationIntegrity?: RecommendationIntegrityValidation | null;
 };

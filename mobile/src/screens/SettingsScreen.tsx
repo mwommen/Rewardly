@@ -1,4 +1,10 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { View } from "react-native";
+import {
+  fetchContextPreferences,
+  fetchDecisionPolicies,
+  updateContextPreferences,
+} from "@/api/rewardly";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
 import { Screen } from "@/components/Screen";
@@ -10,16 +16,18 @@ import { useDevIdentity } from "@/hooks/useDevIdentity";
 import { useFavoriteMerchantActions } from "@/hooks/useFavoriteMerchants";
 import {
   useLocationPermission,
-  useLocationPermissionActions
+  useLocationPermissionActions,
 } from "@/hooks/useLocationPermission";
 import { usePaymentJourneyActions } from "@/hooks/usePaymentJourney";
 import { useRecentPurchaseActions } from "@/hooks/useRecentPurchases";
 import { useSmartPayStateActions } from "@/hooks/useSmartPayState";
 import { useWalletActions } from "@/hooks/useWallet";
 import { useWalletCoachActions } from "@/hooks/useWalletCoach";
+import type { DecisionPolicy } from "@/types/context";
 import { demoWallet } from "@/utils/demo";
 
 export function SettingsScreen() {
+  const queryClient = useQueryClient();
   const health = useApiHealth();
   const session = useAuthSession();
   const auth = useAuthActions();
@@ -32,6 +40,21 @@ export function SettingsScreen() {
   const recent = useRecentPurchaseActions();
   const smartPay = useSmartPayStateActions();
   const coach = useWalletCoachActions();
+  const contextPreferences = useQuery({
+    queryKey: ["contextPreferences"],
+    queryFn: fetchContextPreferences,
+  });
+  const policies = useQuery({
+    queryKey: ["decisionPolicies"],
+    queryFn: fetchDecisionPolicies,
+  });
+  const updatePolicy = useMutation({
+    mutationFn: (policyId: string) =>
+      updateContextPreferences({ decisionPolicy: policyId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["contextPreferences"] });
+    },
+  });
 
   return (
     <Screen>
@@ -52,8 +75,8 @@ export function SettingsScreen() {
               onPress={() => auth.logout.mutate()}
             />
             <Body>
-              Deleting your account permanently removes your cloud wallet, payment
-              journey, shopping plans, preferences, and active sessions.
+              Deleting your account permanently removes your cloud wallet, payment journey,
+              shopping plans, preferences, and active sessions.
             </Body>
             <Button
               title="Delete account"
@@ -76,7 +99,9 @@ export function SettingsScreen() {
         <Card>
           <View style={{ gap: 12 }}>
             <Heading>Demo mode</Heading>
-            <Body>Load a sample wallet so a first-time tester can try Smart Pay quickly.</Body>
+            <Body>
+              Load a sample wallet so a first-time tester can try Smart Pay quickly.
+            </Body>
             <Button
               title="Load demo wallet"
               variant="secondary"
@@ -92,8 +117,7 @@ export function SettingsScreen() {
               Status: {location.data?.granted ? "Enabled while using app" : "Not enabled"}
             </Body>
             <Body>
-              Rewardly uses location only while the app is open to suggest nearby
-              merchants.
+              Rewardly uses location only while the app is open to suggest nearby merchants.
             </Body>
             <Button
               title="Enable nearby suggestions"
@@ -101,6 +125,30 @@ export function SettingsScreen() {
               loading={locationActions.isRequesting}
               onPress={() => locationActions.requestWhenInUse()}
             />
+          </View>
+        </Card>
+
+        <Card>
+          <View style={{ gap: 12 }}>
+            <Heading>Decision policy</Heading>
+            <Body>
+              Current:{" "}
+              {contextPreferences.data?.decisionPolicy.displayName || "Balanced outcome"}
+            </Body>
+            <Body>
+              Rewardly uses policy as context for how a decision should be optimized.
+            </Body>
+            <View style={{ gap: 8 }}>
+              {policies.data?.slice(0, 3).map((policy: DecisionPolicy) => (
+                <Button
+                  key={policy.policyId}
+                  title={policy.displayName}
+                  variant="secondary"
+                  loading={updatePolicy.isPending}
+                  onPress={() => updatePolicy.mutate(policy.policyId)}
+                />
+              ))}
+            </View>
           </View>
         </Card>
 
@@ -140,8 +188,8 @@ export function SettingsScreen() {
           <View style={{ gap: 8 }}>
             <Heading>About Rewardly</Heading>
             <Body>
-              Rewardly helps people make smarter payment decisions by recommending the
-              best card from the cards they already own.
+              Rewardly helps people make smarter payment decisions by recommending the best
+              card from the cards they already own.
             </Body>
             <Body>Mobile MVP version 0.1.0</Body>
           </View>
