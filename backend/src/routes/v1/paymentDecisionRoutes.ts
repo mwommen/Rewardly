@@ -1,6 +1,9 @@
 import { Router } from "express";
 import crypto from "crypto";
-import { decidePayment } from "../../services/paymentDecisionService";
+import {
+  decidePayment,
+  type PaymentDecisionRequest,
+} from "../../services/paymentDecisionService";
 import { CARD_OVERRIDES } from "../../scrapers/overrides/cards";
 import type { PaymentDecision } from "../../../../packages/rewardly-core/src";
 import {
@@ -18,15 +21,24 @@ import {
   merchantKnowledgeOpenApiResponses,
   merchantKnowledgeOpenApiSchemas,
 } from "./merchantKnowledgeRoutes";
+import {
+  createOrResolveTrustRecord,
+  type DecisionTrustRecord,
+  trustReferenceFor,
+} from "../../services/trustInfrastructureService";
+import { authenticateAccessToken } from "../../services/productionAuthService";
+import {
+  decisionTrustOpenApiPaths,
+  decisionTrustOpenApiResponses,
+  decisionTrustOpenApiSchemas,
+} from "./decisionTrustRoutes";
 
 const router = Router();
 
 export const V1_PAYMENT_DECISIONS_ROUTE = "/payment-decisions";
 
 type V1ErrorCode =
-  | "INVALID_REQUEST"
-  | "UNSUPPORTED_PURCHASE"
-  | "ENGINE_FAILURE";
+  "INVALID_REQUEST" | "UNSUPPORTED_PURCHASE" | "ENGINE_FAILURE";
 
 type ValidationResult =
   | { ok: true; value: NormalizedV1PaymentDecisionRequest }
@@ -62,7 +74,7 @@ router.post(V1_PAYMENT_DECISIONS_ROUTE, async (req, res) => {
   try {
     const request = validation.value;
     const decisionId = createPublicDecisionId();
-    const decision = await decidePayment({
+    const normalizedDecisionRequest: PaymentDecisionRequest = {
       userId: decisionId,
       merchant: request.merchant.name,
       hostname: request.merchant.domain,
@@ -78,9 +90,20 @@ router.post(V1_PAYMENT_DECISIONS_ROUTE, async (req, res) => {
         checkoutDetected: true,
         checkoutStage: "payment",
       },
+    };
+    const authUser = await optionalAuthUser(req.headers.authorization);
+    const decision = await decidePayment(normalizedDecisionRequest);
+    const trustRecord = await createOrResolveTrustRecord({
+      decisionId,
+      decision,
+      normalizedRequest: normalizedDecisionRequest,
+      ownerUserId: authUser?.userId || null,
+      tenantId: null,
     });
 
-    return res.json(toV1PaymentDecisionResponse(decision, decisionId));
+    return res.json(
+      toV1PaymentDecisionResponse(decision, decisionId, trustRecord),
+    );
   } catch (error) {
     console.error(
       "[v1/payment-decisions] Engine failure:",
@@ -116,19 +139,22 @@ router.get("/card-catalog", (_req, res) => {
 
 export default router;
 
-export function validatePaymentDecisionRequest(
-  body: any,
-): ValidationResult {
+export function validatePaymentDecisionRequest(body: any): ValidationResult {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     return invalid("request body must be an object");
   }
-  const topLevelError = unknownKeys(body, ["merchant", "purchase", "wallet"], "request");
+  const topLevelError = unknownKeys(
+    body,
+    ["merchant", "purchase", "wallet"],
+    "request",
+  );
   if (topLevelError) return invalid(topLevelError);
 
   if (!body.merchant || typeof body.merchant !== "object") {
     return invalid("merchant is required");
   }
-  if (Array.isArray(body.merchant)) return invalid("merchant must be an object");
+  if (Array.isArray(body.merchant))
+    return invalid("merchant must be an object");
   const merchantKeyError = unknownKeys(
     body.merchant,
     ["name", "category", "domain", "mcc"],
@@ -144,7 +170,8 @@ export function validatePaymentDecisionRequest(
   if (!body.purchase || typeof body.purchase !== "object") {
     return invalid("purchase is required");
   }
-  if (Array.isArray(body.purchase)) return invalid("purchase must be an object");
+  if (Array.isArray(body.purchase))
+    return invalid("purchase must be an object");
   const purchaseKeyError = unknownKeys(
     body.purchase,
     ["amount", "currency"],
@@ -190,30 +217,43 @@ export function validatePaymentDecisionRequest(
     if (!card || typeof card !== "object" || Array.isArray(card)) {
       return { cardId: "", invalidObjectAt: index };
     }
-    const cardKeyError = unknownKeys(card, ["cardId"], `wallet.cards[${index}]`);
+    const cardKeyError = unknownKeys(
+      card,
+      ["cardId"],
+      `wallet.cards[${index}]`,
+    );
     return {
       cardId: normalizeCardId(card.cardId),
       invalidObjectAt: -1,
-      tooLong: typeof card.cardId === "string" && card.cardId.trim().length > 80,
+      tooLong:
+        typeof card.cardId === "string" && card.cardId.trim().length > 80,
       cardKeyError,
     };
   });
   const invalidObject = cards.find((card: any) => card.invalidObjectAt >= 0);
   if (invalidObject) {
-    return invalid(`wallet.cards[${invalidObject.invalidObjectAt}] must be an object`);
+    return invalid(
+      `wallet.cards[${invalidObject.invalidObjectAt}] must be an object`,
+    );
   }
   const cardWithUnknownKey = cards.find((card: any) => card.cardKeyError);
   if (cardWithUnknownKey) return invalid(cardWithUnknownKey.cardKeyError);
   const tooLongCardIndex = cards.findIndex((card: any) => card.tooLong);
   if (tooLongCardIndex >= 0) {
-    return invalid(`wallet.cards[${tooLongCardIndex}].cardId must be 80 characters or fewer`);
+    return invalid(
+      `wallet.cards[${tooLongCardIndex}].cardId must be 80 characters or fewer`,
+    );
   }
   const normalizedCards = cards.map((card: any) => ({ cardId: card.cardId }));
-  const invalidCardIndex = normalizedCards.findIndex((card: { cardId: string }) => !card.cardId);
+  const invalidCardIndex = normalizedCards.findIndex(
+    (card: { cardId: string }) => !card.cardId,
+  );
   if (invalidCardIndex >= 0) {
     return invalid(`wallet.cards[${invalidCardIndex}].cardId is required`);
   }
-  const uniqueCardIds = new Set(normalizedCards.map((card: { cardId: string }) => card.cardId));
+  const uniqueCardIds = new Set(
+    normalizedCards.map((card: { cardId: string }) => card.cardId),
+  );
   if (uniqueCardIds.size !== normalizedCards.length) {
     return invalid("wallet.cards contains duplicate cardId values");
   }
@@ -241,6 +281,7 @@ export function validatePaymentDecisionRequest(
 export function toV1PaymentDecisionResponse(
   decision: PaymentDecision,
   fallbackDecisionId = createPublicDecisionId(),
+  trustRecord?: DecisionTrustRecord,
 ) {
   const recommendation = decision.recommendedCard;
   const narrative = decision.decisionNarrative;
@@ -253,7 +294,8 @@ export function toV1PaymentDecisionResponse(
     decision.confidence.score ??
     recommendation?.confidence?.score ??
     confidenceScoreFromLabel(decision.confidence.label);
-  const decisionId = publicDecisionIdFromDecision(decision) || fallbackDecisionId;
+  const decisionId =
+    publicDecisionIdFromDecision(decision) || fallbackDecisionId;
   const reason =
     firstNonEmptyString([
       narrative?.primaryReason?.summary,
@@ -277,16 +319,19 @@ export function toV1PaymentDecisionResponse(
       ? {
           cardId: recommendation.card.slug,
           displayName: recommendation.card.name,
-      }
+        }
       : null,
     reason,
-    estimatedValue: Number.isFinite(Number(estimatedValue)) ? Number(estimatedValue) : null,
+    estimatedValue: Number.isFinite(Number(estimatedValue))
+      ? Number(estimatedValue)
+      : null,
     currency: "USD",
     confidence: clampConfidence(confidence),
     explanation: {
       summary,
       factors: explanationFactors(decision),
     },
+    trust: trustRecord ? trustReferenceFor(trustRecord) : undefined,
   };
 }
 
@@ -347,7 +392,9 @@ export function openApiDocument() {
               description: "Payment decision response",
               content: {
                 "application/json": {
-                  schema: { $ref: "#/components/schemas/PaymentDecisionResponse" },
+                  schema: {
+                    $ref: "#/components/schemas/PaymentDecisionResponse",
+                  },
                   examples: {
                     recommended: {
                       summary: "Recommended payment method",
@@ -413,7 +460,8 @@ export function openApiDocument() {
                       value: {
                         error: {
                           code: "INVALID_REQUEST",
-                          message: "wallet.cards contains duplicate cardId values",
+                          message:
+                            "wallet.cards contains duplicate cardId values",
                         },
                       },
                     },
@@ -467,7 +515,8 @@ export function openApiDocument() {
                       value: {
                         error: {
                           code: "ENGINE_FAILURE",
-                          message: "Rewardly could not create a payment decision.",
+                          message:
+                            "Rewardly could not create a payment decision.",
                         },
                       },
                     },
@@ -511,12 +560,21 @@ export function openApiDocument() {
       ...planningOpenApiPaths(),
       ...financialIntentOpenApiPaths(),
       ...merchantKnowledgeOpenApiPaths(),
+      ...decisionTrustOpenApiPaths(),
     },
     components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: "http",
+          scheme: "bearer",
+          bearerFormat: "opaque Rewardly access token",
+        },
+      },
       responses: {
         ...planningOpenApiResponses(),
         ...financialIntentOpenApiResponses(),
         ...merchantKnowledgeOpenApiResponses(),
+        ...decisionTrustOpenApiResponses(),
       },
       schemas: {
         PaymentDecisionRequest: {
@@ -529,9 +587,22 @@ export function openApiDocument() {
               additionalProperties: false,
               required: ["name"],
               properties: {
-                name: { type: "string", minLength: 1, maxLength: 160, example: "Amazon" },
-                category: { type: "string", maxLength: 160, example: "online_retail" },
-                domain: { type: "string", maxLength: 160, example: "amazon.com" },
+                name: {
+                  type: "string",
+                  minLength: 1,
+                  maxLength: 160,
+                  example: "Amazon",
+                },
+                category: {
+                  type: "string",
+                  maxLength: 160,
+                  example: "online_retail",
+                },
+                domain: {
+                  type: "string",
+                  maxLength: 160,
+                  example: "amazon.com",
+                },
                 mcc: { type: "string", maxLength: 160, example: "5942" },
               },
             },
@@ -540,7 +611,11 @@ export function openApiDocument() {
               additionalProperties: false,
               required: ["amount", "currency"],
               properties: {
-                amount: { type: "number", exclusiveMinimum: 0, example: 142.83 },
+                amount: {
+                  type: "number",
+                  exclusiveMinimum: 0,
+                  example: 142.83,
+                },
                 currency: { type: "string", enum: ["USD"], example: "USD" },
               },
             },
@@ -584,7 +659,10 @@ export function openApiDocument() {
           ],
           properties: {
             decisionId: { type: "string" },
-            status: { type: "string", enum: ["recommended", "no_recommendation"] },
+            status: {
+              type: "string",
+              enum: ["recommended", "no_recommendation"],
+            },
             recommendedPaymentMethod: {
               type: ["object", "null"],
               properties: {
@@ -606,6 +684,19 @@ export function openApiDocument() {
                 },
               },
             },
+            trust: {
+              type: "object",
+              properties: {
+                trustRecordId: { type: "string" },
+                status: {
+                  type: "string",
+                  enum: ["complete", "partial", "unavailable"],
+                },
+                evidenceUrl: { type: "string" },
+                trustUrl: { type: "string" },
+                replayable: { type: "boolean" },
+              },
+            },
           },
         },
         ErrorResponse: {
@@ -617,7 +708,10 @@ export function openApiDocument() {
               required: ["code", "message"],
               properties: {
                 code: { type: "string", example: "INVALID_REQUEST" },
-                message: { type: "string", example: "merchant.name is required" },
+                message: {
+                  type: "string",
+                  example: "merchant.name is required",
+                },
               },
             },
           },
@@ -651,6 +745,7 @@ export function openApiDocument() {
         ...planningOpenApiSchemas(),
         ...financialIntentOpenApiSchemas(),
         ...merchantKnowledgeOpenApiSchemas(),
+        ...decisionTrustOpenApiSchemas(),
       },
     },
   };
@@ -684,17 +779,29 @@ function unknownKeys(
   return `${label} contains unsupported field: ${unknown[0]}`;
 }
 
-function confidenceScoreFromLabel(label: PaymentDecision["confidence"]["label"]) {
+function confidenceScoreFromLabel(
+  label: PaymentDecision["confidence"]["label"],
+) {
   if (label === "high") return 0.9;
   if (label === "medium") return 0.7;
   if (label === "low") return 0.45;
   return 0;
 }
 
+async function optionalAuthUser(authorizationHeader?: string) {
+  if (!authorizationHeader) return null;
+  try {
+    return await authenticateAccessToken(authorizationHeader);
+  } catch {
+    return null;
+  }
+}
+
 function explanationFactors(decision: PaymentDecision) {
   const narrativeFactors =
-    decision.decisionNarrative?.supportingReasons?.map((reason) => reason.summary) ||
-    [];
+    decision.decisionNarrative?.supportingReasons?.map(
+      (reason) => reason.summary,
+    ) || [];
   const fallbackFactors = [
     decision.winningReason?.explanation,
     decision.primaryReason?.detail,
@@ -716,7 +823,8 @@ function publicDecisionIdFromDecision(decision: PaymentDecision) {
     (decision as any).auditLog?.decisionId,
   ];
   return candidates.find(
-    (candidate) => typeof candidate === "string" && /^pdec_[\w-]+$/.test(candidate),
+    (candidate) =>
+      typeof candidate === "string" && /^pdec_[\w-]+$/.test(candidate),
   );
 }
 
@@ -727,15 +835,20 @@ function clampConfidence(value: unknown) {
 }
 
 function firstNonEmptyString(values: Array<unknown>) {
-  return values.find(
-    (value): value is string => typeof value === "string" && value.trim().length > 0,
-  )?.trim();
+  return values
+    .find(
+      (value): value is string =>
+        typeof value === "string" && value.trim().length > 0,
+    )
+    ?.trim();
 }
 
 function rewardProgramForCatalogCard(card: any) {
-  const text = `${card.name || ""} ${(card.perks || []).join(" ")}`.toLowerCase();
+  const text =
+    `${card.name || ""} ${(card.perks || []).join(" ")}`.toLowerCase();
   if (/venture/.test(text)) return "Venture Miles";
-  if (/membership rewards|amex|american express/.test(text)) return "Membership Rewards";
+  if (/membership rewards|amex|american express/.test(text))
+    return "Membership Rewards";
   if (/ultimate rewards|chase/.test(text)) return "Ultimate Rewards";
   if (/thankyou|citi/.test(text)) return "ThankYou Points";
   if (/cash/.test(text)) return "Cash Back";

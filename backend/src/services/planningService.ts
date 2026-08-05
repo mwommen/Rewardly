@@ -2,9 +2,7 @@ import crypto from "crypto";
 import { decidePayment } from "./paymentDecisionService";
 
 export type PlanningErrorCode =
-  | "INVALID_REQUEST"
-  | "PLAN_NOT_FOUND"
-  | "ENGINE_FAILURE";
+  "INVALID_REQUEST" | "PLAN_NOT_FOUND" | "ENGINE_FAILURE";
 
 export type PlanningError = {
   status: number;
@@ -72,6 +70,13 @@ export type PublicPaymentDecisionResponse = {
     summary: string;
     factors: string[];
   };
+  trust?: {
+    trustRecordId: string;
+    status: "complete" | "partial" | "unavailable";
+    evidenceUrl: string;
+    trustUrl: string;
+    replayable: boolean;
+  };
 };
 
 export type PlanOptimizationResponse = {
@@ -99,9 +104,11 @@ export function resetPlanningStoreForTests() {
 export function createShoppingPlan(body: any): ShoppingPlan | PlanningError {
   const title = cleanString(body?.title);
   if (!title) return invalid("title is required");
-  if (title.length > 120) return invalid("title must be 120 characters or fewer");
+  if (title.length > 120)
+    return invalid("title must be 120 characters or fewer");
   const notes = cleanString(body?.notes);
-  if (notes.length > 500) return invalid("notes must be 500 characters or fewer");
+  if (notes.length > 500)
+    return invalid("notes must be 500 characters or fewer");
   const timestamp = new Date().toISOString();
   const plan: ShoppingPlan = {
     planId: createPlanId(),
@@ -137,14 +144,18 @@ export function updateShoppingPlan(
 ): ShoppingPlan | PlanningError {
   const plan = plans.get(planId);
   if (!plan) return notFound();
-  const title = body?.title === undefined ? plan.title : cleanString(body.title);
+  const title =
+    body?.title === undefined ? plan.title : cleanString(body.title);
   if (!title) return invalid("title is required");
-  const notes = body?.notes === undefined ? plan.notes : cleanString(body.notes);
-  if (title.length > 120) return invalid("title must be 120 characters or fewer");
+  const notes =
+    body?.notes === undefined ? plan.notes : cleanString(body.notes);
+  if (title.length > 120)
+    return invalid("title must be 120 characters or fewer");
   if ((notes || "").length > 500) {
     return invalid("notes must be 500 characters or fewer");
   }
-  const status = body?.status === undefined ? plan.status : cleanString(body.status);
+  const status =
+    body?.status === undefined ? plan.status : cleanString(body.status);
   if (status !== "active" && status !== "completed") {
     return invalid("status must be active or completed");
   }
@@ -169,7 +180,8 @@ export function addPlanItem(
   if ("status" in itemValidation) return itemValidation;
   const duplicate = plan.items.some(
     (item) =>
-      normalize(item.merchant.name) === normalize(itemValidation.merchant.name) &&
+      normalize(item.merchant.name) ===
+        normalize(itemValidation.merchant.name) &&
       item.purchase.amount === itemValidation.purchase.amount &&
       item.completionState === "planned",
   );
@@ -198,14 +210,22 @@ export function markPlanItemComplete(
   if (!plan) return notFound();
   const item = plan.items.find((candidate) => candidate.itemId === itemId);
   if (!item) {
-    return { status: 404, code: "PLAN_NOT_FOUND", message: "plan item not found" };
+    return {
+      status: 404,
+      code: "PLAN_NOT_FOUND",
+      message: "plan item not found",
+    };
   }
   item.completionState = "completed";
   item.completedAt = new Date().toISOString();
-  item.completedDecisionId = cleanString(body?.decisionId) || item.completedDecisionId;
+  item.completedDecisionId =
+    cleanString(body?.decisionId) || item.completedDecisionId;
   item.updatedAt = item.completedAt;
   plan.updatedAt = item.updatedAt;
-  if (plan.items.length && plan.items.every((candidate) => candidate.completionState === "completed")) {
+  if (
+    plan.items.length &&
+    plan.items.every((candidate) => candidate.completionState === "completed")
+  ) {
     plan.status = "completed";
   }
   return { ...item };
@@ -219,7 +239,8 @@ export async function optimizeShoppingPlan(
   if (!plan) return notFound();
   const validation = validateOptimizeRequest(body);
   if ("status" in validation) return validation;
-  if (!plan.items.length) return invalid("plan must include at least one item before optimization");
+  if (!plan.items.length)
+    return invalid("plan must include at least one item before optimization");
 
   try {
     const optimizedItems: PlanOptimizedItem[] = [];
@@ -246,7 +267,10 @@ export async function optimizeShoppingPlan(
         merchant: item.merchant,
         purchase: item.purchase,
         completionState: item.completionState,
-        decision: toPlanningPaymentDecisionResponse(decision, fallbackDecisionId),
+        decision: toPlanningPaymentDecisionResponse(
+          decision,
+          fallbackDecisionId,
+        ),
       });
     }
 
@@ -333,7 +357,9 @@ export function toPlanningPaymentDecisionResponse(
         }
       : null,
     reason,
-    estimatedValue: Number.isFinite(Number(estimatedValue)) ? Number(estimatedValue) : null,
+    estimatedValue: Number.isFinite(Number(estimatedValue))
+      ? Number(estimatedValue)
+      : null,
     currency: "USD",
     confidence: clampConfidence(confidence),
     explanation: {
@@ -343,7 +369,10 @@ export function toPlanningPaymentDecisionResponse(
         narrative?.comparison,
         decision.primaryReason?.detail,
       ]
-        .filter((value): value is string => typeof value === "string" && Boolean(value.trim()))
+        .filter(
+          (value): value is string =>
+            typeof value === "string" && Boolean(value.trim()),
+        )
         .slice(0, 4),
     },
   };
@@ -359,14 +388,23 @@ function validatePlanItem(body: any):
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     return invalid("request body must be an object");
   }
-  if (!body.merchant || typeof body.merchant !== "object" || Array.isArray(body.merchant)) {
+  if (
+    !body.merchant ||
+    typeof body.merchant !== "object" ||
+    Array.isArray(body.merchant)
+  ) {
     return invalid("merchant is required");
   }
   const merchantName = cleanString(body.merchant.name);
   if (!merchantName) return invalid("merchant.name is required");
-  if (merchantName.length > 160) return invalid("merchant.name must be 160 characters or fewer");
+  if (merchantName.length > 160)
+    return invalid("merchant.name must be 160 characters or fewer");
 
-  if (!body.purchase || typeof body.purchase !== "object" || Array.isArray(body.purchase)) {
+  if (
+    !body.purchase ||
+    typeof body.purchase !== "object" ||
+    Array.isArray(body.purchase)
+  ) {
     return invalid("purchase is required");
   }
   const amount = Number(body.purchase.amount);
@@ -376,7 +414,8 @@ function validatePlanItem(body: any):
   const currency = cleanString(body.purchase.currency).toUpperCase();
   if (currency !== "USD") return invalid("purchase.currency must be USD");
   const notes = cleanString(body.notes);
-  if (notes.length > 500) return invalid("notes must be 500 characters or fewer");
+  if (notes.length > 500)
+    return invalid("notes must be 500 characters or fewer");
 
   return {
     merchant: {
@@ -389,11 +428,17 @@ function validatePlanItem(body: any):
   };
 }
 
-function validateOptimizeRequest(body: any): PlanOptimizationRequest | PlanningError {
+function validateOptimizeRequest(
+  body: any,
+): PlanOptimizationRequest | PlanningError {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     return invalid("request body must be an object");
   }
-  if (!body.wallet || typeof body.wallet !== "object" || Array.isArray(body.wallet)) {
+  if (
+    !body.wallet ||
+    typeof body.wallet !== "object" ||
+    Array.isArray(body.wallet)
+  ) {
     return invalid("wallet is required");
   }
   if (!Array.isArray(body.wallet.cards)) {
@@ -402,39 +447,53 @@ function validateOptimizeRequest(body: any): PlanOptimizationRequest | PlanningE
   if (body.wallet.cards.length > 30) {
     return invalid("wallet.cards supports at most 30 cards");
   }
-  const cards: Array<{ cardId: string; error: string }> = body.wallet.cards.map((card: any, index: number) => {
-    if (!card || typeof card !== "object" || Array.isArray(card)) {
-      return { cardId: "", error: `wallet.cards[${index}] must be an object` };
-    }
-    return {
-      cardId: normalizeCardId(card.cardId),
-      error: "",
-    };
-  });
+  const cards: Array<{ cardId: string; error: string }> = body.wallet.cards.map(
+    (card: any, index: number) => {
+      if (!card || typeof card !== "object" || Array.isArray(card)) {
+        return {
+          cardId: "",
+          error: `wallet.cards[${index}] must be an object`,
+        };
+      }
+      return {
+        cardId: normalizeCardId(card.cardId),
+        error: "",
+      };
+    },
+  );
   const objectError = cards.find((card) => card.error);
   if (objectError) return invalid(objectError.error);
   const invalidIndex = cards.findIndex((card) => !card.cardId);
-  if (invalidIndex >= 0) return invalid(`wallet.cards[${invalidIndex}].cardId is required`);
+  if (invalidIndex >= 0)
+    return invalid(`wallet.cards[${invalidIndex}].cardId is required`);
   const unique = new Set(cards.map((card) => card.cardId));
-  if (unique.size !== cards.length) return invalid("wallet.cards contains duplicate cardId values");
+  if (unique.size !== cards.length)
+    return invalid("wallet.cards contains duplicate cardId values");
   return { wallet: { cards: cards.map((card) => ({ cardId: card.cardId })) } };
 }
 
 function sumKnownRewards(items: PlanOptimizedItem[]) {
   const values = items
     .map((item) => item.decision.estimatedValue)
-    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+    .filter(
+      (value): value is number =>
+        typeof value === "number" && Number.isFinite(value),
+    );
   if (!values.length) return null;
   return Math.round(values.reduce((sum, value) => sum + value, 0) * 100) / 100;
 }
 
 function opportunitySummary(items: PlanOptimizedItem[]) {
-  const recommended = items.filter((item) => item.decision.recommendedPaymentMethod);
+  const recommended = items.filter(
+    (item) => item.decision.recommendedPaymentMethod,
+  );
   if (!recommended.length) {
     return "Add cards to your wallet to optimize this plan.";
   }
   const cardNames = new Set(
-    recommended.map((item) => item.decision.recommendedPaymentMethod?.displayName),
+    recommended.map(
+      (item) => item.decision.recommendedPaymentMethod?.displayName,
+    ),
   );
   if (cardNames.size === 1) {
     return `Rewardly found one card that works best across this plan.`;
@@ -463,7 +522,8 @@ function cleanString(value: unknown) {
 
 function firstNonEmptyString(values: unknown[]) {
   return values.find(
-    (value): value is string => typeof value === "string" && Boolean(value.trim()),
+    (value): value is string =>
+      typeof value === "string" && Boolean(value.trim()),
   );
 }
 
@@ -485,7 +545,10 @@ function normalize(value: string) {
 }
 
 function normalizeCardId(value: unknown) {
-  return cleanString(value).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+  return cleanString(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
 }
 
 function createPlanId() {

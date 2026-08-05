@@ -3,18 +3,19 @@ import type { AuthSession } from "@/types/auth";
 import type { FavoriteMerchant } from "@/types/location";
 import type {
   CatalogCard,
+  DecisionTrustRecord,
   MerchantInsight,
   MerchantKnowledgeProfile,
   MerchantSearchResult,
   PaymentDecisionRequest,
-  PaymentDecisionResponse
+  PaymentDecisionResponse,
 } from "@/types/rewardly";
 import type {
   AddPlanItemInput,
   CreatePlanInput,
   PlanOptimization,
   ShoppingPlan,
-  ShoppingPlanItem
+  ShoppingPlanItem,
 } from "@/types/planning";
 import type { FinancialIntentResponse, FinancialIntentType } from "@/types/financialIntent";
 
@@ -57,7 +58,7 @@ export async function deleteAccount() {
 
 export async function fetchCloudWallet() {
   const response = await rewardlyApi.get<{ wallet: { cardSlugs: string[] } }>(
-    "/api/v1/me/wallet"
+    "/api/v1/me/wallet",
   );
   return response.data.wallet;
 }
@@ -65,14 +66,14 @@ export async function fetchCloudWallet() {
 export async function updateCloudWallet(cardSlugs: string[]) {
   const response = await rewardlyApi.put<{ wallet: { cardSlugs: string[] } }>(
     "/api/v1/me/wallet",
-    { cardSlugs }
+    { cardSlugs },
   );
   return response.data.wallet;
 }
 
 export async function fetchCloudPaymentJourney() {
   const response = await rewardlyApi.get<{ payments: unknown[] }>(
-    "/api/v1/me/payment-journey"
+    "/api/v1/me/payment-journey",
   );
   return response.data.payments;
 }
@@ -80,14 +81,14 @@ export async function fetchCloudPaymentJourney() {
 export async function createCloudPaymentJourney(input: unknown) {
   const response = await rewardlyApi.post<{ payment: unknown }>(
     "/api/v1/me/payment-journey",
-    input
+    input,
   );
   return response.data.payment;
 }
 
 export async function fetchCloudPreferences() {
   const response = await rewardlyApi.get<{ preferences: CloudPreferences }>(
-    "/api/v1/me/preferences"
+    "/api/v1/me/preferences",
   );
   return response.data.preferences;
 }
@@ -95,7 +96,7 @@ export async function fetchCloudPreferences() {
 export async function updateCloudPreferences(input: Partial<CloudPreferences>) {
   const response = await rewardlyApi.put<{ preferences: CloudPreferences }>(
     "/api/v1/me/preferences",
-    input
+    input,
   );
   return response.data.preferences;
 }
@@ -120,14 +121,14 @@ export async function searchMerchants(params?: {
 }) {
   const response = await rewardlyApi.get<{ merchants: MerchantSearchResult[] }>(
     "/api/v1/merchant-search",
-    { params }
+    { params },
   );
   return response.data.merchants;
 }
 
 export async function fetchMerchantProfile(merchantId: string) {
   const response = await rewardlyApi.get<{ merchant: MerchantKnowledgeProfile }>(
-    `/api/v1/merchants/${merchantId}`
+    `/api/v1/merchants/${merchantId}`,
   );
   return response.data.merchant;
 }
@@ -135,7 +136,7 @@ export async function fetchMerchantProfile(merchantId: string) {
 export async function fetchMerchantInsight(merchantId: string) {
   const response = await rewardlyApi.get<{ insight: MerchantInsight }>(
     "/api/v1/merchant-insights",
-    { params: { merchantId } }
+    { params: { merchantId } },
   );
   return response.data.insight;
 }
@@ -148,10 +149,17 @@ export async function createPaymentDecision(request: PaymentDecisionRequest) {
   return response.data;
 }
 
+export async function fetchDecisionTrust(decisionId: string) {
+  const response = await rewardlyApi.get<{ trust: DecisionTrustRecord }>(
+    `/api/v1/decisions/${decisionId}/trust`,
+  );
+  return response.data.trust;
+}
+
 export async function createFinancialIntent<T = unknown>({
   type,
   payload,
-  requestId
+  requestId,
 }: {
   type: FinancialIntentType;
   payload?: unknown;
@@ -160,7 +168,7 @@ export async function createFinancialIntent<T = unknown>({
   const response = await rewardlyApi.post<FinancialIntentResponse<T>>("/api/v1/intents", {
     type,
     payload,
-    requestId
+    requestId,
   });
   return response.data;
 }
@@ -168,7 +176,7 @@ export async function createFinancialIntent<T = unknown>({
 export async function createPaymentDecisionIntent(request: PaymentDecisionRequest) {
   const response = await createFinancialIntent<PaymentDecisionResponse>({
     type: "SMART_PAY",
-    payload: request
+    payload: request,
   });
   return response.result;
 }
@@ -185,20 +193,23 @@ export async function fetchPlans() {
 
 export async function fetchPlan(planId: string) {
   const response = await rewardlyApi.get<{ plan: ShoppingPlan }>(
-    `/api/v1/me/plans/${planId}`
+    `/api/v1/me/plans/${planId}`,
   );
   return response.data.plan;
 }
 
 export async function createPlan(input: CreatePlanInput) {
-  const response = await rewardlyApi.post<{ plan: ShoppingPlan }>("/api/v1/me/plans", input);
+  const response = await rewardlyApi.post<{ plan: ShoppingPlan }>(
+    "/api/v1/me/plans",
+    input,
+  );
   return response.data.plan;
 }
 
 export async function addPlanItem(planId: string, input: AddPlanItemInput) {
   const response = await rewardlyApi.post<{ item: ShoppingPlanItem }>(
     `/api/v1/me/plans/${planId}/items`,
-    input
+    input,
   );
   return response.data.item;
 }
@@ -206,23 +217,23 @@ export async function addPlanItem(planId: string, input: AddPlanItemInput) {
 export async function markPlanItemComplete(
   planId: string,
   itemId: string,
-  decisionId?: string
+  decisionId?: string,
 ) {
   const response = await rewardlyApi.post<{ item: ShoppingPlanItem }>(
     `/api/v1/me/plans/${planId}/complete-item`,
-    { itemId, decisionId }
+    { itemId, decisionId },
   );
   return response.data.item;
 }
 
 export async function optimizePlan(
   planId: string,
-  wallet: { cards: Array<{ cardId: string }> }
+  wallet: { cards: Array<{ cardId: string }> },
 ) {
   void wallet;
   const response = await rewardlyApi.post<PlanOptimization>(
     `/api/v1/me/plans/${planId}/optimize`,
-    {}
+    {},
   );
   return response.data;
 }

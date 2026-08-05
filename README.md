@@ -38,6 +38,24 @@ Rewardly is not a dashboard. It is a real-time payment decision platform. The
 backend remains the source of truth for recommendation logic; mobile, web, and
 extension clients consume the API.
 
+## Trust infrastructure
+
+Every V1 payment decision can now return a `trust` reference for canonical
+explanation, evidence, alternatives, confidence, assumptions, and replay.
+
+See:
+
+- `docs/TRUST_INFRASTRUCTURE_OVERVIEW.md`
+- `docs/TRUST_API_REFERENCE.md`
+- `docs/DECISION_EVIDENCE_CONTRACT.md`
+- `docs/DECISION_EXPLANATION_CONTRACT.md`
+
+Run the EPIC-014 verifier:
+
+```bash
+npm run verify:epic-014
+```
+
 ## Extension checkout demo
 
 Use this flow to demo the Amex Platinum Lululemon benefit at checkout:

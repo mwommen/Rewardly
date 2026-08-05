@@ -25,6 +25,7 @@ import v1FinancialIntentRoutes from "./routes/v1/financialIntentRoutes";
 import v1MerchantKnowledgeRoutes from "./routes/v1/merchantKnowledgeRoutes";
 import v1AuthRoutes from "./routes/v1/authRoutes";
 import v1MeRoutes from "./routes/v1/meRoutes";
+import v1DecisionTrustRoutes from "./routes/v1/decisionTrustRoutes";
 
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -49,7 +50,12 @@ app.use(
     credentials: true,
   }),
 );
-app.use(express.json({ limit: "256kb", type: ["application/json", "application/*+json"] }));
+app.use(
+  express.json({
+    limit: "256kb",
+    type: ["application/json", "application/*+json"],
+  }),
+);
 app.use(jsonErrorHandler);
 app.use(securityHeaders);
 app.use(rateLimit);
@@ -95,7 +101,8 @@ app.get("/api/_env", (_req, res) => {
   if (isProduction) {
     return res.status(404).json({ error: "Not found" });
   }
-  const mask = (value?: string) => (value ? `${value.slice(0, 4)}***` : "MISSING");
+  const mask = (value?: string) =>
+    value ? `${value.slice(0, 4)}***` : "MISSING";
   res.json({
     PLAID_ENV: process.env.PLAID_ENV || "MISSING",
     PLAID_CLIENT_ID: mask(process.env.PLAID_CLIENT_ID),
@@ -111,6 +118,7 @@ app.use("/api/v1", v1FinancialIntentRoutes);
 app.use("/api/v1", v1MerchantKnowledgeRoutes);
 app.use("/api/v1", v1AuthRoutes);
 app.use("/api/v1", v1MeRoutes);
+app.use("/api/v1", v1DecisionTrustRoutes);
 app.use("/api/cards", cardRoutes);
 app.use("/api/plaid", plaidRoutes);
 if (!isProduction || process.env.REWARDLY_ENABLE_PLAID_SANDBOX === "true") {
@@ -168,7 +176,10 @@ function securityHeaders(
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("Referrer-Policy", "no-referrer");
-  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  res.setHeader(
+    "Permissions-Policy",
+    "camera=(), microphone=(), geolocation=()",
+  );
   next();
 }
 
@@ -250,19 +261,23 @@ function jsonErrorHandler(
   const message = isPayloadTooLarge
     ? "Request body exceeds the supported size."
     : "Request body must be valid JSON.";
-  return res.status(status).json(
-    req.path.startsWith("/api/v1")
-      ? { error: { code, message } }
-      : { error: message },
-  );
+  return res
+    .status(status)
+    .json(
+      req.path.startsWith("/api/v1")
+        ? { error: { code, message } }
+        : { error: message },
+    );
 }
 
 function notFoundHandler(req: express.Request, res: express.Response) {
-  res.status(404).json(
-    req.path.startsWith("/api/v1")
-      ? { error: { code: "NOT_FOUND", message: "Route not found." } }
-      : { error: "Not found" },
-  );
+  res
+    .status(404)
+    .json(
+      req.path.startsWith("/api/v1")
+        ? { error: { code: "NOT_FOUND", message: "Route not found." } }
+        : { error: "Not found" },
+    );
 }
 
 function unhandledErrorHandler(

@@ -64,9 +64,31 @@ Response:
       "Earn 2x Venture Miles on this Amazon purchase.",
       "2x miles on every purchase"
     ]
+  },
+  "trust": {
+    "trustRecordId": "trst_...",
+    "status": "complete",
+    "evidenceUrl": "/api/v1/decisions/pdec_.../evidence",
+    "trustUrl": "/api/v1/decisions/pdec_.../trust",
+    "replayable": true
   }
 }
 ```
+
+## Trust APIs
+
+```http
+GET /api/v1/decisions/{decisionId}
+GET /api/v1/decisions/{decisionId}/explanation
+GET /api/v1/decisions/{decisionId}/evidence
+GET /api/v1/decisions/{decisionId}/alternatives
+GET /api/v1/decisions/{decisionId}/trust
+POST /api/v1/decisions/{decisionId}/replay
+```
+
+These endpoints expose canonical explanation, evidence, alternatives,
+confidence, assumptions, versioning, independence metadata, and replay status.
+See `docs/TRUST_API_REFERENCE.md`.
 
 ## Validation Rules
 

@@ -119,6 +119,7 @@ The app calls:
 - `POST /api/v1/me/migration/import`
 - `POST /api/v1/intents`
 - `POST /api/v1/payment-decisions`
+- `GET /api/v1/decisions/:decisionId/trust`
 - `POST /api/v1/me/plans`
 - `GET /api/v1/me/plans`
 - `POST /api/v1/me/plans/:planId/items`
@@ -127,6 +128,11 @@ The app calls:
 
 All recommendation scoring, benefit logic, wallet-first validation, merchant
 intelligence, and explanation generation remain on the Rewardly API.
+
+Recommendation detail screens consume canonical Trust Infrastructure outputs
+when available. The mobile app renders explanation, evidence, alternatives,
+warnings, confidence, and decision reference data from the platform; it does not
+reconstruct recommendation reasoning locally.
 
 Smart Pay now submits a `SMART_PAY` financial intent through
 `POST /api/v1/intents` and unwraps the same payment decision response shape.

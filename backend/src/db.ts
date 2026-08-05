@@ -5,8 +5,12 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const uri = process.env.MONGO_URI || "mongodb://localhost:27017";
-const mongoServerSelectionTimeoutMS = Number(process.env.MONGO_SERVER_SELECTION_TIMEOUT_MS || 5000);
-const mongoConnectTimeoutMS = Number(process.env.MONGO_CONNECT_TIMEOUT_MS || 5000);
+const mongoServerSelectionTimeoutMS = Number(
+  process.env.MONGO_SERVER_SELECTION_TIMEOUT_MS || 5000,
+);
+const mongoConnectTimeoutMS = Number(
+  process.env.MONGO_CONNECT_TIMEOUT_MS || 5000,
+);
 let client: MongoClient | null = null;
 let cachedDb: Db | null = null;
 
@@ -43,12 +47,16 @@ export async function getCardsCollection(): Promise<Collection<Card>> {
   return db.collection<Card>("cards");
 }
 
-export async function getLinkedAccountsCollection(): Promise<Collection<LinkedAccount>> {
+export async function getLinkedAccountsCollection(): Promise<
+  Collection<LinkedAccount>
+> {
   const db = await connectDB();
   return db.collection<LinkedAccount>("linkedAccounts");
 }
 
-export async function getUserBenefitStatesCollection(): Promise<Collection<UserBenefitState>> {
+export async function getUserBenefitStatesCollection(): Promise<
+  Collection<UserBenefitState>
+> {
   const db = await connectDB();
   return db.collection<UserBenefitState>("userBenefitStates");
 }
@@ -68,44 +76,74 @@ export async function getBetaUsersCollection(): Promise<Collection<BetaUser>> {
   return db.collection<BetaUser>("betaUsers");
 }
 
-export async function getBetaWalletsCollection(): Promise<Collection<BetaWallet>> {
+export async function getBetaWalletsCollection(): Promise<
+  Collection<BetaWallet>
+> {
   const db = await connectDB();
   return db.collection<BetaWallet>("betaWallets");
 }
 
-export async function getBetaExtensionConnectionsCollection(): Promise<Collection<BetaExtensionConnection>> {
+export async function getBetaExtensionConnectionsCollection(): Promise<
+  Collection<BetaExtensionConnection>
+> {
   const db = await connectDB();
   return db.collection<BetaExtensionConnection>("betaExtensionConnections");
 }
 
-export async function getRewardlyUsersCollection(): Promise<Collection<RewardlyUser>> {
+export async function getRewardlyUsersCollection(): Promise<
+  Collection<RewardlyUser>
+> {
   const db = await connectDB();
   return db.collection<RewardlyUser>("rewardlyUsers");
 }
 
-export async function getRewardlySessionsCollection(): Promise<Collection<RewardlySession>> {
+export async function getRewardlySessionsCollection(): Promise<
+  Collection<RewardlySession>
+> {
   const db = await connectDB();
   return db.collection<RewardlySession>("rewardlySessions");
 }
 
-export async function getUserWalletsCollection(): Promise<Collection<UserWallet>> {
+export async function getUserWalletsCollection(): Promise<
+  Collection<UserWallet>
+> {
   const db = await connectDB();
   return db.collection<UserWallet>("userWallets");
 }
 
-export async function getPaymentJourneyCollection(): Promise<Collection<PaymentJourneyRecord>> {
+export async function getPaymentJourneyCollection(): Promise<
+  Collection<PaymentJourneyRecord>
+> {
   const db = await connectDB();
   return db.collection<PaymentJourneyRecord>("paymentJourney");
 }
 
-export async function getUserShoppingPlansCollection(): Promise<Collection<UserShoppingPlanRecord>> {
+export async function getUserShoppingPlansCollection(): Promise<
+  Collection<UserShoppingPlanRecord>
+> {
   const db = await connectDB();
   return db.collection<UserShoppingPlanRecord>("userShoppingPlans");
 }
 
-export async function getUserPreferencesCollection(): Promise<Collection<UserPreferencesRecord>> {
+export async function getUserPreferencesCollection(): Promise<
+  Collection<UserPreferencesRecord>
+> {
   const db = await connectDB();
   return db.collection<UserPreferencesRecord>("userPreferences");
+}
+
+export async function getDecisionTrustRecordsCollection(): Promise<
+  Collection<DecisionTrustRecordDocument>
+> {
+  const db = await connectDB();
+  return db.collection<DecisionTrustRecordDocument>("decisionTrustRecords");
+}
+
+export async function getDecisionInputSnapshotsCollection(): Promise<
+  Collection<DecisionInputSnapshotDocument>
+> {
+  const db = await connectDB();
+  return db.collection<DecisionInputSnapshotDocument>("decisionInputSnapshots");
 }
 
 /**
@@ -299,7 +337,12 @@ export interface UserShoppingPlanRecord {
 
 export interface UserPreferencesRecord {
   userId: string;
-  favoriteMerchants: Array<{ name: string; category?: string; domain?: string; merchantId?: string }>;
+  favoriteMerchants: Array<{
+    name: string;
+    category?: string;
+    domain?: string;
+    merchantId?: string;
+  }>;
   theme?: "system" | "light" | "dark";
   defaultCurrency: "USD";
   onboardingCompleted: boolean;
@@ -309,4 +352,29 @@ export interface UserPreferencesRecord {
   schemaVersion: number;
   syncRevision: number;
   deletedAt?: Date | null;
+}
+
+export interface DecisionTrustRecordDocument {
+  trustRecordId: string;
+  decisionId: string;
+  ownerUserId: string | null;
+  tenantId: string | null;
+  trustRecord: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+  schemaVersion: number;
+}
+
+export interface DecisionInputSnapshotDocument {
+  inputSnapshotId: string;
+  decisionId: string;
+  ownerUserId: string | null;
+  tenantId: string | null;
+  snapshot: unknown;
+  retainedFields: Array<{
+    field: string;
+    reason: string;
+  }>;
+  createdAt: Date;
+  schemaVersion: number;
 }

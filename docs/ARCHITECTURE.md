@@ -8,6 +8,7 @@ web, and browser-extension clients.
 The backend owns:
 
 - Payment decisions
+- Trust records, evidence, explanations, confidence, and replay
 - Benefit registry
 - Wallet intelligence
 - Merchant intelligence
@@ -22,6 +23,8 @@ Clients own:
 - Calling the API
 
 Clients do not duplicate recommendation logic.
+Clients consume canonical trust artifacts instead of reconstructing decision
+reasoning from raw fields.
 
 ## Current Clients
 

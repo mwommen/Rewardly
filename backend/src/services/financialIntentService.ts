@@ -1,11 +1,18 @@
 import crypto from "crypto";
-import { decidePayment } from "./paymentDecisionService";
+import {
+  decidePayment,
+  type PaymentDecisionRequest,
+} from "./paymentDecisionService";
 import {
   markPlanItemComplete,
   optimizeShoppingPlan,
   type PlanningError,
   type PublicPaymentDecisionResponse,
 } from "./planningService";
+import {
+  createOrResolveTrustRecord,
+  trustReferenceFor,
+} from "./trustInfrastructureService";
 
 export type FinancialIntentType =
   | "SMART_PAY"
@@ -76,7 +83,11 @@ export async function executeFinancialIntent(
   const errors: FinancialIntentResponse["errors"] = [];
 
   try {
-    const routed = await routeIntent(validation.type, validation.payload, intentId);
+    const routed = await routeIntent(
+      validation.type,
+      validation.payload,
+      intentId,
+    );
     if ("status" in routed) {
       errors.push({ code: routed.code, message: routed.message });
       const errorResponse = buildResponse({
@@ -162,7 +173,7 @@ async function routeIntent(
     const request = validateSmartPayPayload(payload);
     if ("status" in request) return { ...request, executedCapabilities: [] };
     const fallbackDecisionId = `pdec_${intentId.replace(/^fint_/, "")}`;
-    const decision = await decidePayment({
+    const normalizedDecisionRequest: PaymentDecisionRequest = {
       userId: fallbackDecisionId,
       merchant: request.merchant.name,
       hostname: request.merchant.domain,
@@ -178,10 +189,21 @@ async function routeIntent(
         checkoutDetected: true,
         checkoutStage: "payment",
       },
+    };
+    const decision = await decidePayment(normalizedDecisionRequest);
+    const trustRecord = await createOrResolveTrustRecord({
+      decisionId: fallbackDecisionId,
+      decision,
+      normalizedRequest: normalizedDecisionRequest,
+      ownerUserId: null,
+      tenantId: null,
     });
     return {
-      executedCapabilities: ["PaymentDecisionService"],
-      result: toPublicPaymentDecisionResponse(decision, fallbackDecisionId),
+      executedCapabilities: ["PaymentDecisionService", "TrustInfrastructure"],
+      result: {
+        ...toPublicPaymentDecisionResponse(decision, fallbackDecisionId),
+        trust: trustReferenceFor(trustRecord),
+      },
     };
   }
 
@@ -265,11 +287,16 @@ function validateFinancialIntent(body: any):
   ];
   if (!type) return invalidIntent("type is required");
   if (!allowed.includes(type)) {
-    return { status: 400, code: "UNKNOWN_INTENT", message: "unsupported intent type" };
+    return {
+      status: 400,
+      code: "UNKNOWN_INTENT",
+      message: "unsupported intent type",
+    };
   }
   return {
     type,
-    payload: body.payload && typeof body.payload === "object" ? body.payload : {},
+    payload:
+      body.payload && typeof body.payload === "object" ? body.payload : {},
     requestId: cleanString(body.requestId) || createRequestId(),
   };
 }
@@ -293,19 +320,29 @@ function validateSmartPayPayload(payload: any):
     return invalidIntent("payload.purchase.amount must be greater than zero");
   }
   const currency = cleanString(payload?.purchase?.currency).toUpperCase();
-  if (currency !== "USD") return invalidIntent("payload.purchase.currency must be USD");
+  if (currency !== "USD")
+    return invalidIntent("payload.purchase.currency must be USD");
   if (!Array.isArray(payload?.wallet?.cards)) {
     return invalidIntent("payload.wallet.cards must be an array");
   }
   const cards = payload.wallet.cards.map((card: any) => ({
     cardId: normalizeCardId(card?.cardId),
   }));
-  const invalidIndex = cards.findIndex((card: { cardId: string }) => !card.cardId);
+  const invalidIndex = cards.findIndex(
+    (card: { cardId: string }) => !card.cardId,
+  );
   if (invalidIndex >= 0) {
-    return invalidIntent(`payload.wallet.cards[${invalidIndex}].cardId is required`);
+    return invalidIntent(
+      `payload.wallet.cards[${invalidIndex}].cardId is required`,
+    );
   }
-  if (new Set(cards.map((card: { cardId: string }) => card.cardId)).size !== cards.length) {
-    return invalidIntent("payload.wallet.cards contains duplicate cardId values");
+  if (
+    new Set(cards.map((card: { cardId: string }) => card.cardId)).size !==
+    cards.length
+  ) {
+    return invalidIntent(
+      "payload.wallet.cards contains duplicate cardId values",
+    );
   }
   return {
     merchant: {
@@ -415,7 +452,9 @@ function toPublicPaymentDecisionResponse(
         }
       : null,
     reason,
-    estimatedValue: Number.isFinite(Number(estimatedValue)) ? Number(estimatedValue) : null,
+    estimatedValue: Number.isFinite(Number(estimatedValue))
+      ? Number(estimatedValue)
+      : null,
     currency: "USD",
     confidence: clampConfidence(confidence),
     explanation: {
@@ -428,7 +467,10 @@ function toPublicPaymentDecisionResponse(
         narrative?.comparison,
         decision.primaryReason?.detail,
       ]
-        .filter((value): value is string => typeof value === "string" && Boolean(value.trim()))
+        .filter(
+          (value): value is string =>
+            typeof value === "string" && Boolean(value.trim()),
+        )
         .slice(0, 4),
     },
   };
@@ -453,7 +495,8 @@ function capabilityForReadIntent(type: FinancialIntentType) {
 
 function firstNonEmptyString(values: unknown[]) {
   return values.find(
-    (value): value is string => typeof value === "string" && Boolean(value.trim()),
+    (value): value is string =>
+      typeof value === "string" && Boolean(value.trim()),
   );
 }
 
@@ -462,7 +505,10 @@ function cleanString(value: unknown) {
 }
 
 function normalizeCardId(value: unknown) {
-  return cleanString(value).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+  return cleanString(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
 }
 
 function clampConfidence(value: unknown) {

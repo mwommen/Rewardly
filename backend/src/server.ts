@@ -4,6 +4,7 @@ import app from "./app";
 import { connectDB } from "./db";
 import { validateRuntimeEnvironment } from "./config/environment";
 import { ensureBetaIndexes } from "./services/betaAuthService";
+import { ensureTrustInfrastructureIndexes } from "./services/trustInfrastructureService";
 
 const runtime = validateRuntimeEnvironment();
 let server: http.Server | null = null;
@@ -11,10 +12,13 @@ let server: http.Server | null = null;
 (async () => {
   try {
     if (runtime.sandboxMode) {
-      console.log("Rewardly sandbox mode enabled; skipping external database startup.");
+      console.log(
+        "Rewardly sandbox mode enabled; skipping external database startup.",
+      );
     } else {
       await connectDB();
       await ensureBetaIndexes();
+      await ensureTrustInfrastructureIndexes();
       console.log("Connected to MongoDB successfully");
     }
 

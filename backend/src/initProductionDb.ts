@@ -9,27 +9,24 @@ import {
 } from "./db";
 import { ensureBetaIndexes } from "./services/betaAuthService";
 import { ensureProductionAuthIndexes } from "./services/productionAuthService";
+import { ensureTrustInfrastructureIndexes } from "./services/trustInfrastructureService";
 import { ensureUserDataIndexes } from "./services/userDataService";
 
 async function main() {
   await connectDB();
   await ensureBetaIndexes();
   await ensureProductionAuthIndexes();
+  await ensureTrustInfrastructureIndexes();
   await ensureUserDataIndexes();
 
-  const [
-    cards,
-    linkedAccounts,
-    benefitStates,
-    analytics,
-    feedback,
-  ] = await Promise.all([
-    getCardsCollection(),
-    getLinkedAccountsCollection(),
-    getUserBenefitStatesCollection(),
-    getAnalyticsCollection(),
-    getFeedbackCollection(),
-  ]);
+  const [cards, linkedAccounts, benefitStates, analytics, feedback] =
+    await Promise.all([
+      getCardsCollection(),
+      getLinkedAccountsCollection(),
+      getUserBenefitStatesCollection(),
+      getAnalyticsCollection(),
+      getFeedbackCollection(),
+    ]);
 
   await Promise.all([
     cards.createIndex({ slug: 1 }, { unique: true, sparse: true }),

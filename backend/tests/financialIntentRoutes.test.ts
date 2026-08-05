@@ -16,7 +16,12 @@ const mockedDecidePayment = decidePayment as jest.MockedFunction<
   typeof decidePayment
 >;
 
-async function invokeRoute(router: any, method: string, url: string, body?: any) {
+async function invokeRoute(
+  router: any,
+  method: string,
+  url: string,
+  body?: any,
+) {
   const parsed = new URL(`http://localhost${url}`);
   const req: any = {
     method,
@@ -49,8 +54,14 @@ async function invokeRoute(router: any, method: string, url: string, body?: any)
   return res;
 }
 
-function mockDecision(cardName = "Capital One Venture Rewards", estimatedValue = 2.86) {
-  const slug = cardName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+function mockDecision(
+  cardName = "Capital One Venture Rewards",
+  estimatedValue = 2.86,
+) {
+  const slug = cardName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
   return {
     recommendedCard: {
       card: { slug, name: cardName, issuer: "Capital One" },
@@ -59,7 +70,8 @@ function mockDecision(cardName = "Capital One Venture Rewards", estimatedValue =
     confidence: { score: 0.94, label: "high" },
     recommendationSummary: `${cardName} has the highest verified value.`,
     primaryReason: {
-      detail: "Highest verified earning rate among the eligible cards in your wallet.",
+      detail:
+        "Highest verified earning rate among the eligible cards in your wallet.",
     },
     decisionNarrative: {
       summary: `${cardName} is best for this purchase.`,
@@ -67,7 +79,8 @@ function mockDecision(cardName = "Capital One Venture Rewards", estimatedValue =
       estimatedReward: `About $${estimatedValue.toFixed(2)} in estimated value.`,
       comparison: "Highest verified value among wallet cards.",
       primaryReason: {
-        summary: "Highest verified earning rate among the eligible cards in your wallet.",
+        summary:
+          "Highest verified earning rate among the eligible cards in your wallet.",
       },
       supportingReasons: [
         { summary: "Earns 2x Venture Miles on eligible purchases." },
@@ -102,7 +115,7 @@ describe("financialIntentRoutes", () => {
         intentId: expect.stringMatching(/^fint_/),
         requestId: "mobile-smart-pay-1",
         intentType: "SMART_PAY",
-        executedCapabilities: ["PaymentDecisionService"],
+        executedCapabilities: ["PaymentDecisionService", "TrustInfrastructure"],
         errors: [],
         metadata: expect.objectContaining({ success: true }),
       }),
@@ -158,7 +171,9 @@ describe("financialIntentRoutes", () => {
     expect(unknown.statusCode).toBe(400);
     expect(unknown.body.error.code).toBe("UNKNOWN_INTENT");
     expect(invalid.statusCode).toBe(400);
-    expect(invalid.body.error.message).toBe("payload.merchant.name is required");
+    expect(invalid.body.error.message).toBe(
+      "payload.merchant.name is required",
+    );
   });
 
   test("routes PLAN_PURCHASES intent to PlanningEngine and PaymentDecisionService", async () => {
@@ -167,7 +182,9 @@ describe("financialIntentRoutes", () => {
       merchant: { name: "Target" },
       purchase: { amount: 84.22, currency: "USD" },
     });
-    mockedDecidePayment.mockResolvedValueOnce(mockDecision("Capital One Venture Rewards", 1.68));
+    mockedDecidePayment.mockResolvedValueOnce(
+      mockDecision("Capital One Venture Rewards", 1.68),
+    );
 
     const res = await invokeRoute(intentRouter, "POST", "/intents", {
       type: "PLAN_PURCHASES",
@@ -202,7 +219,10 @@ describe("financialIntentRoutes", () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(res.body.executedCapabilities).toEqual(["PlanningEngine", "PaymentJourney"]);
+    expect(res.body.executedCapabilities).toEqual([
+      "PlanningEngine",
+      "PaymentJourney",
+    ]);
     expect(res.body.result.item.completionState).toBe("completed");
     expect(res.body.warnings[0]).toMatch(/local Payment Journey/i);
   });
@@ -224,7 +244,7 @@ describe("financialIntentRoutes", () => {
     expect(events.body.events[0]).toEqual(
       expect.objectContaining({
         intentType: "SMART_PAY",
-        executedCapabilities: ["PaymentDecisionService"],
+        executedCapabilities: ["PaymentDecisionService", "TrustInfrastructure"],
         success: true,
       }),
     );
