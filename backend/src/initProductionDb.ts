@@ -8,6 +8,7 @@ import {
   connectDB,
 } from "./db";
 import { ensureBetaIndexes } from "./services/betaAuthService";
+import { ensurePartnerPlatformIndexes } from "./services/partnerPlatformService";
 import { ensureProductionAuthIndexes } from "./services/productionAuthService";
 import { ensureTrustInfrastructureIndexes } from "./services/trustInfrastructureService";
 import { ensureUserDataIndexes } from "./services/userDataService";
@@ -15,6 +16,7 @@ import { ensureUserDataIndexes } from "./services/userDataService";
 async function main() {
   await connectDB();
   await ensureBetaIndexes();
+  await ensurePartnerPlatformIndexes();
   await ensureProductionAuthIndexes();
   await ensureTrustInfrastructureIndexes();
   await ensureUserDataIndexes();

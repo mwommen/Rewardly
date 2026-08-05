@@ -90,6 +90,33 @@ These endpoints expose canonical explanation, evidence, alternatives,
 confidence, assumptions, versioning, independence metadata, and replay status.
 See `docs/TRUST_API_REFERENCE.md`.
 
+## Partner APIs
+
+Partner integrations use API keys scoped to an organization, project, and
+environment.
+
+```http
+POST /api/v1/partner/organizations
+POST /api/v1/partner/projects
+POST /api/v1/partner/api-keys
+POST /api/v1/partner/api-keys/{apiKeyId}/rotate
+POST /api/v1/partner/api-keys/{apiKeyId}/revoke
+POST /api/v1/partner/payment-decisions
+GET /api/v1/partner/usage
+```
+
+Partner payment decisions use the same request model as
+`/api/v1/payment-decisions`, but require:
+
+```http
+Authorization: Bearer rw_test_...
+```
+
+Management endpoints require `X-Rewardly-Admin-Token` when
+`REWARDLY_PARTNER_ADMIN_TOKEN` is configured. See
+`docs/PARTNER_PLATFORM.md`, `docs/API_KEYS.md`, and
+`docs/TENANT_ISOLATION.md`.
+
 ## Context APIs
 
 ```http

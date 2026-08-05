@@ -33,6 +33,11 @@ import {
   decisionTrustOpenApiSchemas,
 } from "./decisionTrustRoutes";
 import { contextOpenApiPaths, contextOpenApiSchemas } from "./contextRoutes";
+import {
+  partnerOpenApiPaths,
+  partnerOpenApiResponses,
+  partnerOpenApiSchemas,
+} from "./partnerRoutes";
 
 const router = Router();
 
@@ -45,7 +50,7 @@ type ValidationResult =
   | { ok: true; value: NormalizedV1PaymentDecisionRequest }
   | { ok: false; status: number; code: V1ErrorCode; message: string };
 
-type NormalizedV1PaymentDecisionRequest = {
+export type NormalizedV1PaymentDecisionRequest = {
   merchant: {
     name: string;
     category?: string;
@@ -574,6 +579,7 @@ export function openApiDocument() {
       ...merchantKnowledgeOpenApiPaths(),
       ...decisionTrustOpenApiPaths(),
       ...contextOpenApiPaths(),
+      ...partnerOpenApiPaths(),
     },
     components: {
       securitySchemes: {
@@ -582,12 +588,23 @@ export function openApiDocument() {
           scheme: "bearer",
           bearerFormat: "opaque Rewardly access token",
         },
+        partnerApiKey: {
+          type: "http",
+          scheme: "bearer",
+          bearerFormat: "Rewardly partner API key",
+        },
+        partnerAdminToken: {
+          type: "apiKey",
+          in: "header",
+          name: "X-Rewardly-Admin-Token",
+        },
       },
       responses: {
         ...planningOpenApiResponses(),
         ...financialIntentOpenApiResponses(),
         ...merchantKnowledgeOpenApiResponses(),
         ...decisionTrustOpenApiResponses(),
+        ...partnerOpenApiResponses(),
       },
       schemas: {
         PaymentDecisionRequest: {
@@ -760,6 +777,7 @@ export function openApiDocument() {
         ...merchantKnowledgeOpenApiSchemas(),
         ...decisionTrustOpenApiSchemas(),
         ...contextOpenApiSchemas(),
+        ...partnerOpenApiSchemas(),
       },
     },
   };
@@ -827,7 +845,7 @@ function explanationFactors(decision: PaymentDecision) {
     .slice(0, 4);
 }
 
-function createPublicDecisionId() {
+export function createPublicDecisionId() {
   return `pdec_${crypto.randomUUID()}`;
 }
 

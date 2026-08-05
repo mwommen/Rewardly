@@ -56,6 +56,27 @@ Run the EPIC-014 verifier:
 npm run verify:epic-014
 ```
 
+## Partner Platform
+
+EPIC-016 adds the B2B Partner Platform foundation: organizations, projects,
+scoped API keys, tenant-derived partner identity, partner usage logging,
+rate limits, and partner-scoped payment decisions.
+
+See:
+
+- `docs/PARTNER_PLATFORM.md`
+- `docs/ORGANIZATIONS.md`
+- `docs/API_KEYS.md`
+- `docs/TENANT_ISOLATION.md`
+- `docs/SANDBOX_MODE.md`
+- `docs/PUBLIC_API_GUIDE.md`
+
+Run the Partner Platform verifier:
+
+```bash
+npm run verify:epic-016
+```
+
 ## Extension checkout demo
 
 Use this flow to demo the Amex Platinum Lululemon benefit at checkout:

@@ -146,6 +146,34 @@ export async function getDecisionInputSnapshotsCollection(): Promise<
   return db.collection<DecisionInputSnapshotDocument>("decisionInputSnapshots");
 }
 
+export async function getPartnerOrganizationsCollection(): Promise<
+  Collection<PartnerOrganization>
+> {
+  const db = await connectDB();
+  return db.collection<PartnerOrganization>("partnerOrganizations");
+}
+
+export async function getPartnerProjectsCollection(): Promise<
+  Collection<PartnerProject>
+> {
+  const db = await connectDB();
+  return db.collection<PartnerProject>("partnerProjects");
+}
+
+export async function getPartnerApiKeysCollection(): Promise<
+  Collection<PartnerApiKey>
+> {
+  const db = await connectDB();
+  return db.collection<PartnerApiKey>("partnerApiKeys");
+}
+
+export async function getPartnerUsageCollection(): Promise<
+  Collection<PartnerUsageRecord>
+> {
+  const db = await connectDB();
+  return db.collection<PartnerUsageRecord>("partnerUsageRecords");
+}
+
 /**
  * Type Definitions
  */
@@ -378,6 +406,72 @@ export interface DecisionInputSnapshotDocument {
     field: string;
     reason: string;
   }>;
+  createdAt: Date;
+  schemaVersion: number;
+}
+
+export interface PartnerOrganization {
+  organizationId: string;
+  displayName: string;
+  status: "active" | "suspended" | "deleted";
+  metadata: Record<string, string | number | boolean | null>;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy?: string | null;
+  schemaVersion: number;
+}
+
+export interface PartnerProject {
+  projectId: string;
+  organizationId: string;
+  displayName: string;
+  environment: "live" | "test" | "sandbox" | "development";
+  status: "active" | "suspended" | "deleted";
+  configuration: Record<string, string | number | boolean | null>;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy?: string | null;
+  schemaVersion: number;
+}
+
+export interface PartnerApiKey {
+  apiKeyId: string;
+  organizationId: string;
+  projectId: string;
+  environment: PartnerProject["environment"];
+  keyPrefix: "rw_live" | "rw_test";
+  keyHash: string;
+  keyPreview: string;
+  scopes: string[];
+  status: "active" | "revoked" | "expired";
+  metadata: Record<string, string | number | boolean | null>;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy?: string | null;
+  expiresAt?: Date | null;
+  revokedAt?: Date | null;
+  lastUsedAt?: Date | null;
+  lastRotatedAt?: Date | null;
+  schemaVersion: number;
+}
+
+export interface PartnerUsageRecord {
+  usageRecordId: string;
+  organizationId: string;
+  projectId: string;
+  environment: PartnerProject["environment"];
+  apiKeyId: string;
+  requestId: string;
+  correlationId: string;
+  endpoint: string;
+  method: string;
+  statusCode: number;
+  requestCount: number;
+  decisionCount: number;
+  replayCount: number;
+  errorCount: number;
+  rateLimitViolationCount: number;
+  latencyMs: number;
   createdAt: Date;
   schemaVersion: number;
 }

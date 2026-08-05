@@ -8,7 +8,9 @@ jest.mock("../src/db", () => ({
   getFeedbackCollection: jest.fn(async () => ({ insertOne: jest.fn() })),
   getBetaUsersCollection: jest.fn(async () => ({ findOne: jest.fn() })),
   getBetaWalletsCollection: jest.fn(async () => ({ findOne: jest.fn() })),
-  getBetaExtensionConnectionsCollection: jest.fn(async () => ({ findOne: jest.fn() })),
+  getBetaExtensionConnectionsCollection: jest.fn(async () => ({
+    findOne: jest.fn(),
+  })),
 }));
 
 jest.mock("../src/services/paymentDecisionService", () => ({
@@ -65,10 +67,7 @@ describe("V1 payment decision API through Express app", () => {
       merchant: { name: "Amazon", category: "online_retail" },
       purchase: { amount: 142.83, currency: "USD" },
       wallet: {
-        cards: [
-          { cardId: "capital_one_venture" },
-          { cardId: "amex_gold" },
-        ],
+        cards: [{ cardId: "capital_one_venture" }, { cardId: "amex_gold" }],
       },
     });
 
@@ -86,7 +85,8 @@ describe("V1 payment decision API through Express app", () => {
         currency: "USD",
         confidence: 0.94,
         explanation: expect.objectContaining({
-          summary: "Capital One Venture Rewards has the highest verified value.",
+          summary:
+            "Capital One Venture Rewards has the highest verified value.",
           factors: expect.arrayContaining([
             "Earns 2x Venture Miles on eligible purchases.",
           ]),
@@ -116,8 +116,12 @@ describe("V1 payment decision API through Express app", () => {
     expect(first.body.decisionId).toMatch(/^pdec_/);
     expect(second.body.decisionId).toMatch(/^pdec_/);
     expect(first.body.decisionId).not.toBe(second.body.decisionId);
-    expect(mockedDecidePayment.mock.calls[0][0].userId).toBe(first.body.decisionId);
-    expect(mockedDecidePayment.mock.calls[1][0].userId).toBe(second.body.decisionId);
+    expect(mockedDecidePayment.mock.calls[0][0].userId).toBe(
+      first.body.decisionId,
+    );
+    expect(mockedDecidePayment.mock.calls[1][0].userId).toBe(
+      second.body.decisionId,
+    );
   });
 
   test("empty wallet is valid and remains wallet-restricted", async () => {
@@ -149,13 +153,63 @@ describe("V1 payment decision API through Express app", () => {
   });
 
   test.each([
-    ["missing merchant name", { merchant: {}, purchase: { amount: 10, currency: "USD" }, wallet: { cards: [] } }],
-    ["missing purchase amount", { merchant: { name: "Amazon" }, purchase: { currency: "USD" }, wallet: { cards: [] } }],
-    ["zero purchase amount", { merchant: { name: "Amazon" }, purchase: { amount: 0, currency: "USD" }, wallet: { cards: [] } }],
-    ["missing currency", { merchant: { name: "Amazon" }, purchase: { amount: 10 }, wallet: { cards: [] } }],
-    ["malformed wallet", { merchant: { name: "Amazon" }, purchase: { amount: 10, currency: "USD" }, wallet: [] }],
-    ["duplicate cards", { merchant: { name: "Amazon" }, purchase: { amount: 10, currency: "USD" }, wallet: { cards: [{ cardId: "amex_gold" }, { cardId: "amex-gold" }] } }],
-    ["unsupported preferences", { merchant: { name: "Amazon" }, purchase: { amount: 10, currency: "USD" }, wallet: { cards: [] }, preferences: { maximizeRewards: true } }],
+    [
+      "missing merchant name",
+      {
+        merchant: {},
+        purchase: { amount: 10, currency: "USD" },
+        wallet: { cards: [] },
+      },
+    ],
+    [
+      "missing purchase amount",
+      {
+        merchant: { name: "Amazon" },
+        purchase: { currency: "USD" },
+        wallet: { cards: [] },
+      },
+    ],
+    [
+      "zero purchase amount",
+      {
+        merchant: { name: "Amazon" },
+        purchase: { amount: 0, currency: "USD" },
+        wallet: { cards: [] },
+      },
+    ],
+    [
+      "missing currency",
+      {
+        merchant: { name: "Amazon" },
+        purchase: { amount: 10 },
+        wallet: { cards: [] },
+      },
+    ],
+    [
+      "malformed wallet",
+      {
+        merchant: { name: "Amazon" },
+        purchase: { amount: 10, currency: "USD" },
+        wallet: [],
+      },
+    ],
+    [
+      "duplicate cards",
+      {
+        merchant: { name: "Amazon" },
+        purchase: { amount: 10, currency: "USD" },
+        wallet: { cards: [{ cardId: "amex_gold" }, { cardId: "amex-gold" }] },
+      },
+    ],
+    [
+      "unsupported preferences",
+      {
+        merchant: { name: "Amazon" },
+        purchase: { amount: 10, currency: "USD" },
+        wallet: { cards: [] },
+        preferences: { maximizeRewards: true },
+      },
+    ],
   ])("rejects invalid request: %s", async (_caseName, payload) => {
     const res = await request("POST", "/api/v1/payment-decisions", payload);
 
@@ -228,13 +282,16 @@ describe("V1 payment decision API through Express app", () => {
     const res = await request("GET", "/api/v1/openapi.json");
 
     expect(res.status).toBe(200);
-    const documentText = JSON.stringify(res.body);
-    expect(documentText).not.toContain("preferences");
-    expect(res.body.components.schemas.PaymentDecisionRequest.properties.purchase.required).toEqual([
+    const paymentDecisionRequest =
+      res.body.components.schemas.PaymentDecisionRequest;
+    expect(JSON.stringify(paymentDecisionRequest)).not.toContain("preferences");
+    expect(paymentDecisionRequest.properties.purchase.required).toEqual([
       "amount",
       "currency",
     ]);
-    expect(res.body.paths["/api/v1/payment-decisions"].post.responses["429"]).toBeTruthy();
+    expect(
+      res.body.paths["/api/v1/payment-decisions"].post.responses["429"],
+    ).toBeTruthy();
     expect(res.body.paths["/api/v1/card-catalog"].get).toBeTruthy();
   });
 
@@ -286,7 +343,9 @@ function rawRequest(
         method,
         headers: {
           ...(contentType ? { "Content-Type": contentType } : {}),
-          ...(body !== undefined ? { "Content-Length": Buffer.byteLength(body) } : {}),
+          ...(body !== undefined
+            ? { "Content-Length": Buffer.byteLength(body) }
+            : {}),
         },
       },
       (res) => {

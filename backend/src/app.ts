@@ -27,6 +27,7 @@ import v1AuthRoutes from "./routes/v1/authRoutes";
 import v1MeRoutes from "./routes/v1/meRoutes";
 import v1DecisionTrustRoutes from "./routes/v1/decisionTrustRoutes";
 import v1ContextRoutes from "./routes/v1/contextRoutes";
+import v1PartnerRoutes from "./routes/v1/partnerRoutes";
 
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -121,6 +122,7 @@ app.use("/api/v1", v1AuthRoutes);
 app.use("/api/v1", v1MeRoutes);
 app.use("/api/v1", v1DecisionTrustRoutes);
 app.use("/api/v1", v1ContextRoutes);
+app.use("/api/v1", v1PartnerRoutes);
 app.use("/api/cards", cardRoutes);
 app.use("/api/plaid", plaidRoutes);
 if (!isProduction || process.env.REWARDLY_ENABLE_PLAID_SANDBOX === "true") {
