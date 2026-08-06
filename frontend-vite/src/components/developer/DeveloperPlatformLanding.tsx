@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Badge, Button, Card } from "../../design-system/components";
-import DecisionInspector from "./decision-inspector/DecisionInspector";
 import DeveloperUseCaseCards, {
   type DeveloperUseCase,
 } from "./DeveloperUseCaseCards";
 import DecisionPreviewCard from "./DecisionPreviewCard";
+import PlaygroundLayout from "./playground/PlaygroundLayout";
 
 const USE_CASES: DeveloperUseCase[] = [
   {
@@ -76,7 +76,7 @@ export default function DeveloperPlatformLanding() {
   const aiPathSelected = selectedUseCase === "ai-financial-assistant";
   const scrollToInspector = () => {
     document
-      .getElementById("decision-inspector")
+      .getElementById("developer-playground")
       ?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
@@ -240,7 +240,7 @@ export default function DeveloperPlatformLanding() {
         <DecisionPreviewCard onInspect={scrollToInspector} />
       </section>
 
-      <DecisionInspector />
+      <PlaygroundLayout />
     </main>
   );
 }

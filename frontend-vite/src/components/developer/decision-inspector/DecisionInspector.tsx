@@ -13,10 +13,12 @@ import TrustMetadataCard from "./TrustMetadataCard";
 
 type DecisionInspectorProps = {
   decision?: DecisionInspectorData;
+  compactHeading?: boolean;
 };
 
 export default function DecisionInspector({
   decision = sampleDecisionInspectorData,
+  compactHeading = false,
 }: DecisionInspectorProps) {
   return (
     <section
@@ -24,16 +26,18 @@ export default function DecisionInspector({
       className="decision-inspector"
       aria-labelledby="decision-inspector-title"
     >
-      <div className="developer-section-head narrow">
-        <p className="rw-eyebrow">Decision Inspector</p>
-        <h2 id="decision-inspector-title">
-          Explain, defend, and reproduce every recommendation.
-        </h2>
-        <p>
-          The inspector shows the evidence, alternatives, confidence factors,
-          versions, and raw API contract behind a trusted decision.
-        </p>
-      </div>
+      {!compactHeading && (
+        <div className="developer-section-head narrow">
+          <p className="rw-eyebrow">Decision Inspector</p>
+          <h2 id="decision-inspector-title">
+            Explain, defend, and reproduce every recommendation.
+          </h2>
+          <p>
+            The inspector shows the evidence, alternatives, confidence factors,
+            versions, and raw API contract behind a trusted decision.
+          </p>
+        </div>
+      )}
 
       <DecisionSummaryCard decision={decision} />
 
