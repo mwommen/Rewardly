@@ -3,6 +3,7 @@ import type { Card as WalletCard } from "./cardModules";
 import { type DebugState } from "./components/AdvancedInputs";
 import BenefitSearchResult from "./components/BenefitSearchResult";
 import BetaActivation from "./components/BetaActivation";
+import DeveloperPlatformLanding from "./components/developer/DeveloperPlatformLanding";
 import FirstTimeOnboarding from "./components/FirstTimeOnboarding";
 import HeroAskRewardly from "./components/HeroAskRewardly";
 import HowRewardlyWorks from "./components/HowRewardlyWorks";
@@ -61,6 +62,14 @@ const SMART_MOVES: SmartMove[] = [
 ];
 
 export default function App() {
+  if (window.location.pathname !== "/app") {
+    return <DeveloperPlatformLanding />;
+  }
+
+  return <WalletAssistantApp />;
+}
+
+function WalletAssistantApp() {
   const [intent, setIntent] = useState("");
   const [submittedIntent, setSubmittedIntent] = useState("");
   const [debugOpen, setDebugOpen] = useState(false);
