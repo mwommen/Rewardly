@@ -3246,6 +3246,16 @@ summary:focus-visible {
   font-size: 14px;
 }
 
+.playground-error {
+  margin: 0;
+  border: 1px solid rgba(251, 113, 133, 0.22);
+  border-radius: 18px;
+  background: rgba(251, 113, 133, 0.1);
+  color: #fecaca;
+  padding: 14px;
+  line-height: 1.45;
+}
+
 .api-code-tabs {
   margin-top: 10px;
 }

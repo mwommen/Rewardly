@@ -156,6 +156,80 @@ describe("paymentDecisionV1Routes", () => {
         }),
       }),
     );
+    expect(res.body).toEqual(
+      expect.objectContaining({
+        requestId: expect.stringMatching(/^req_/),
+        recommendation: expect.objectContaining({
+          paymentMethodId: "amex-gold",
+          displayName: "American Express Gold",
+          estimatedValue: 5.71,
+          currency: "USD",
+        }),
+        decisionConfidence: expect.objectContaining({
+          score: expect.any(Number),
+          label: expect.any(String),
+        }),
+        confidenceFactors: expect.arrayContaining([
+          expect.objectContaining({ name: "Merchant Resolution" }),
+          expect.objectContaining({ name: "Wallet Completeness" }),
+          expect.objectContaining({ name: "Rule Certainty" }),
+        ]),
+        evidence: expect.arrayContaining([
+          expect.objectContaining({
+            type: expect.any(String),
+            statement: expect.any(String),
+          }),
+        ]),
+        merchant: expect.objectContaining({
+          name: "Amazon",
+          category: "online_retail",
+        }),
+        walletSnapshot: expect.objectContaining({
+          cardSlugs: ["amex-gold", "chase-sapphire-preferred"],
+          evaluatedCardCount: 2,
+        }),
+        purchaseContext: expect.objectContaining({
+          amount: 142.83,
+          currency: "USD",
+        }),
+        ruleVersion: expect.any(String),
+        merchantRegistryVersion: expect.any(String),
+        benefitRegistryVersion: expect.any(String),
+        knowledgeVersion: expect.any(String),
+        decisionEngineVersion: expect.any(String),
+        latency: expect.objectContaining({
+          engineMs: expect.any(Number),
+          evidenceGenerationMs: expect.any(Number),
+          totalMs: expect.any(Number),
+        }),
+        replayAvailable: expect.any(Boolean),
+      }),
+    );
+  });
+
+  test("POST /payment-decisions returns deterministic decision IDs for identical requests", async () => {
+    mockedDecidePayment
+      .mockResolvedValueOnce(mockRecommendedDecision())
+      .mockResolvedValueOnce(mockRecommendedDecision());
+
+    const body = {
+      merchant: { name: "Amazon", category: "online_retail" },
+      purchase: { amount: 142.83, currency: "USD" },
+      wallet: {
+        cards: [
+          { cardId: "amex_gold" },
+          { cardId: "chase_sapphire_preferred" },
+        ],
+      },
+    };
+
+    const first = await invokeRoute("POST", "/payment-decisions", body);
+    const second = await invokeRoute("POST", "/payment-decisions", body);
+
+    expect(first.statusCode).toBe(200);
+    expect(second.statusCode).toBe(200);
+    expect(first.body.decisionId).toBe(second.body.decisionId);
+    expect(first.body.requestId).toBe(second.body.requestId);
   });
 
   test("POST /payment-decisions rejects missing purchase amount", async () => {
@@ -213,6 +287,11 @@ describe("paymentDecisionV1Routes", () => {
     );
     expect(res.body.status).toBe("no_recommendation");
     expect(res.body.recommendedPaymentMethod).toBeNull();
+    expect(res.body.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "INCOMPLETE_WALLET" }),
+      ]),
+    );
   });
 
   test("POST /payment-decisions rejects unsupported purchase currency", async () => {

@@ -1,4 +1,5 @@
 import type { DecisionInspectorData } from "../decision-inspector/decisionInspectorModel";
+import { API_BASE } from "../../../lib/api";
 
 export type ScenarioId = "retail" | "travel" | "dining" | "hotel" | "online";
 
@@ -38,6 +39,107 @@ export type PlaygroundPurchaseContext = {
 };
 
 export type PlaygroundDecision = DecisionInspectorData;
+
+export type PlaygroundDecisionRequest = {
+  merchant: {
+    name: string;
+    category?: string;
+  };
+  purchase: {
+    amount: number;
+    currency: "USD";
+  };
+  wallet: {
+    cards: Array<{ cardId: string }>;
+  };
+  context: PlaygroundPurchaseContext;
+};
+
+export type CanonicalDecisionResponse = {
+  decisionId: string;
+  requestId?: string;
+  status: "recommended" | "no_recommendation";
+  recommendedPaymentMethod?: {
+    cardId: string;
+    displayName: string;
+  } | null;
+  recommendation?: {
+    paymentMethodId: string | null;
+    displayName: string | null;
+    estimatedValue: number | null;
+    currency: "USD";
+    winningRule: string | null;
+  };
+  confidence: number;
+  confidenceLabel?: "high" | "medium" | "low";
+  decisionConfidence?: {
+    score: number;
+    label: "high" | "medium" | "low";
+  };
+  confidenceFactors?: Array<{
+    name: string;
+    level: "high" | "medium" | "low";
+    score: number | null;
+    explanation: string;
+  }>;
+  alternatives?: Array<{
+    paymentMethodId: string;
+    displayName: string;
+    rank: number;
+    estimatedValue: number | null;
+    confidence: number | null;
+    reasonNotSelected: string;
+    supportingEvidence: string[];
+  }>;
+  explanation: {
+    summary: string;
+    factors: string[];
+  };
+  evidence?: Array<{
+    evidenceId: string;
+    type: string;
+    source: string;
+    statement: string;
+    effect: string;
+    confidence: number | null;
+    version?: string | null;
+  }>;
+  warnings?: Array<{
+    code: string;
+    severity: string;
+    message: string;
+    userAction?: string;
+  }>;
+  merchant?: {
+    name: string;
+    category: string | null;
+    confidence: number | null;
+  };
+  walletSnapshot?: {
+    source: string;
+    cardSlugs: string[];
+    evaluatedCardCount: number;
+  };
+  purchaseContext?: {
+    amount: number | null;
+    currency: "USD";
+    checkoutStage?: string | null;
+    context?: unknown;
+  };
+  ruleVersion?: string;
+  merchantRegistryVersion?: string;
+  benefitRegistryVersion?: string;
+  knowledgeVersion?: string;
+  decisionEngineVersion?: string;
+  generatedAt?: string;
+  latency?: {
+    merchantResolutionMs: number | null;
+    engineMs: number;
+    evidenceGenerationMs: number;
+    totalMs: number;
+  };
+  replayAvailable?: boolean;
+};
 
 export type PlaygroundDecisionChange = {
   label: string;
@@ -120,6 +222,156 @@ export const DEFAULT_PLAYGROUND_CONTEXT: PlaygroundPurchaseContext = {
   subscription: false,
   largePurchase: false,
 };
+
+export function createPlaygroundDecisionRequest(
+  purchase: PlaygroundPurchase,
+  wallet: PlaygroundCard[],
+  context: PlaygroundPurchaseContext,
+): PlaygroundDecisionRequest {
+  const merchant =
+    PLAYGROUND_MERCHANTS.find((item) => item.id === purchase.merchantId) ??
+    PLAYGROUND_MERCHANTS[0];
+  return {
+    merchant: {
+      name: merchant.name,
+      category: merchant.category,
+    },
+    purchase: {
+      amount: Number(purchase.amount) || 0,
+      currency: purchase.currency,
+    },
+    wallet: {
+      cards: wallet
+        .filter((card) => card.enabled)
+        .map((card) => ({ cardId: card.id })),
+    },
+    context,
+  };
+}
+
+export async function executePlaygroundDecision(
+  request: PlaygroundDecisionRequest,
+  signal?: AbortSignal,
+): Promise<PlaygroundDecision> {
+  const response = await fetch(`${API_BASE}/api/v1/payment-decisions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+    signal,
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(
+      payload?.error?.message || "Rewardly could not generate a decision.",
+    );
+  }
+  return toPlaygroundDecision(payload as CanonicalDecisionResponse, request);
+}
+
+export function toPlaygroundDecision(
+  response: CanonicalDecisionResponse,
+  request: PlaygroundDecisionRequest,
+): PlaygroundDecision {
+  const recommendationName =
+    response.recommendation?.displayName ||
+    response.recommendedPaymentMethod?.displayName ||
+    "Recommendation unavailable";
+  const confidenceScore = Math.round(
+    (response.decisionConfidence?.score ?? response.confidence ?? 0) * 100,
+  );
+  const confidenceLabel = toInspectorConfidence(
+    response.decisionConfidence?.label || response.confidenceLabel,
+  );
+  const evidence = response.evidence?.length
+    ? response.evidence.map((item) => ({
+        id: item.evidenceId,
+        title: formatEvidenceType(item.type),
+        status: "complete" as const,
+        summary: item.statement,
+        confidence: toInspectorConfidenceLevel(item.confidence),
+        details: {
+          source: item.source,
+          effect: item.effect,
+          confidence:
+            typeof item.confidence === "number"
+              ? `${Math.round(item.confidence * 100)}%`
+              : "Unavailable",
+          version: item.version || "Current",
+        },
+      }))
+    : [
+        {
+          id: "decision-generated",
+          title: "Decision generated",
+          status: "complete" as const,
+          summary: response.explanation.summary,
+          confidence: confidenceLabel,
+          details: {
+            source: "Decision Engine",
+            status: response.status,
+          },
+        },
+      ];
+
+  return {
+    decisionId: response.decisionId,
+    timestamp: response.generatedAt || new Date().toISOString(),
+    apiVersion: "v1",
+    engineVersion: response.decisionEngineVersion || "decision-engine",
+    decisionType: "payment_decision",
+    recommendation: {
+      cardName: recommendationName,
+      confidence: confidenceScore,
+      confidenceLabel,
+      summary: response.explanation.summary,
+    },
+    evidence,
+    alternatives: (response.alternatives || []).map((alternative) => ({
+      cardName: alternative.displayName,
+      result: "Not Selected",
+      estimatedValue:
+        typeof alternative.estimatedValue === "number"
+          ? `$${alternative.estimatedValue.toFixed(2)}`
+          : "Lower",
+      confidence: toInspectorConfidenceLevel(alternative.confidence),
+      reason: alternative.reasonNotSelected,
+    })),
+    confidenceFactors: (response.confidenceFactors || []).map((factor) => ({
+      label: factor.name,
+      level: toInspectorConfidence(factor.level),
+      detail: factor.explanation,
+    })),
+    trustMetadata: {
+      decisionVersion: response.ruleVersion || "current",
+      knowledgeVersion: response.knowledgeVersion || "current",
+      merchantRegistryVersion: response.merchantRegistryVersion || "current",
+      benefitRegistryVersion: response.benefitRegistryVersion || "current",
+      rulesVersion: response.ruleVersion || "current",
+      replayAvailable: response.replayAvailable ?? true,
+    },
+    api: {
+      request,
+      response,
+      evidence: {
+        evidence: response.evidence || [],
+        warnings: response.warnings || [],
+        latency: response.latency || null,
+        versions: {
+          ruleVersion: response.ruleVersion,
+          merchantRegistryVersion: response.merchantRegistryVersion,
+          benefitRegistryVersion: response.benefitRegistryVersion,
+          knowledgeVersion: response.knowledgeVersion,
+          decisionEngineVersion: response.decisionEngineVersion,
+        },
+      },
+    },
+    explanation: [
+      response.explanation.summary,
+      ...(response.explanation.factors || []),
+      ...(response.warnings || []).map((warning) => warning.message),
+    ].filter(Boolean),
+  };
+}
 
 const CARD_SIGNAL: Record<
   string,
@@ -589,6 +841,29 @@ export function getDecisionChangeSummary(
             "Inputs changed without changing the winning recommendation.",
         },
       ];
+}
+
+function toInspectorConfidence(
+  value: string | undefined,
+): "High" | "Medium" | "Low" {
+  if (value === "high" || value === "High") return "High";
+  if (value === "medium" || value === "Medium") return "Medium";
+  return "Low";
+}
+
+function toInspectorConfidenceLevel(value: number | null | undefined) {
+  if (typeof value !== "number") return "Medium" as const;
+  if (value >= 0.8) return "High" as const;
+  if (value >= 0.58) return "Medium" as const;
+  return "Low" as const;
+}
+
+function formatEvidenceType(type: string) {
+  return type
+    .toLowerCase()
+    .split(/[_\s-]+/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function formatBooleanContextLabel(

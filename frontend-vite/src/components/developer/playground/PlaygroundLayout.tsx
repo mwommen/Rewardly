@@ -8,9 +8,10 @@ import DecisionHistory from "./DecisionHistory";
 import InputConfigurator from "./InputConfigurator";
 import LiveDecisionPanel from "./LiveDecisionPanel";
 import {
-  createPlaygroundDecision,
+  createPlaygroundDecisionRequest,
   DEFAULT_PLAYGROUND_CONTEXT,
   DEFAULT_PLAYGROUND_WALLET,
+  executePlaygroundDecision,
   PLAYGROUND_MERCHANTS,
   PLAYGROUND_SCENARIOS,
   type PlaygroundCard,
@@ -47,45 +48,61 @@ export default function PlaygroundLayout() {
   const [wallet, setWallet] = useState<PlaygroundCard[]>(
     DEFAULT_PLAYGROUND_WALLET,
   );
-  const [decision, setDecision] = useState<PlaygroundDecision>(() =>
-    createPlaygroundDecision(
-      { merchantId: "target", amount: "146.00", currency: "USD" },
-      DEFAULT_PLAYGROUND_WALLET,
-      DEFAULT_PLAYGROUND_CONTEXT,
-    ),
-  );
+  const [decision, setDecision] = useState<PlaygroundDecision | null>(null);
   const [history, setHistory] = useState<PlaygroundDecisionHistoryItem[]>([]);
   const [selectedHistoryId, setSelectedHistoryId] = useState("");
   const [comparisonAId, setComparisonAId] = useState("");
   const [comparisonBId, setComparisonBId] = useState("");
   const [activeTab, setActiveTab] = useState<ExploreTab>("inspector");
+  const [loadingDecision, setLoadingDecision] = useState(false);
+  const [decisionError, setDecisionError] = useState("");
   const previousHistoryRef = useRef<PlaygroundDecisionHistoryItem | null>(null);
 
   useEffect(() => {
-    const nextDecision = createPlaygroundDecision(purchase, wallet, context);
-    setDecision(nextDecision);
-    setHistory((current) => {
-      const trigger = getChangeTrigger(
-        previousHistoryRef.current,
-        purchase,
-        context,
-        wallet,
-      );
-      const nextItem = createHistoryItem({
-        sequence: current.length + 1,
-        trigger,
-        decision: nextDecision,
-        purchase,
-        context,
-        wallet,
-        previous: previousHistoryRef.current,
+    const controller = new AbortController();
+    const request = createPlaygroundDecisionRequest(purchase, wallet, context);
+    setLoadingDecision(true);
+    setDecisionError("");
+
+    executePlaygroundDecision(request, controller.signal)
+      .then((nextDecision) => {
+        setDecision(nextDecision);
+        setHistory((current) => {
+          const trigger = getChangeTrigger(
+            previousHistoryRef.current,
+            purchase,
+            context,
+            wallet,
+          );
+          const nextItem = createHistoryItem({
+            sequence: current.length + 1,
+            trigger,
+            decision: nextDecision,
+            purchase,
+            context,
+            wallet,
+            previous: previousHistoryRef.current,
+          });
+          previousHistoryRef.current = nextItem;
+          setSelectedHistoryId(nextItem.id);
+          setComparisonBId(nextItem.id);
+          setComparisonAId((currentId) => currentId || nextItem.id);
+          return [...current, nextItem].slice(-8);
+        });
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) return;
+        setDecisionError(
+          error instanceof Error
+            ? error.message
+            : "Rewardly could not generate a decision.",
+        );
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoadingDecision(false);
       });
-      previousHistoryRef.current = nextItem;
-      setSelectedHistoryId(nextItem.id);
-      setComparisonBId(nextItem.id);
-      setComparisonAId((currentId) => currentId || nextItem.id);
-      return [...current, nextItem].slice(-8);
-    });
+
+    return () => controller.abort();
   }, [context, purchase, wallet]);
 
   const selectedHistory = useMemo(
@@ -143,8 +160,28 @@ export default function PlaygroundLayout() {
         />
 
         <div className="evolution-center-panel">
-          <LiveDecisionPanel decision={decision} />
-          <RuleTracePanel decision={decision} />
+          {inspectedDecision ? (
+            <>
+              <LiveDecisionPanel
+                decision={inspectedDecision}
+                loading={loadingDecision}
+              />
+              <RuleTracePanel decision={inspectedDecision} />
+            </>
+          ) : (
+            <Card variant="subtle" className="playground-empty-state compact">
+              <h3>Connecting to the Decision Engine.</h3>
+              <p>
+                The playground will render the first decision as soon as the API
+                responds.
+              </p>
+            </Card>
+          )}
+          {decisionError && (
+            <p className="playground-error" role="alert">
+              {decisionError}
+            </p>
+          )}
         </div>
 
         <div className="evolution-side-panel">
@@ -231,8 +268,16 @@ export default function PlaygroundLayout() {
           ))}
         </div>
 
-        {activeTab === "inspector" ? (
+        {activeTab === "inspector" && inspectedDecision ? (
           <DecisionInspector decision={inspectedDecision} compactHeading />
+        ) : activeTab === "inspector" ? (
+          <Card variant="subtle" className="playground-empty-state compact">
+            <h3>Waiting for a backend decision.</h3>
+            <p>
+              No recommendation will be displayed until the canonical Decision
+              Engine responds.
+            </p>
+          </Card>
         ) : (
           <Card variant="default" className="inspector-panel json-viewer">
             <pre className="json-code">

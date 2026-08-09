@@ -3,10 +3,12 @@ import type { PlaygroundDecision } from "./playgroundModel";
 
 type LiveDecisionPanelProps = {
   decision: PlaygroundDecision;
+  loading?: boolean;
 };
 
 export default function LiveDecisionPanel({
   decision,
+  loading = false,
 }: LiveDecisionPanelProps) {
   const winningRule = String(
     decision.evidence.find((step) => step.id === "reward-rules")?.details
@@ -17,7 +19,7 @@ export default function LiveDecisionPanel({
     <Card variant="hero" className="live-decision-panel">
       <div className="live-decision-topline">
         <Badge tone="success">Live Decision</Badge>
-        <span>{decision.decisionId}</span>
+        <span>{loading ? "Refreshing..." : decision.decisionId}</span>
       </div>
       <div className="live-decision-main">
         <div>

@@ -26,6 +26,11 @@ import {
   type DecisionTrustRecord,
   trustReferenceFor,
 } from "../../services/trustInfrastructureService";
+import {
+  createCanonicalDecisionResponse,
+  createDeterministicDecisionId,
+  type CanonicalDecisionLatency,
+} from "../../services/canonicalDecisionResponseService";
 import { authenticateAccessToken } from "../../services/productionAuthService";
 import {
   decisionTrustOpenApiPaths,
@@ -80,9 +85,8 @@ router.post(V1_PAYMENT_DECISIONS_ROUTE, async (req, res) => {
 
   try {
     const request = validation.value;
-    const decisionId = createPublicDecisionId();
     const normalizedDecisionRequest: PaymentDecisionRequest = {
-      userId: decisionId,
+      userId: "pending-decision-id",
       merchant: request.merchant.name,
       hostname: request.merchant.domain,
       category: request.merchant.category,
@@ -99,8 +103,12 @@ router.post(V1_PAYMENT_DECISIONS_ROUTE, async (req, res) => {
       },
       context: request.context,
     };
+    const decisionId = createDeterministicDecisionId(normalizedDecisionRequest);
+    normalizedDecisionRequest.userId = decisionId;
     const authUser = await optionalAuthUser(req.headers.authorization);
+    const startedAt = Date.now();
     const decision = await decidePayment(normalizedDecisionRequest);
+    const engineCompletedAt = Date.now();
     const trustRecord = await createOrResolveTrustRecord({
       decisionId,
       decision,
@@ -108,9 +116,18 @@ router.post(V1_PAYMENT_DECISIONS_ROUTE, async (req, res) => {
       ownerUserId: authUser?.userId || null,
       tenantId: null,
     });
+    const completedAt = Date.now();
+    const latency: CanonicalDecisionLatency = {
+      engineMs: engineCompletedAt - startedAt,
+      evidenceGenerationMs: completedAt - engineCompletedAt,
+      totalMs: completedAt - startedAt,
+    };
 
     return res.json(
-      toV1PaymentDecisionResponse(decision, decisionId, trustRecord),
+      toV1PaymentDecisionResponse(decision, decisionId, trustRecord, {
+        normalizedRequest: normalizedDecisionRequest,
+        latency,
+      }),
     );
   } catch (error) {
     console.error(
@@ -299,6 +316,10 @@ export function toV1PaymentDecisionResponse(
   decision: PaymentDecision,
   fallbackDecisionId = createPublicDecisionId(),
   trustRecord?: DecisionTrustRecord,
+  canonicalOptions?: {
+    normalizedRequest: PaymentDecisionRequest;
+    latency: CanonicalDecisionLatency;
+  },
 ) {
   const recommendation = decision.recommendedCard;
   const narrative = decision.decisionNarrative;
@@ -329,7 +350,7 @@ export function toV1PaymentDecisionResponse(
       "Rewardly evaluated the cards in this wallet.",
     ]) || "Rewardly evaluated the cards in this wallet.";
 
-  return {
+  const legacyResponse = {
     decisionId,
     status: recommendation ? "recommended" : "no_recommendation",
     recommendedPaymentMethod: recommendation
@@ -349,6 +370,24 @@ export function toV1PaymentDecisionResponse(
       factors: explanationFactors(decision),
     },
     trust: trustRecord ? trustReferenceFor(trustRecord) : undefined,
+  };
+
+  if (!canonicalOptions) return legacyResponse;
+
+  const canonical = createCanonicalDecisionResponse({
+    decision,
+    normalizedRequest: canonicalOptions.normalizedRequest,
+    decisionId,
+    trustRecord,
+    latency: canonicalOptions.latency,
+  });
+
+  return {
+    ...legacyResponse,
+    ...canonical,
+    confidence: legacyResponse.confidence,
+    confidenceLabel: canonical.confidence.label,
+    decisionConfidence: canonical.confidence,
   };
 }
 
@@ -704,6 +743,61 @@ export function openApiDocument() {
             estimatedValue: { type: ["number", "null"] },
             currency: { type: "string", enum: ["USD"] },
             confidence: { type: "number", minimum: 0, maximum: 1 },
+            confidenceLabel: {
+              type: "string",
+              enum: ["high", "medium", "low"],
+            },
+            decisionConfidence: {
+              type: "object",
+              properties: {
+                score: { type: "number", minimum: 0, maximum: 1 },
+                label: { type: "string", enum: ["high", "medium", "low"] },
+              },
+            },
+            confidenceFactors: {
+              type: "array",
+              items: {
+                type: "object",
+                required: ["name", "level", "score", "explanation"],
+                properties: {
+                  name: { type: "string" },
+                  level: {
+                    type: "string",
+                    enum: ["high", "medium", "low"],
+                  },
+                  score: { type: ["number", "null"], minimum: 0, maximum: 1 },
+                  explanation: { type: "string" },
+                },
+              },
+            },
+            recommendation: {
+              type: "object",
+              properties: {
+                paymentMethodId: { type: ["string", "null"] },
+                displayName: { type: ["string", "null"] },
+                estimatedValue: { type: ["number", "null"] },
+                currency: { type: "string", enum: ["USD"] },
+                winningRule: { type: ["string", "null"] },
+              },
+            },
+            alternatives: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  paymentMethodId: { type: "string" },
+                  displayName: { type: "string" },
+                  rank: { type: "number" },
+                  estimatedValue: { type: ["number", "null"] },
+                  confidence: { type: ["number", "null"] },
+                  reasonNotSelected: { type: "string" },
+                  supportingEvidence: {
+                    type: "array",
+                    items: { type: "string" },
+                  },
+                },
+              },
+            },
             explanation: {
               type: "object",
               properties: {
@@ -714,6 +808,78 @@ export function openApiDocument() {
                 },
               },
             },
+            evidence: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  evidenceId: { type: "string" },
+                  type: { type: "string" },
+                  source: { type: "string" },
+                  statement: { type: "string" },
+                  effect: { type: "string" },
+                  confidence: { type: ["number", "null"] },
+                  version: { type: ["string", "null"] },
+                },
+              },
+            },
+            warnings: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  code: { type: "string" },
+                  severity: { type: "string" },
+                  message: { type: "string" },
+                  userAction: { type: "string" },
+                },
+              },
+            },
+            requestId: { type: "string" },
+            merchant: {
+              type: "object",
+              properties: {
+                name: { type: "string" },
+                category: { type: ["string", "null"] },
+                confidence: { type: ["number", "null"] },
+              },
+            },
+            walletSnapshot: {
+              type: "object",
+              properties: {
+                source: { type: "string" },
+                cardSlugs: {
+                  type: "array",
+                  items: { type: "string" },
+                },
+                evaluatedCardCount: { type: "number" },
+              },
+            },
+            purchaseContext: {
+              type: "object",
+              properties: {
+                amount: { type: ["number", "null"] },
+                currency: { type: "string", enum: ["USD"] },
+                checkoutStage: { type: ["string", "null"] },
+                context: {},
+              },
+            },
+            ruleVersion: { type: "string" },
+            merchantRegistryVersion: { type: "string" },
+            benefitRegistryVersion: { type: "string" },
+            knowledgeVersion: { type: "string" },
+            decisionEngineVersion: { type: "string" },
+            generatedAt: { type: "string" },
+            latency: {
+              type: "object",
+              properties: {
+                merchantResolutionMs: { type: ["number", "null"] },
+                engineMs: { type: "number" },
+                evidenceGenerationMs: { type: "number" },
+                totalMs: { type: "number" },
+              },
+            },
+            replayAvailable: { type: "boolean" },
             trust: {
               type: "object",
               properties: {
