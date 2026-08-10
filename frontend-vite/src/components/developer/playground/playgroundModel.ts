@@ -131,7 +131,18 @@ export type CanonicalDecisionResponse = {
   benefitRegistryVersion?: string;
   knowledgeVersion?: string;
   decisionEngineVersion?: string;
+  lifecycleStatus?: string;
+  runtimeVersion?: string;
+  replayStatus?: string;
+  eventCount?: number;
+  validationStatus?: string;
+  validationId?: string | null;
+  trustScore?: number | null;
+  trustScoreLevel?: string | null;
+  validatedAt?: string | null;
   generatedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
   latency?: {
     merchantResolutionMs: number | null;
     engineMs: number;
@@ -343,11 +354,20 @@ export function toPlaygroundDecision(
     })),
     trustMetadata: {
       decisionVersion: response.ruleVersion || "current",
+      lifecycleStatus: response.lifecycleStatus,
+      runtimeVersion: response.runtimeVersion,
       knowledgeVersion: response.knowledgeVersion || "current",
       merchantRegistryVersion: response.merchantRegistryVersion || "current",
       benefitRegistryVersion: response.benefitRegistryVersion || "current",
       rulesVersion: response.ruleVersion || "current",
       replayAvailable: response.replayAvailable ?? true,
+      replayStatus: response.replayStatus,
+      eventCount: response.eventCount,
+      validationStatus: response.validationStatus,
+      validationId: response.validationId,
+      trustScore: response.trustScore,
+      trustScoreLevel: response.trustScoreLevel,
+      validatedAt: response.validatedAt,
     },
     api: {
       request,

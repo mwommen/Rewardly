@@ -11,6 +11,14 @@ jest.mock("../src/db", () => ({
   getBetaExtensionConnectionsCollection: jest.fn(async () => ({
     findOne: jest.fn(),
   })),
+  getDecisionRuntimeCollection: jest.fn(async () => ({
+    updateOne: jest.fn(),
+    findOne: jest.fn(),
+  })),
+  getDecisionValidationsCollection: jest.fn(async () => ({
+    updateOne: jest.fn(),
+    findOne: jest.fn(),
+  })),
 }));
 
 jest.mock("../src/services/paymentDecisionService", () => ({
@@ -105,7 +113,7 @@ describe("V1 payment decision API through Express app", () => {
     );
   });
 
-  test("successful calls get separate fallback decision IDs", async () => {
+  test("successful calls get deterministic runtime decision IDs", async () => {
     mockedDecidePayment
       .mockResolvedValueOnce(mockRecommendedDecision())
       .mockResolvedValueOnce(mockRecommendedDecision());
@@ -115,7 +123,8 @@ describe("V1 payment decision API through Express app", () => {
 
     expect(first.body.decisionId).toMatch(/^pdec_/);
     expect(second.body.decisionId).toMatch(/^pdec_/);
-    expect(first.body.decisionId).not.toBe(second.body.decisionId);
+    expect(first.body.decisionId).toBe(second.body.decisionId);
+    expect(first.body.requestId).toBe(second.body.requestId);
     expect(mockedDecidePayment.mock.calls[0][0].userId).toBe(
       first.body.decisionId,
     );

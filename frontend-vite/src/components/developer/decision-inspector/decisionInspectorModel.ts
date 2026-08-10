@@ -25,11 +25,20 @@ export type ConfidenceFactor = {
 
 export type TrustMetadata = {
   decisionVersion: string;
+  lifecycleStatus?: string;
+  runtimeVersion?: string;
   knowledgeVersion: string;
   merchantRegistryVersion: string;
   benefitRegistryVersion: string;
   rulesVersion: string;
   replayAvailable: boolean;
+  replayStatus?: string;
+  eventCount?: number;
+  validationStatus?: string;
+  validationId?: string | null;
+  trustScore?: number | null;
+  trustScoreLevel?: string | null;
+  validatedAt?: string | null;
 };
 
 export type DecisionInspectorData = {
@@ -207,11 +216,20 @@ export const sampleDecisionInspectorData: DecisionInspectorData = {
   ],
   trustMetadata: {
     decisionVersion: "2026.08.06",
+    lifecycleStatus: "replayable",
+    runtimeVersion: "decision-runtime-0.1.0",
     knowledgeVersion: "knowledge_2026_08",
     merchantRegistryVersion: "merchant_registry_004",
     benefitRegistryVersion: "benefit_registry_011",
     rulesVersion: "rules_0.7.2",
     replayAvailable: true,
+    replayStatus: "replayable",
+    eventCount: 8,
+    validationStatus: "validated",
+    validationId: "val_sample",
+    trustScore: 94,
+    trustScoreLevel: "excellent",
+    validatedAt: "2026-08-06T18:03:22.000Z",
   },
   api: {
     request: {

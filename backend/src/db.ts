@@ -146,6 +146,20 @@ export async function getDecisionInputSnapshotsCollection(): Promise<
   return db.collection<DecisionInputSnapshotDocument>("decisionInputSnapshots");
 }
 
+export async function getDecisionRuntimeCollection(): Promise<
+  Collection<Document>
+> {
+  const db = await connectDB();
+  return db.collection<Document>("decisionRuntime");
+}
+
+export async function getDecisionValidationsCollection(): Promise<
+  Collection<Document>
+> {
+  const db = await connectDB();
+  return db.collection<Document>("decisionValidations");
+}
+
 export async function getPartnerOrganizationsCollection(): Promise<
   Collection<PartnerOrganization>
 > {

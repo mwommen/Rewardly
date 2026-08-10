@@ -4,6 +4,9 @@ jest.mock("../src/services/paymentDecisionService", () => ({
 
 import router from "../src/routes/v1/paymentDecisionRoutes";
 import { decidePayment } from "../src/services/paymentDecisionService";
+import { resetDecisionRuntimeForTests } from "../src/services/decisionRuntimeService";
+import { resetTrustInfrastructureForTests } from "../src/services/trustInfrastructureService";
+import { resetDecisionValidationForTests } from "../src/services/decisionValidationService";
 
 const mockedDecidePayment = decidePayment as jest.MockedFunction<
   typeof decidePayment
@@ -108,6 +111,9 @@ function mockRecommendedDecision(overrides: Record<string, unknown> = {}) {
 
 describe("paymentDecisionV1Routes", () => {
   beforeEach(() => {
+    resetDecisionRuntimeForTests();
+    resetTrustInfrastructureForTests();
+    resetDecisionValidationForTests();
     jest.clearAllMocks();
   });
 
@@ -159,6 +165,21 @@ describe("paymentDecisionV1Routes", () => {
     expect(res.body).toEqual(
       expect.objectContaining({
         requestId: expect.stringMatching(/^req_/),
+        lifecycleStatus: "replayable",
+        runtimeVersion: expect.stringMatching(/^decision-runtime-/),
+        replayStatus: "replayable",
+        eventCount: expect.any(Number),
+        validationStatus: "validated",
+        validationId: expect.stringMatching(/^val_/),
+        trustScore: expect.any(Number),
+        trustScoreLevel: expect.any(String),
+        validatedAt: expect.any(String),
+        validation: expect.objectContaining({
+          validationId: expect.stringMatching(/^val_/),
+          status: "validated",
+          overallResult: "passed",
+          trustScore: expect.any(Number),
+        }),
         recommendation: expect.objectContaining({
           paymentMethodId: "amex-gold",
           displayName: "American Express Gold",
@@ -205,6 +226,163 @@ describe("paymentDecisionV1Routes", () => {
         replayAvailable: expect.any(Boolean),
       }),
     );
+  });
+
+  test("created decisions expose validation API results", async () => {
+    mockedDecidePayment.mockResolvedValue(mockRecommendedDecision());
+
+    const created = await invokeRoute("POST", "/payment-decisions", {
+      merchant: { name: "Amazon", category: "online_retail" },
+      purchase: { amount: 142.83, currency: "USD" },
+      wallet: {
+        cards: [
+          { cardId: "amex_gold" },
+          { cardId: "chase_sapphire_preferred" },
+        ],
+      },
+    });
+    const byDecision = await invokeRoute(
+      "GET",
+      `/decisions/${created.body.decisionId}/validation`,
+    );
+    const byValidation = await invokeRoute(
+      "GET",
+      `/validations/${created.body.validationId}`,
+    );
+    const rerun = await invokeRoute(
+      "POST",
+      `/decisions/${created.body.decisionId}/validate`,
+    );
+
+    expect(byDecision.statusCode).toBe(200);
+    expect(byDecision.body.validation.validationId).toBe(
+      created.body.validationId,
+    );
+    expect(byValidation.statusCode).toBe(200);
+    expect(byValidation.body.validation.decisionId).toBe(
+      created.body.decisionId,
+    );
+    expect(rerun.statusCode).toBe(200);
+    expect(rerun.body.validation.validationId).toBe(created.body.validationId);
+  });
+
+  test("created decisions can be loaded as runtime objects", async () => {
+    mockedDecidePayment.mockResolvedValue(mockRecommendedDecision());
+
+    const created = await invokeRoute("POST", "/payment-decisions", {
+      merchant: { name: "Amazon", category: "online_retail" },
+      purchase: { amount: 142.83, currency: "USD" },
+      wallet: {
+        cards: [
+          { cardId: "amex_gold" },
+          { cardId: "chase_sapphire_preferred" },
+        ],
+      },
+    });
+
+    const loaded = await invokeRoute(
+      "GET",
+      `/decisions/${created.body.decisionId}`,
+    );
+
+    expect(loaded.statusCode).toBe(200);
+    expect(loaded.body.decision).toEqual(
+      expect.objectContaining({
+        id: created.body.decisionId,
+        decisionId: created.body.decisionId,
+        status: "replayable",
+        runtimeVersion: expect.stringMatching(/^decision-runtime-/),
+        decisionEngineVersion: expect.any(String),
+        knowledgeVersion: expect.any(String),
+        replayStatus: "replayable",
+        validationStatus: "validated",
+        validationId: expect.stringMatching(/^val_/),
+        trustScore: expect.any(Number),
+        eventCount: expect.any(Number),
+        history: expect.arrayContaining([
+          expect.objectContaining({ type: "DecisionReceived" }),
+          expect.objectContaining({ type: "RecommendationGenerated" }),
+          expect.objectContaining({ type: "DecisionPersisted" }),
+        ]),
+      }),
+    );
+  });
+
+  test("runtime events expose the immutable execution trail", async () => {
+    mockedDecidePayment.mockResolvedValue(mockRecommendedDecision());
+
+    const created = await invokeRoute("POST", "/payment-decisions", {
+      merchant: { name: "Amazon", category: "online_retail" },
+      purchase: { amount: 142.83, currency: "USD" },
+      wallet: { cards: [{ cardId: "amex_gold" }] },
+    });
+    const events = await invokeRoute(
+      "GET",
+      `/decisions/${created.body.decisionId}/events`,
+    );
+
+    expect(events.statusCode).toBe(200);
+    expect(events.body.eventCount).toBe(events.body.events.length);
+    expect(events.body.events.map((event: any) => event.type)).toEqual([
+      "DecisionReceived",
+      "MerchantResolved",
+      "WalletLoaded",
+      "BenefitsEvaluated",
+      "ConfidenceCalculated",
+      "RecommendationGenerated",
+      "DecisionPersisted",
+      "DecisionReplayable",
+    ]);
+    expect(events.body.events[0]).toEqual(
+      expect.objectContaining({
+        eventId: expect.stringMatching(/^deve_/),
+        component: "decision_runtime",
+        metadata: expect.objectContaining({ merchant: "Amazon" }),
+      }),
+    );
+  });
+
+  test("runtime replay records a replay event and returns replay result", async () => {
+    mockedDecidePayment.mockResolvedValue(mockRecommendedDecision());
+
+    const created = await invokeRoute("POST", "/payment-decisions", {
+      merchant: { name: "Amazon", category: "online_retail" },
+      purchase: { amount: 142.83, currency: "USD" },
+      wallet: { cards: [{ cardId: "amex_gold" }] },
+    });
+
+    const replay = await invokeRoute(
+      "POST",
+      `/decisions/${created.body.decisionId}/replay`,
+    );
+    const events = await invokeRoute(
+      "GET",
+      `/decisions/${created.body.decisionId}/events`,
+    );
+
+    expect(replay.statusCode).toBe(200);
+    expect(replay.body.replay.status).toBe("matched");
+    expect(replay.body.runtimeEvent).toEqual(
+      expect.objectContaining({
+        type: "ReplayRequested",
+        component: "decision_runtime",
+      }),
+    );
+    expect(events.body.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "ReplayRequested" }),
+      ]),
+    );
+  });
+
+  test("unknown runtime decision returns not found", async () => {
+    const res = await invokeRoute("GET", "/decisions/pdec_missing");
+
+    expect(res.statusCode).toBe(404);
+    expect(res.body.error).toEqual({
+      code: "DECISION_NOT_FOUND",
+      message: "Decision runtime object was not found.",
+    });
   });
 
   test("POST /payment-decisions returns deterministic decision IDs for identical requests", async () => {

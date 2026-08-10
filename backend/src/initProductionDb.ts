@@ -2,6 +2,8 @@ import "dotenv/config";
 import {
   getAnalyticsCollection,
   getCardsCollection,
+  getDecisionRuntimeCollection,
+  getDecisionValidationsCollection,
   getFeedbackCollection,
   getLinkedAccountsCollection,
   getUserBenefitStatesCollection,
@@ -21,14 +23,23 @@ async function main() {
   await ensureTrustInfrastructureIndexes();
   await ensureUserDataIndexes();
 
-  const [cards, linkedAccounts, benefitStates, analytics, feedback] =
-    await Promise.all([
-      getCardsCollection(),
-      getLinkedAccountsCollection(),
-      getUserBenefitStatesCollection(),
-      getAnalyticsCollection(),
-      getFeedbackCollection(),
-    ]);
+  const [
+    cards,
+    linkedAccounts,
+    benefitStates,
+    analytics,
+    feedback,
+    decisionRuntime,
+    decisionValidations,
+  ] = await Promise.all([
+    getCardsCollection(),
+    getLinkedAccountsCollection(),
+    getUserBenefitStatesCollection(),
+    getAnalyticsCollection(),
+    getFeedbackCollection(),
+    getDecisionRuntimeCollection(),
+    getDecisionValidationsCollection(),
+  ]);
 
   await Promise.all([
     cards.createIndex({ slug: 1 }, { unique: true, sparse: true }),
@@ -41,6 +52,19 @@ async function main() {
     analytics.createIndex({ installationId: 1, timestamp: -1 }),
     feedback.createIndex({ createdAt: -1 }),
     feedback.createIndex({ normalizedMerchantName: 1 }),
+    decisionRuntime.createIndex(
+      { decisionId: 1, ownerUserId: 1, partnerId: 1 },
+      { unique: true },
+    ),
+    decisionRuntime.createIndex({ ownerUserId: 1, createdAt: -1 }),
+    decisionRuntime.createIndex({ partnerId: 1, createdAt: -1 }),
+    decisionValidations.createIndex(
+      { decisionId: 1, ownerUserId: 1, partnerId: 1 },
+      { unique: true },
+    ),
+    decisionValidations.createIndex({ validationId: 1 }, { unique: true }),
+    decisionValidations.createIndex({ ownerUserId: 1, createdAt: -1 }),
+    decisionValidations.createIndex({ partnerId: 1, createdAt: -1 }),
   ]);
 
   console.log("Rewardly production database indexes are ready.");
